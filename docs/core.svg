@@ -1,150 +1,144 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 1134" width="740" height="1134" font-family="Georgia, serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 1090" width="740" height="1090" font-family="Georgia, serif" font-size="13">
 <rect width="100%" height="100%" fill="#fcfcfb"/>
 <text x="16" y="24" font-size="15" fill="#0b0b0b">Facts that stand apart with each rule off from 1750</text>
 <rect x="16" y="36" width="12" height="12" rx="2" fill="#eb6834"/><text x="32" y="46" fill="#52514e">holds up the century (9)</text>
-<rect x="222.8" y="36" width="12" height="12" rx="2" fill="#2a78d6"/><text x="238.8" y="46" fill="#52514e">shapes the island (25)</text>
+<rect x="222.8" y="36" width="12" height="12" rx="2" fill="#2a78d6"/><text x="238.8" y="46" fill="#52514e">shapes the island (23)</text>
 <rect x="415.20000000000005" y="36" width="12" height="12" rx="2" fill="#1baf7a"/><text x="431.20000000000005" y="46" fill="#52514e">idle (13)</text>
 <text x="222" y="79" text-anchor="end" fill="#0b0b0b">machines.enabled</text>
 <rect x="230" y="68" width="420" height="14" rx="2" fill="#eb6834"/>
-<text x="656" y="79" fill="#52514e">1619</text>
+<text x="656" y="79" fill="#52514e">1599</text>
 <text x="222" y="101" text-anchor="end" fill="#0b0b0b">works.enabled</text>
-<rect x="230" y="90" width="336.7263743051266" height="14" rx="2" fill="#eb6834"/>
-<text x="572.7263743051267" y="101" fill="#52514e">1298</text>
+<rect x="230" y="90" width="339.624765478424" height="14" rx="2" fill="#eb6834"/>
+<text x="575.624765478424" y="101" fill="#52514e">1293</text>
 <text x="222" y="123" text-anchor="end" fill="#0b0b0b">engel.enabled</text>
-<rect x="230" y="112" width="147.609635577517" height="14" rx="2" fill="#eb6834"/>
-<text x="383.609635577517" y="123" fill="#52514e">569</text>
+<rect x="230" y="112" width="156.54784240150093" height="14" rx="2" fill="#eb6834"/>
+<text x="392.54784240150093" y="123" fill="#52514e">596</text>
 <text x="222" y="145" text-anchor="end" fill="#0b0b0b">people.enabled</text>
-<rect x="230" y="134" width="134.11982705373688" height="14" rx="2" fill="#eb6834"/>
-<text x="370.1198270537369" y="145" fill="#52514e">517</text>
+<rect x="230" y="134" width="118.46153846153847" height="14" rx="2" fill="#eb6834"/>
+<text x="354.46153846153845" y="145" fill="#52514e">451</text>
 <text x="222" y="167" text-anchor="end" fill="#0b0b0b">mines.enabled</text>
-<rect x="230" y="156" width="66.41136504014824" height="14" rx="2" fill="#eb6834"/>
-<text x="302.4113650401482" y="167" fill="#52514e">256</text>
+<rect x="230" y="156" width="71.18198874296435" height="14" rx="2" fill="#eb6834"/>
+<text x="307.18198874296434" y="167" fill="#52514e">271</text>
 <text x="222" y="189" text-anchor="end" fill="#0b0b0b">carting.enabled</text>
-<rect x="230" y="178" width="46.95491043854231" height="14" rx="2" fill="#eb6834"/>
-<text x="282.9549104385423" y="189" fill="#52514e">181</text>
+<rect x="230" y="178" width="37.82363977485929" height="14" rx="2" fill="#eb6834"/>
+<text x="273.8236397748593" y="189" fill="#52514e">144</text>
 <text x="222" y="211" text-anchor="end" fill="#0b0b0b">prices.enabled</text>
-<rect x="230" y="200" width="13.74922791846819" height="14" rx="2" fill="#eb6834"/>
-<text x="249.7492279184682" y="211" fill="#52514e">53</text>
-<text x="222" y="233" text-anchor="end" fill="#0b0b0b">land.enabled</text>
-<rect x="230" y="222" width="11.41445336627548" height="14" rx="2" fill="#eb6834"/>
-<text x="247.41445336627547" y="233" fill="#52514e">44</text>
-<text x="222" y="255" text-anchor="end" fill="#0b0b0b">railways.enabled</text>
-<rect x="230" y="244" width="11.1550339715874" height="14" rx="2" fill="#eb6834"/>
-<text x="247.1550339715874" y="255" fill="#52514e">43</text>
+<rect x="230" y="200" width="19.43714821763602" height="14" rx="2" fill="#eb6834"/>
+<text x="255.43714821763604" y="211" fill="#52514e">74</text>
+<text x="222" y="233" text-anchor="end" fill="#0b0b0b">railways.enabled</text>
+<rect x="230" y="222" width="8.405253283302065" height="14" rx="2" fill="#eb6834"/>
+<text x="244.40525328330207" y="233" fill="#52514e">32</text>
+<text x="222" y="255" text-anchor="end" fill="#0b0b0b">works.spread_first</text>
+<rect x="230" y="244" width="4" height="14" rx="2" fill="#eb6834"/>
+<text x="240" y="255" fill="#52514e">0</text>
 <text x="222" y="277" text-anchor="end" fill="#0b0b0b">transition.enabled</text>
-<rect x="230" y="266" width="147.609635577517" height="14" rx="2" fill="#2a78d6"/>
-<text x="383.609635577517" y="277" fill="#52514e">569</text>
+<rect x="230" y="266" width="117.93621013133209" height="14" rx="2" fill="#2a78d6"/>
+<text x="353.9362101313321" y="277" fill="#52514e">449</text>
 <text x="222" y="299" text-anchor="end" fill="#0b0b0b">tasks.enabled</text>
-<rect x="230" y="288" width="65.89252625077208" height="14" rx="2" fill="#2a78d6"/>
-<text x="301.8925262507721" y="299" fill="#52514e">254</text>
+<rect x="230" y="288" width="54.108818011257036" height="14" rx="2" fill="#2a78d6"/>
+<text x="290.10881801125703" y="299" fill="#52514e">206</text>
 <text x="222" y="321" text-anchor="end" fill="#0b0b0b">tasks.land</text>
-<rect x="230" y="310" width="45.65781346510192" height="14" rx="2" fill="#2a78d6"/>
-<text x="281.6578134651019" y="321" fill="#52514e">176</text>
+<rect x="230" y="310" width="41.23827392120075" height="14" rx="2" fill="#2a78d6"/>
+<text x="277.23827392120074" y="321" fill="#52514e">157</text>
 <text x="222" y="343" text-anchor="end" fill="#0b0b0b">tasks.computing</text>
-<rect x="230" y="332" width="26.97961704756022" height="14" rx="2" fill="#2a78d6"/>
-<text x="262.9796170475602" y="343" fill="#52514e">104</text>
+<rect x="230" y="332" width="25.74108818011257" height="14" rx="2" fill="#2a78d6"/>
+<text x="261.74108818011257" y="343" fill="#52514e">98</text>
 <text x="222" y="365" text-anchor="end" fill="#0b0b0b">ground.room</text>
-<rect x="230" y="354" width="23.866584311303274" height="14" rx="2" fill="#2a78d6"/>
-<text x="259.8665843113033" y="365" fill="#52514e">92</text>
+<rect x="230" y="354" width="24.42776735459662" height="14" rx="2" fill="#2a78d6"/>
+<text x="260.42776735459665" y="365" fill="#52514e">93</text>
 <text x="222" y="387" text-anchor="end" fill="#0b0b0b">ground.enabled</text>
-<rect x="230" y="376" width="15.046324891908586" height="14" rx="2" fill="#2a78d6"/>
-<text x="251.0463248919086" y="387" fill="#52514e">58</text>
-<text x="222" y="409" text-anchor="end" fill="#0b0b0b">tasks.office_machines</text>
-<rect x="230" y="398" width="14.786905497220506" height="14" rx="2" fill="#2a78d6"/>
-<text x="250.78690549722052" y="409" fill="#52514e">57</text>
-<text x="222" y="431" text-anchor="end" fill="#0b0b0b">woods.enabled</text>
-<rect x="230" y="420" width="10.895614576899321" height="14" rx="2" fill="#2a78d6"/>
-<text x="246.89561457689933" y="431" fill="#52514e">42</text>
+<rect x="230" y="376" width="14.446529080675422" height="14" rx="2" fill="#2a78d6"/>
+<text x="250.44652908067542" y="387" fill="#52514e">55</text>
+<text x="222" y="409" text-anchor="end" fill="#0b0b0b">longrun.enabled</text>
+<rect x="230" y="398" width="12.607879924953096" height="14" rx="2" fill="#2a78d6"/>
+<text x="248.6078799249531" y="409" fill="#52514e">48</text>
+<text x="222" y="431" text-anchor="end" fill="#0b0b0b">tasks.office_machines</text>
+<rect x="230" y="420" width="12.607879924953096" height="14" rx="2" fill="#2a78d6"/>
+<text x="248.6078799249531" y="431" fill="#52514e">48</text>
 <text x="222" y="453" text-anchor="end" fill="#0b0b0b">towns.enabled</text>
-<rect x="230" y="442" width="9.339098208770846" height="14" rx="2" fill="#2a78d6"/>
-<text x="245.33909820877085" y="453" fill="#52514e">36</text>
-<text x="222" y="475" text-anchor="end" fill="#0b0b0b">tasks.models</text>
-<rect x="230" y="464" width="7.523162445954293" height="14" rx="2" fill="#2a78d6"/>
-<text x="243.52316244595428" y="475" fill="#52514e">29</text>
-<text x="222" y="497" text-anchor="end" fill="#0b0b0b">longrun.enabled</text>
-<rect x="230" y="486" width="6.744904261890055" height="14" rx="2" fill="#2a78d6"/>
-<text x="242.74490426189004" y="497" fill="#52514e">26</text>
-<text x="222" y="519" text-anchor="end" fill="#0b0b0b">tree.seed_trades</text>
-<rect x="230" y="508" width="4.928968499073502" height="14" rx="2" fill="#2a78d6"/>
-<text x="240.9289684990735" y="519" fill="#52514e">19</text>
-<text x="222" y="541" text-anchor="end" fill="#0b0b0b">works.count_spread</text>
-<rect x="230" y="530" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="541" fill="#52514e">15</text>
-<text x="222" y="563" text-anchor="end" fill="#0b0b0b">works.family_extends</text>
-<rect x="230" y="552" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="563" fill="#52514e">12</text>
-<text x="222" y="585" text-anchor="end" fill="#0b0b0b">harvest.enabled</text>
+<rect x="230" y="442" width="9.981238273921202" height="14" rx="2" fill="#2a78d6"/>
+<text x="245.9812382739212" y="453" fill="#52514e">38</text>
+<text x="222" y="475" text-anchor="end" fill="#0b0b0b">land.enabled</text>
+<rect x="230" y="464" width="7.354596622889305" height="14" rx="2" fill="#2a78d6"/>
+<text x="243.35459662288932" y="475" fill="#52514e">28</text>
+<text x="222" y="497" text-anchor="end" fill="#0b0b0b">tasks.models</text>
+<rect x="230" y="486" width="7.0919324577861165" height="14" rx="2" fill="#2a78d6"/>
+<text x="243.09193245778613" y="497" fill="#52514e">27</text>
+<text x="222" y="519" text-anchor="end" fill="#0b0b0b">woods.enabled</text>
+<rect x="230" y="508" width="6.041275797373358" height="14" rx="2" fill="#2a78d6"/>
+<text x="242.04127579737334" y="519" fill="#52514e">23</text>
+<text x="222" y="541" text-anchor="end" fill="#0b0b0b">tree.seed_trades</text>
+<rect x="230" y="530" width="5.778611632270169" height="14" rx="2" fill="#2a78d6"/>
+<text x="241.77861163227016" y="541" fill="#52514e">22</text>
+<text x="222" y="563" text-anchor="end" fill="#0b0b0b">works.count_spread</text>
+<rect x="230" y="552" width="5.5159474671669795" height="14" rx="2" fill="#2a78d6"/>
+<text x="241.51594746716697" y="563" fill="#52514e">21</text>
+<text x="222" y="585" text-anchor="end" fill="#0b0b0b">works.family_extends</text>
 <rect x="230" y="574" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="585" fill="#52514e">5</text>
-<text x="222" y="607" text-anchor="end" fill="#0b0b0b">canals.navvies</text>
+<text x="240" y="585" fill="#52514e">11</text>
+<text x="222" y="607" text-anchor="end" fill="#0b0b0b">harvest.enabled</text>
 <rect x="230" y="596" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="607" fill="#52514e">4</text>
-<text x="222" y="629" text-anchor="end" fill="#0b0b0b">owners.enabled</text>
+<text x="240" y="607" fill="#52514e">5</text>
+<text x="222" y="629" text-anchor="end" fill="#0b0b0b">money.true_total</text>
 <rect x="230" y="618" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="629" fill="#52514e">4</text>
-<text x="222" y="651" text-anchor="end" fill="#0b0b0b">tree.plant_waits</text>
+<text x="240" y="629" fill="#52514e">2, faint: chance gives 0.5</text>
+<text x="222" y="651" text-anchor="end" fill="#0b0b0b">canals.navvies</text>
 <rect x="230" y="640" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="651" fill="#52514e">3</text>
-<text x="222" y="673" text-anchor="end" fill="#0b0b0b">canals.enabled</text>
+<text x="240" y="651" fill="#52514e">1</text>
+<text x="222" y="673" text-anchor="end" fill="#0b0b0b">harvest.rent_as_paid</text>
 <rect x="230" y="662" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="673" fill="#52514e">2, faint: chance gives 0.5</text>
-<text x="222" y="695" text-anchor="end" fill="#0b0b0b">hands.ration</text>
+<text x="240" y="673" fill="#52514e">1, faint: chance gives 0.5</text>
+<text x="222" y="695" text-anchor="end" fill="#0b0b0b">owners.enabled</text>
 <rect x="230" y="684" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="695" fill="#52514e">1</text>
-<text x="222" y="717" text-anchor="end" fill="#0b0b0b">money.true_total</text>
+<text x="240" y="695" fill="#52514e">1, faint: chance gives 0.5</text>
+<text x="222" y="717" text-anchor="end" fill="#0b0b0b">people.shelves_go</text>
 <rect x="230" y="706" width="4" height="14" rx="2" fill="#2a78d6"/>
 <text x="240" y="717" fill="#52514e">1, faint: chance gives 0.5</text>
-<text x="222" y="739" text-anchor="end" fill="#0b0b0b">people.shelves_go</text>
+<text x="222" y="739" text-anchor="end" fill="#0b0b0b">railways.order_book</text>
 <rect x="230" y="728" width="4" height="14" rx="2" fill="#2a78d6"/>
 <text x="240" y="739" fill="#52514e">1, faint: chance gives 0.5</text>
-<text x="222" y="761" text-anchor="end" fill="#0b0b0b">prices.no_spoil_markup</text>
+<text x="222" y="761" text-anchor="end" fill="#0b0b0b">towns.rent_floor</text>
 <rect x="230" y="750" width="4" height="14" rx="2" fill="#2a78d6"/>
 <text x="240" y="761" fill="#52514e">1, faint: chance gives 0.5</text>
-<text x="222" y="783" text-anchor="end" fill="#0b0b0b">railways.order_book</text>
-<rect x="230" y="772" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="783" fill="#52514e">1, faint: chance gives 0.5</text>
-<text x="222" y="805" text-anchor="end" fill="#0b0b0b">towns.rent_floor</text>
-<rect x="230" y="794" width="4" height="14" rx="2" fill="#2a78d6"/>
-<text x="240" y="805" fill="#52514e">1, faint: chance gives 0.5</text>
-<text x="222" y="827" text-anchor="end" fill="#0b0b0b">accounts.enabled</text>
+<text x="222" y="783" text-anchor="end" fill="#0b0b0b">accounts.enabled</text>
+<rect x="230" y="772" width="4" height="14" rx="2" fill="#1baf7a"/>
+<text x="240" y="783" fill="#52514e">0</text>
+<text x="222" y="805" text-anchor="end" fill="#0b0b0b">accounts.works</text>
+<rect x="230" y="794" width="4" height="14" rx="2" fill="#1baf7a"/>
+<text x="240" y="805" fill="#52514e">0</text>
+<text x="222" y="827" text-anchor="end" fill="#0b0b0b">canals.enabled</text>
 <rect x="230" y="816" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="827" fill="#52514e">0</text>
-<text x="222" y="849" text-anchor="end" fill="#0b0b0b">accounts.works</text>
+<text x="222" y="849" text-anchor="end" fill="#0b0b0b">chronicle.enabled</text>
 <rect x="230" y="838" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="849" fill="#52514e">0</text>
-<text x="222" y="871" text-anchor="end" fill="#0b0b0b">chronicle.enabled</text>
+<text x="222" y="871" text-anchor="end" fill="#0b0b0b">crossings.enabled</text>
 <rect x="230" y="860" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="871" fill="#52514e">0</text>
-<text x="222" y="893" text-anchor="end" fill="#0b0b0b">commons.carry_debt</text>
+<text x="222" y="893" text-anchor="end" fill="#0b0b0b">gauges.enabled</text>
 <rect x="230" y="882" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="893" fill="#52514e">0</text>
-<text x="222" y="915" text-anchor="end" fill="#0b0b0b">crossings.enabled</text>
+<text x="222" y="915" text-anchor="end" fill="#0b0b0b">ground.reach</text>
 <rect x="230" y="904" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="915" fill="#52514e">0</text>
-<text x="222" y="937" text-anchor="end" fill="#0b0b0b">gauges.enabled</text>
+<text x="222" y="937" text-anchor="end" fill="#0b0b0b">hands.ration</text>
 <rect x="230" y="926" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="937" fill="#52514e">0</text>
-<text x="222" y="959" text-anchor="end" fill="#0b0b0b">ground.reach</text>
+<text x="222" y="959" text-anchor="end" fill="#0b0b0b">prices.no_spoil_markup</text>
 <rect x="230" y="948" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="959" fill="#52514e">0</text>
-<text x="222" y="981" text-anchor="end" fill="#0b0b0b">harvest.rent_as_paid</text>
+<text x="222" y="981" text-anchor="end" fill="#0b0b0b">towns.donor_wage</text>
 <rect x="230" y="970" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="981" fill="#52514e">0</text>
-<text x="222" y="1003" text-anchor="end" fill="#0b0b0b">towns.donor_wage</text>
+<text x="222" y="1003" text-anchor="end" fill="#0b0b0b">tree.plant_waits</text>
 <rect x="230" y="992" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="1003" fill="#52514e">0</text>
-<text x="222" y="1025" text-anchor="end" fill="#0b0b0b">towns.mean_hands</text>
+<text x="222" y="1025" text-anchor="end" fill="#0b0b0b">woods.record</text>
 <rect x="230" y="1014" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="1025" fill="#52514e">0</text>
-<text x="222" y="1047" text-anchor="end" fill="#0b0b0b">woods.record</text>
+<text x="222" y="1047" text-anchor="end" fill="#0b0b0b">works.keep_order</text>
 <rect x="230" y="1036" width="4" height="14" rx="2" fill="#1baf7a"/>
 <text x="240" y="1047" fill="#52514e">0</text>
-<text x="222" y="1069" text-anchor="end" fill="#0b0b0b">works.keep_order</text>
-<rect x="230" y="1058" width="4" height="14" rx="2" fill="#1baf7a"/>
-<text x="240" y="1069" fill="#52514e">0</text>
-<text x="222" y="1091" text-anchor="end" fill="#0b0b0b">works.spread_first</text>
-<rect x="230" y="1080" width="4" height="14" rx="2" fill="#1baf7a"/>
-<text x="240" y="1091" fill="#52514e">0</text>
-<line x1="230" y1="64" x2="230" y2="1102" stroke="#c3c2b7"/>
-<text x="16" y="1124" fill="#52514e" font-size="12">bar: facts apart on every one of 8 islands (of the facts both keep, Speed and News aside), 1750 to 2050</text>
+<line x1="230" y1="64" x2="230" y2="1058" stroke="#c3c2b7"/>
+<text x="16" y="1080" fill="#52514e" font-size="12">bar: facts apart on every one of 8 islands (of the facts both keep, Speed and News aside), 1750 to 2050</text>
 </svg>
