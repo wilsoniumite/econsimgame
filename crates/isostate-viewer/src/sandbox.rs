@@ -36,7 +36,12 @@
 //! chosen, and Build it here, which sends `Edit::BuildWorks`. In the middle
 //! of a year it waits for the turn, with a stake on its square and a row with
 //! Take back in the Hand tab. With Close a click on a works sends
-//! `Edit::CloseWorks`, and the tool is put down after each use.
+//! `Edit::CloseWorks`, and the tool is put down after each use. The same row
+//! has Found a university and Close a university (the core's
+//! docs/rules/state.md, "The university"): a click on a square founds one in
+//! the town whose district it is (`Edit::FoundUniversity`), and a click in a
+//! town's district closes that town's (`Edit::CloseUniversity`); both wait for
+//! the year's turn, and the tool is put down after each.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -100,7 +105,7 @@ impl Tool {
             Tool::People => &[&["A tenth more", "Half as many again", "A tenth fewer", "Halved"]],
             Tool::Harvest => &[&["This district", "The whole island"], &["A poor year", "A failure", "A bumper year"]],
             Tool::Town => &[&["Found a town here"]],
-            Tool::Works => &[&["Build a works", "Close a works"]],
+            Tool::Works => &[&["Build a works", "Close a works", "Found a university", "Close a university"]],
         }
     }
 
@@ -351,7 +356,20 @@ impl Sandbox {
         if self.tool != Tool::Works {
             return self.edit(town, what).map(Some);
         }
-        let close = self.chosen(Tool::Works, 0) == 1;
+        let chosen = self.chosen(Tool::Works, 0);
+        if chosen >= 2 {
+            // a university founded or closed: the tool is put down after each use
+            let edit = match (chosen, what, town) {
+                (2, Some(Pick::Cell(cell)), _) => Edit::FoundUniversity { cell },
+                (2, _, _) => return Err("Click a square of land in the town's district."),
+                (_, Some(Pick::Firm(_)) | Some(Pick::Cell(_)) | Some(Pick::Town(_)), Some(t)) => Edit::CloseUniversity { town: t },
+                _ => return Err("Click in the district of the town whose university is to close."),
+            };
+            self.tool = Tool::Look;
+            self.version += 1;
+            return Ok(Some(edit));
+        }
+        let close = chosen == 1;
         match (close, what) {
             (false, Some(Pick::Cell(cell))) => {
                 if self.site != Some(cell) {
@@ -467,6 +485,8 @@ impl Sandbox {
             },
             Tool::Town => "Click a square of land in a town's district: a town is founded on it at the year's end, if the founding rule allows it there.".to_string(),
             Tool::Works if c[0] == 1 => "Click a works: it is closed at the year's turn, and its cash goes to its owners. The tool is put down after.".to_string(),
+            Tool::Works if c[0] == 2 => "Click a square of land: a university is founded at the year's turn in the town whose district it is, paid for by the treasury. The tool is put down after.".to_string(),
+            Tool::Works if c[0] == 3 => "Click in a town's district: its university is closed at the year's turn. The tool is put down after.".to_string(),
             Tool::Works => "Click a square of land: the works that could stand on it are listed here, each with what it costs and should return.".to_string(),
         }
     }
@@ -1108,7 +1128,18 @@ mod tests {
         assert_eq!(sb.tool, Tool::Works);
         assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Ok(Some(Edit::CloseWorks { works: 12 })));
         assert_eq!(sb.tool, Tool::Look);
-        assert_eq!(Tool::Works.rows(), &[&["Build a works", "Close a works"]]);
+        assert_eq!(Tool::Works.rows(), &[&["Build a works", "Close a works", "Found a university", "Close a university"]]);
+        // a university founded on a square and closed in a district, the tool put down after each
+        sb.tool = Tool::Works;
+        sb.choice[Tool::Works.index()] = [2, 0, 0];
+        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a square of land in the town's district."));
+        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Ok(Some(Edit::FoundUniversity { cell: 2950 })));
+        assert_eq!(sb.tool, Tool::Look);
+        sb.tool = Tool::Works;
+        sb.choice[Tool::Works.index()] = [3, 0, 0];
+        assert_eq!(sb.click(None, Some(Pick::Cell(2950))), Err("Click in the district of the town whose university is to close."));
+        assert_eq!(sb.click(Some(4), Some(Pick::Town(4))), Ok(Some(Edit::CloseUniversity { town: 4 })));
+        assert_eq!(sb.tool, Tool::Look);
         // the words scripts click by
         assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town", "Works"]);
         // every row's chips have a factor and a word
