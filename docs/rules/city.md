@@ -186,10 +186,10 @@ Read:
 Island 7's Dunheath, 174,000 townsfolk in 2050 with the rules on and 49,000
 without (pictures in the night's shots, `first-city`):
 
-- 1950 (125,000 with the rules): a wide sprawl of the same low terraces and
+- 1950 (128,000 with the rules, 69,000 without): a wide sprawl of the same low terraces and
   cottages as a market town, from the centre to the edge; nothing denser at
   the centre.
-- 2000: the same sprawl a little wider; no flats, no offices, no tower, no
+- 2000 (167,000): the same sprawl a little wider; no flats, no offices, no tower, no
   road wider than the rest, though `dens` in the city stands at 2.
 - 2050: the city fills the whole view as an even carpet of two-storey houses
   and works' yards; at its centre a church, a gasworks and detached cottages;
