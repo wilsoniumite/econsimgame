@@ -169,6 +169,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::gauges::add_series(&mut reg, P, n_months);
     // woods (docs/rules/woods.md): the woods' cover and timber in months of the wage
     crate::woods::add_series(&mut reg, P, n_months);
+    // linked (docs/rules/measures.md): the cost of living, the wage and what is made, linked
+    crate::linked::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
@@ -273,7 +275,16 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     }
     // woods (docs/rules/woods.md): nothing while it does not record
     crate::woods::record_month(st, C, P, &mut s, t, wage, &P_nat);
+    // linked (docs/rules/measures.md): nothing while it is off
+    crate::linked::record_month(st, C, P, &mut s, t, wage, &P_nat);
     st.series = s;
+}
+
+/// The series the slump clock reads in place of real output (`gdp_real`): what
+/// is made, linked, under the game's rules (docs/rules/measures.md); None under
+/// the port's, and in a run that does not keep it.
+pub fn clock_series(P: &Params, s: &Series) -> Option<&'static str> {
+    (P.linked.enabled && s.index.contains_key("made_linked")).then_some("made_linked")
 }
 
 /// Mean of a monthly series over calendar year y.
@@ -566,8 +577,14 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
     }
 
     // ---- downturns, on two clocks
-    let gdp = annual(s.get("gdp_real"), y0, year);
-    let prev = if k >= 1 { annual(s.get("gdp_real"), y0, year - 1) } else { f64::NAN };
+    // linked (docs/rules/measures.md): under the game's rules the clock reads what is made,
+    // linked, where the port's reads real output, which the price of timber moves after 1900
+    let (clock, said_first, said) = match clock_series(P, &s) {
+        Some(name) => (name, "What the island makes", "what is made"),
+        None => ("gdp_real", "Real output", "real output"),
+    };
+    let gdp = annual(s.get(clock), y0, year);
+    let prev = if k >= 1 { annual(s.get(clock), y0, year - 1) } else { f64::NAN };
     if gdp.is_finite() && prev.is_finite() {
         if ob.peak.is_none() || (!ob.in_slump && gdp > ob.peak.unwrap().1) {
             ob.peak = Some((year, gdp));
@@ -584,10 +601,10 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 "alarm",
                 weight,
                 format!("Output falls {}", fmt_pct(-fall, 1)),
-                format!("Real output fell {} this year. Nobody yet knows how long it will last.", fmt_pct(-fall, 1)),
+                format!("{said_first} fell {} this year. Nobody yet knows how long it will last.", fmt_pct(-fall, 1)),
             );
-            ev.series = Some("gdp_real".to_string());
-            ev.why = crate::chronicle::why(P, "output falls on the year", "gdp_real", fall, -0.02, Some(prev), format!("the year's mean real output is {:.1} per cent below the year before (it needs 2), and no slump was already running", -100.0 * fall));
+            ev.series = Some(clock.to_string());
+            ev.why = crate::chronicle::why(P, "output falls on the year", clock, fall, -0.02, Some(prev), format!("the year's mean {said} is {:.1} per cent below the year before (it needs 2), and no slump was already running", -100.0 * fall));
             events.push(ev);
         } else if ob.in_slump {
             if gdp < ob.trough.unwrap().1 {
@@ -610,8 +627,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 );
                 ev.clock = "verdict".to_string();
                 ev.span = Some([py as f64 + 0.5, ty as f64 + 0.5]);
-                ev.series = Some("gdp_real".to_string());
-                ev.why = crate::chronicle::why(P, "output passes its old peak", "gdp_real", gdp, pv, Some(tv), format!("real output is back above its {py} peak; the trough in {ty} was {:.1} per cent below it (a depression if more than 8)", 100.0 * depth));
+                ev.series = Some(clock.to_string());
+                ev.why = crate::chronicle::why(P, "output passes its old peak", clock, gdp, pv, Some(tv), format!("{said} is back above its {py} peak; the trough in {ty} was {:.1} per cent below it (a depression if more than 8)", 100.0 * depth));
                 events.push(ev);
                 ob.in_slump = false;
                 ob.peak = Some((year, gdp));

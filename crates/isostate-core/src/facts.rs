@@ -688,6 +688,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             }
         }
     }
+    // linked (docs/rules/measures.md): the wage and what is made a head on long links,
+    // each a mean of nine years
+    for (name, kind, v) in crate::linked::facts(r) {
+        b.num(name, kind, v);
+    }
     // carting (docs/rules/carting.md): living standards in units that compare across
     // runs, and the carting bill
     for (name, kind, v) in crate::carting::facts(r) {

@@ -59,6 +59,8 @@ const HARVEST_BOUNDS: (f64, f64) = (0.2, 2.0);
 /// is one of these or its first part is, so `land` and `accounts` are refused
 /// whole. The production tree's stage, its file and its seeded trades are laid
 /// over the content as the run begins (`tree::content`), and are refused too.
+/// So is the linked measure (`linked`, docs/rules/measures.md), whose series
+/// are made when the record is, and whose first link is the warm-up's end.
 pub const FIXED_AT_START: &[&str] = &[
     "tree.stage",
     "tree.file",
@@ -78,6 +80,7 @@ pub const FIXED_AT_START: &[&str] = &[
     "accounts",
     "family_start_share",
     "family_start_cash",
+    "linked",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where

@@ -189,10 +189,14 @@
 # December's works' hands and every island goes down another path;
 # commons.carry_debt switched off too, which under the landlords changes
 # nothing
-1750-1900 economy  0x1192046c9b987ba3
+# Taken: 1750-1900 economy and news, 1901-2050 economy, news and run.bin: the
+# linked measure (docs/rules/measures.md) adds three series under the game's
+# rules, and the news's slump clock reads what is made, linked, in place of
+# real output
+1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0x6c0cc4ef99e35938
-1750-1900 news     0x06b48ad5fcce2608
-1901-2050 economy  0x648e43988f2861da
+1750-1900 news     0x5d3a55a39961b3e2
+1901-2050 economy  0x588a1bb84f1ae1fe
 1901-2050 books    0xcc7a0b23e48bf4a5
-1901-2050 news     0x97b0a3336aba5a08
-1901-2050 run.bin  0x6da085f2c642d8c7
+1901-2050 news     0xfd6b3077b36e5ca4
+1901-2050 run.bin  0x977701b1b1fbf392

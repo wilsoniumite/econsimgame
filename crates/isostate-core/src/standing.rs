@@ -30,10 +30,13 @@
 //! ```
 //!
 //! Beside the twelve it reports the growth the design asks of the century after
-//! 1900 (`GROWTH`): the chained real wage rising at least 1 per cent a year from
-//! 1900 to 1970 and no lower in 2050 than in 1970, and fewer hands on the land in
-//! 2050 than in 1900. Those are printed with their values, and fail the sweep
-//! only with `--growth`, for the stage that mends them.
+//! 1900 (`GROWTH`): the real wage rising at least 1 per cent a year from 1900 to
+//! 1970 and no lower in 2050 than in 1970, and fewer hands on the land in 2050
+//! than in 1900. Those are printed with their values, and fail the sweep only
+//! with `--growth`, for the stage that mends them. The wage they read is the
+//! linked one, nine-year means (docs/rules/measures.md), where a run keeps it,
+//! and the chained one, single years, where it does not; the other is printed
+//! beneath, not counted.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -210,16 +213,31 @@ pub fn outside(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>)
 
 /// What the design asks of the century after 1900, each read from facts every
 /// run to 2050 has, island by island: (what is asked, what is read, the rule).
-/// The chained real wage is `real_wage_chained`: the mean wage over the chained
-/// Fisher cost of living, both kept by the month (engel.rs, docs/rules/engel.md:
-/// each month's link prices what households bought in that month and the one
-/// before, so the basket follows what is bought), and its facts are the yearly
-/// mean against 1750's at each mark (the decades after 1900, `facts::marks`).
+/// The wage is the one `wage_read` names: the linked real wage
+/// (`real_wage_linked`, linked.rs, docs/rules/measures.md), whose facts are the
+/// mean of the nine years round each mark against 1750, where the run keeps it
+/// (the game's rules since 20 November 2026, when the test of the measures found
+/// it inside the band of two fixed baskets on every span and on every island, and
+/// the island met all three under it); else the chained real wage
+/// (`real_wage_chained`, engel.rs), whose facts are single years.
 pub const GROWTH: [(&str, &str); 3] = [
-    ("the chained real wage grows 1 per cent a year or more from 1900 to 1970", "per cent a year, 1900 to 1970"),
-    ("the chained real wage is no lower in 2050 than in 1970", "2050 over 1970"),
+    ("the real wage grows 1 per cent a year or more from 1900 to 1970", "per cent a year, 1900 to 1970"),
+    ("the real wage is no lower in 2050 than in 1970", "2050 over 1970"),
     ("the share of hands on the land is lower in 2050 than in 1900", "2050 less 1900"),
 ];
+
+/// The two wages the growth may be read on, the one read first: (the facts'
+/// stem, its words).
+pub const WAGES: [(&str, &str); 2] = [
+    ("real_wage_linked", "the linked real wage, nine-year means (linked.rs)"),
+    ("real_wage_chained", "the chained real wage, single years (engel.rs)"),
+];
+
+/// Which wage the growth reads for an arm: the first of `WAGES` it has the
+/// facts of (the chained one, by default, so that an arm with neither says so).
+pub fn wage_read(arm: &Then) -> usize {
+    WAGES.iter().position(|(stem, _)| arm.values.contains_key(&format!("{stem}_1970_vs_1750"))).unwrap_or(1)
+}
 
 /// The least growth a year, per cent, the design asks of the chained wage from 1900 to 1970.
 pub const WAGE_GROWTH_PCT: f64 = 1.0;
@@ -228,7 +246,13 @@ pub const WAGE_GROWTH_PCT: f64 = 1.0;
 /// growth from 1900 to 1970 in per cent a year, its level in 2050 over 1970, and
 /// the share of hands on the land (`farm_share`) in 2050 less 1900. An island
 /// lacking either of a pair's facts (a run that ends before 2050) is left out.
+/// The wage is the one `wage_read` names.
 pub fn growth_values(arm: &Then) -> [Vec<(u64, f64)>; 3] {
+    growth_values_on(arm, WAGES[wage_read(arm)].0)
+}
+
+/// `growth_values` on the wage whose facts begin with `stem`.
+pub fn growth_values_on(arm: &Then, stem: &str) -> [Vec<(u64, f64)>; 3] {
     let pair = |a: &str, b: &str, f: &dyn Fn(f64, f64) -> f64| -> Vec<(u64, f64)> {
         let (Some(a), Some(b)) = (arm.values.get(a), arm.values.get(b)) else { return Vec::new() };
         let mut out: Vec<(u64, f64)> =
@@ -237,8 +261,8 @@ pub fn growth_values(arm: &Then) -> [Vec<(u64, f64)>; 3] {
         out
     };
     [
-        pair("real_wage_chained_1900_vs_1750", "real_wage_chained_1970_vs_1750", &|w00, w70| 100.0 * ((w70 / w00).powf(1.0 / 70.0) - 1.0)),
-        pair("real_wage_chained_1970_vs_1750", "real_wage_chained_2050_vs_1750", &|w70, w50| w50 / w70),
+        pair(&format!("{stem}_1900_vs_1750"), &format!("{stem}_1970_vs_1750"), &|w00, w70| 100.0 * ((w70 / w00).powf(1.0 / 70.0) - 1.0)),
+        pair(&format!("{stem}_1970_vs_1750"), &format!("{stem}_2050_vs_1750"), &|w70, w50| w50 / w70),
         pair("farm_share_1900", "farm_share_2050", &|f00, f50| f50 - f00),
     ]
 }
@@ -264,8 +288,9 @@ pub fn growth(arms: &[&Then]) -> (String, Vec<String>) {
         let values = growth_values(arm);
         let met = growth_met(&values);
         // the two facts: the wage's two parts together, and the land's
-        let facts = [(met[0].zip(met[1]).map(|(a, b)| a && b), "the chained real wage grows 1 per cent a year or more from 1900 to 1970, and is no lower in 2050 than in 1970"),
+        let facts = [(met[0].zip(met[1]).map(|(a, b)| a && b), "the real wage grows 1 per cent a year or more from 1900 to 1970, and is no lower in 2050 than in 1970"),
                      (met[2], "the share of hands on the land is lower in 2050 than in 1900")];
+        let on = wage_read(arm);
         let word = |m: Option<bool>| match m {
             Some(true) => "met",
             Some(false) => "MISSED",
@@ -273,9 +298,10 @@ pub fn growth(arms: &[&Then]) -> (String, Vec<String>) {
         };
         let _ = writeln!(
             text,
-            "growth after 1900: {} of 2 met: {} (reported, not counted; with --growth a fact missed or without a value fails the sweep)",
+            "growth after 1900: {} of 2 met: {} (reported, not counted; with --growth a fact missed or without a value fails the sweep)\n  the wage read: {}",
             facts.iter().filter(|(m, _)| *m == Some(true)).count(),
-            arm.label
+            arm.label,
+            WAGES[on].1
         );
         let rules = ["1.00 or more", "1.00 or more", "below 0"];
         for (k, (asked, read)) in GROWTH.iter().enumerate() {
@@ -287,6 +313,16 @@ pub fn growth(arms: &[&Then]) -> (String, Vec<String>) {
             };
             let islands = values[k].iter().map(|&(seed, x)| format!("{seed}: {}", shown(x))).collect::<Vec<_>>().join(", ");
             let _ = writeln!(text, "  {asked}\n    {read:<30} {cells}   needs {:<13} {}{}", rules[k], word(met[k]), if islands.is_empty() { String::new() } else { format!("\n    island by island: {islands}") });
+        }
+        // the other wage, beside it and not counted
+        let other = 1 - on;
+        let ov = growth_values_on(arm, WAGES[other].0);
+        if let (Some(g), Some(l)) = (stat(&ov[0]), stat(&ov[1])) {
+            let _ = writeln!(
+                text,
+                "  beside it, not read: {}: {:.2} per cent a year 1900 to 1970 [{:.2} .. {:.2}], 2050 over 1970 {:.2} [{:.2} .. {:.2}]",
+                WAGES[other].1, g.mean, g.min, g.max, l.mean, l.min, l.max
+            );
         }
         for (m, what) in facts {
             if m != Some(true) {
@@ -423,11 +459,23 @@ mod tests {
         assert!(text.starts_with("growth after 1900: 1 of 2 met: falls"), "{text}");
         assert!(text.contains("growth after 1900: 0 of 2 met: rises"), "{text}");
         assert_eq!(missed.len(), 3, "{missed:?}");
-        assert!(missed[0].starts_with("the chained real wage grows") && missed[0].ends_with("falls: missed"));
+        assert!(missed[0].starts_with("the real wage grows") && missed[0].ends_with("falls: missed"));
         // an arm that ends before 2050 has no value, which --growth counts as a miss
         let short = Then { label: "to 1900".to_string(), seeds: vec![1], ..Then::default() };
         assert_eq!(growth_met(&growth_values(&short)), [None, None, None]);
         let (_, missed) = growth(&[&short]);
         assert!(missed.len() == 2 && missed.iter().all(|m| m.ends_with("no value: the runs do not reach 2050")), "{missed:?}");
+        // with the linked wage's facts the growth reads them, and prints the chained beneath
+        let mut both = falls.clone();
+        for (y, v) in [(1900, 4.0), (1970, 4.0 * 1.012f64.powi(70)), (2050, 4.0 * 1.012f64.powi(70) * 1.1)] {
+            both.values.insert(format!("real_wage_linked_{y}_vs_1750"), vec![(1, v), (2, v)]);
+        }
+        assert_eq!(wage_read(&both), 0);
+        assert_eq!(wage_read(&falls), 1);
+        assert_eq!(growth_met(&growth_values(&both)), [Some(true), Some(true), Some(true)]);
+        let (text, missed) = growth(&[&both]);
+        println!("{text}");
+        assert!(text.contains("the wage read: the linked real wage") && text.contains("beside it, not read: the chained real wage, single years (engel.rs): 1.50"), "{text}");
+        assert!(missed.is_empty(), "{missed:?}");
     }
 }

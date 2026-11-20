@@ -635,6 +635,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     st.wage_base = pairwise_sum(&w) / pairwise_sum(&pa).max(1.0);
     // longrun: the chain and the wage scale start here, at 1
     crate::longrun::start(&mut st, P, y0);
+    // linked (docs/rules/measures.md): the first link is the warm-up's last month, as the basket is
+    crate::linked::start(&mut st, &C, P);
     let n_years = (y1 - y0 + 1) as usize;
     observer::init(&mut st, &C, P, n_years * 12);
     let rec = record::init(&st, &C, P, n_years);
