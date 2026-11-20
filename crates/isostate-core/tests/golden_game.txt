@@ -15,15 +15,14 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: 1901-2050: office computing (tasks.computing), machines that reckon
-# taking clerks' tasks in the works (found in 1960 on this island); the played
-# century held. Held again when its find became a floor read per head: island
-# 7 still finds it in 1960, so nothing moved
+# Taken: 1901-2050: models (tasks.models), rented machines taking judging
+# tasks in the works and on the land from 2022 (found in 2022 on this island);
+# the played century held
 1750-1900 economy  0x7a0154d970baabc5
 1750-1900 books    0x6eb41e73d1a3bad0
 1750-1900 news     0xdd7f28bb38e5f1c9
 1750-1900 run.bin  0xc0623d56d855884f
-1901-2050 economy  0xa4dbff71995ff4f4
-1901-2050 books    0x47b96ed42ecbf5e5
-1901-2050 news     0xd546e64128859359
-1901-2050 run.bin  0x1d61e3d4d1f08aee
+1901-2050 economy  0x52adbf78b645040b
+1901-2050 books    0x6db3bd96fae97f95
+1901-2050 news     0x0a8c4bdfd33d51e0
+1901-2050 run.bin  0xf13bbc62a20afb58

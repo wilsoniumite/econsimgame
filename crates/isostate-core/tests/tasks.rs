@@ -56,7 +56,7 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_computing"]);
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_computing", "models"]);
     let combine = &C.tasks.uses[4];
     assert_eq!((combine.class, combine.from, combine.reach), (tasks::TEND, 0.0, 0.6));
     assert!(!combine.on_works && combine.on_sector.iter().enumerate().all(|(s, &b)| b == (C.sector_name[s] == "farm" || C.sector_name[s] == "pasture")));
@@ -110,9 +110,9 @@ fn the_drive_is_laid_only_with_its_goods() {
     assert_eq!(pits(&one, hoist), ["claypit", "coalmine", "ironmine", "quarry"]);
     assert_eq!(one.tasks.plant_goods, [one.good_index["machinery"]]);
     // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
-    // (and the tractor and the combine on the fields, and office computing in
-    // the works' clerking)
-    assert_eq!(six.tasks.uses.len(), 6);
+    // (and the tractor and the combine on the fields, office computing in the
+    // works' clerking, and models in judging)
+    assert_eq!(six.tasks.uses.len(), 7);
     let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
     assert_eq!(drive.name, "electric_drive");
     assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
@@ -516,10 +516,10 @@ fn computing_stands_behind_its_switch() {
     assert_eq!((us.class, us.from, us.reach), (tasks::CLERK, 0.0, 1.0));
     assert!(us.on_works && us.on_sector.iter().all(|&b| !b), "office computing clerks in the works alone");
     assert!(us.allowed(&game) && !us.allowed(&off));
-    // its find is read per head; every other use stands behind no switch and
-    // reads its threshold in all
+    // its find is read per head; every other use but models (which stand behind
+    // a switch of their own) stands behind no switch and reads its threshold in all
     assert!(us.discover_per_head);
-    assert!(C.tasks.uses.iter().filter(|u| u.name != "office_computing").all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
+    assert!(C.tasks.uses.iter().filter(|u| u.name != "office_computing" && u.name != "models").all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
     // without the content after 1900 it is not laid
     let mut one = game.clone();
     one.tree.stage = 1;
@@ -638,6 +638,211 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     assert_eq!(on.0, off.0, "the switch on moved the run before 1941, though nothing is found before 1960");
     assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with office computing taken out of the table");
     assert_ne!(on.1, off.1, "office computing moved nothing by {TO}");
+}
+
+/// Models (docs/rules/computing.md, "Models") stand behind a switch of their
+/// own, `tasks.models`: off under the port's rules and left out of their file,
+/// on under the game's. They judge, from the easiest task to the hardest, in
+/// the works and on the seven land sectors, not the carters; they are rented:
+/// no plant, no minders, a cost that is all goods bought each month
+/// (electricity and electrical goods), so the works' table of plant goods is
+/// the same with them as without; their find is read per head; and they are
+/// laid only with the content after 1900.
+#[test]
+fn models_stand_behind_their_switch() {
+    let (port, game) = (default_params(), game_params());
+    assert!(!port.tasks.models && game.tasks.models);
+    let mut off = game.clone();
+    off.tasks.models = false;
+    let json = serde_json::to_string(&off).unwrap();
+    assert!(json.contains("\"tasks\"") && !json.contains("models"), "a run with the switch off writes the file it wrote before the switch");
+    assert!(serde_json::to_string(&game).unwrap().contains("\"models\":true"));
+    let C = content(&game);
+    let m = use_of(&C, "models");
+    let us = &C.tasks.uses[m];
+    assert_eq!(us.switch.as_deref(), Some("models"));
+    assert_eq!((us.class, us.from, us.reach), (tasks::JUDGE, 0.0, 1.0));
+    assert!(us.on_works && us.on_sector.iter().all(|&b| b), "models judge in the works and on every land sector");
+    assert!(us.rented() && us.minders == 0.0);
+    let mut run: Vec<usize> = us.run.iter().map(|r| r.0).collect();
+    run.sort_unstable();
+    let mut want = vec![C.good_index["electricity"], C.good_index["electricals"]];
+    want.sort_unstable();
+    assert_eq!(run, want);
+    assert!(us.discover_per_head && us.found_after >= 2018);
+    assert!(us.allowed(&game) && !us.allowed(&off));
+    assert!(C.tasks.uses.iter().filter(|u| u.name != "models").all(|u| !u.rented()), "every other use has plant");
+    // no plant good of its own: the works' and the land's tables of plant are as without it
+    let mut out = C.clone();
+    out.tasks.uses.remove(m);
+    let pg: Vec<usize> = {
+        let mut v: Vec<usize> = out.tasks.uses.iter().flat_map(|u| u.plant.iter().map(|p| p.0)).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    assert_eq!(C.tasks.plant_goods, pg);
+    // without the content after 1900 it is not laid
+    let mut one = game.clone();
+    one.tree.stage = 1;
+    assert!(content(&one).tasks.uses.iter().all(|u| u.name != "models"));
+}
+
+/// Models on island 7 to 2030, under the game's rules with `tasks.enabled`,
+/// `tasks.land`, `tasks.computing` and `tasks.models` set by name and every
+/// other rule as the game has it. Three runs side by side:
+///
+/// - with the switch on, played a month at a time from 2021: money is
+///   conserved every month, through the find; the use is found from 2022, at
+///   or past its floor a head; before the find no works and no farm holds any
+///   judging by machine, and after it some farm does; every works at work holds
+///   the judging it meant to hold as the month began (no plant to wait for), so
+///   a works founded after the find holds its town's target for judging in its
+///   first month at work (and some are founded); no works ever means to hold more judging than its town's
+///   target, so a works whose town's target falls drops models at once, as it
+///   may (and some do); models add nothing to what a works orders for its
+///   machines' plant, so they keep no book; and with the switch thrown off by
+///   hand in the last year, every works and land sector drops its judging in
+///   that month;
+/// - with the switch off: the same run as the first to the end of 2021, by
+///   `save::check` (nothing is found before 2022);
+/// - with the switch on and the use taken out of the table in code: the same
+///   run as with the switch off, to the end.
+///
+/// What it checks holds on any island's history, but for the find by 2030:
+/// a later rule that stopped island 7 finding models by then breaks the test,
+/// and the test says so.
+#[test]
+fn models_off_is_off_and_held_from_the_first_month() {
+    const TO: i64 = 2030;
+    const J: usize = tasks::JUDGE;
+    let models = |on: bool| {
+        let mut P = params(true);
+        P.end_year = Some(TO);
+        P.tasks.land = true;
+        P.tasks.computing = true;
+        P.tasks.models = on;
+        P
+    };
+    // a run to TO, with save::check at the end of 2021 and at the end
+    let played = |P: Params, C: Content| {
+        std::thread::spawn(move || {
+            let mut s = sim::start(&P, C);
+            let mut at2021 = String::new();
+            while s.year <= s.end_year {
+                let year = s.year;
+                sim::run_year(&mut s).expect("money is conserved every month");
+                if year == 2021 {
+                    at2021 = save::check(&s);
+                }
+            }
+            (at2021, save::check(&s))
+        })
+    };
+    let on = std::thread::spawn(move || {
+        let P = models(true);
+        let mut s = sim::start(&P, content(&P));
+        let m = use_of(&s.content, "models");
+        let us = s.content.tasks.uses[m].clone();
+        let farm = s.content.sector_name.iter().position(|n| n == "farm").expect("a farm sector");
+        while s.year < 2021 {
+            sim::run_year(&mut s).expect("money is conserved every month");
+        }
+        let mut at2021 = String::new();
+        let (mut fresh, mut first, mut dropped, mut farm_after, mut thrown) = (std::collections::BTreeSet::<usize>::new(), 0, 0, 0.0f64, false);
+        while s.year <= s.end_year {
+            let year = s.year;
+            // the last year: the switch thrown off by hand
+            if year == TO {
+                s.params.tasks.models = false;
+                thrown = true;
+            }
+            for month in 0..12 {
+                let before: Vec<f64> = (0..s.st.F_count).map(|f| s.st.tasks.f_auto.get(f).map_or(0.0, |a| a[J])).collect();
+                sim::run_month(&mut s, month).expect("money is conserved every month, through the find");
+                let (st, C, P) = (&s.st, &s.content, &s.params);
+                let found = st.tasks.found[m];
+                let land = |t: usize| st.tasks.land_held.get(t).map_or(0.0, |r| r[farm][J]);
+                if found < 0 || year < found {
+                    assert!(st.tasks.f_held.iter().all(|h| h[J] == 0.0), "{year}-{month}: a works holds judging by machine before the find");
+                    assert!((0..st.T_max).all(|t| land(t) == 0.0), "{year}-{month}: a farm holds judging by machine before the find");
+                    continue;
+                }
+                if !thrown {
+                    farm_after = (0..st.T_max).map(land).fold(farm_after, f64::max);
+                }
+                for f in 0..st.F_count.min(st.tasks.f_auto.len()) {
+                    if !st.f_alive[f] {
+                        continue;
+                    }
+                    let (t, x) = (st.f_town[f], st.tasks.f_auto[f][J]);
+                    // a works at work holds the judging it meant to as the month
+                    // began (or what it means now, where that fell): no plant to
+                    // wait for; and so a works founded after the find holds its
+                    // town's target in its first month at work
+                    if let (true, Some(&b)) = (st.f_labor[f] > 0.0 && C.tasks.method[st.f_method[f]][J] > 0.0 && !thrown, before.get(f)) {
+                        let want = b.min(x);
+                        assert!((st.tasks.f_held[f][J] - want).abs() < 1e-12, "{year}-{month}: works {f} meant {b} of its judging and held {}", st.tasks.f_held[f][J]);
+                        if want > 0.0 && fresh.remove(&f) {
+                            first += 1;
+                        }
+                    }
+                    let target = st.tasks.target[t][J];
+                    assert!((0.0..=us.reach).contains(&x) && st.tasks.f_held[f][J] <= x, "{year}-{month}: works {f} means {x} and holds {}", st.tasks.f_held[f][J]);
+                    assert!(x <= target + 1e-12, "{year}-{month}: works {f} means {x} of its judging, above its town's target {target}");
+                    if thrown {
+                        assert_eq!((x, st.tasks.f_held[f][J]), (0.0, 0.0), "{year}-{month}: works {f} kept its judging after the switch was thrown off");
+                    }
+                    if before.get(f).is_some_and(|&b| b > x + 1e-9) && x > 0.0 {
+                        dropped += 1;
+                    }
+                    // what models add to the machines' plant a works orders for: nothing
+                    let auto = st.tasks.f_auto[f];
+                    let mut none = auto;
+                    none[J] = 0.0;
+                    let plant = |a: &[f64; tasks::K]| tasks::adjust(st, C, P, t, st.f_method[f], a).map_or(Vec::new(), |a| a.plant);
+                    assert_eq!(plant(&auto), plant(&none), "{year}-{month}: works {f}'s machines' plant moves with its judging");
+                }
+                if thrown {
+                    assert!(st.tasks.land_auto.iter().flatten().all(|a| a[J] == 0.0), "{year}-{month}: a land sector kept its judging after the switch was thrown off");
+                }
+            }
+            sim::end_year(&mut s);
+            if year == 2021 {
+                at2021 = save::check(&s);
+            }
+            let st = &s.st;
+            if st.tasks.found[m] >= 0 {
+                for &f in &st.new_firms_year {
+                    if st.f_alive[f] && st.tasks.f_auto.get(f).is_some_and(|a| a[J] > 0.0) {
+                        fresh.insert(f);
+                    }
+                }
+            }
+            // the threshold is read per head (a hundredth of slack, as for office computing)
+            let per_head = |g: usize| st.cumprod[g] / st.pop.iter().sum::<f64>();
+            if st.tasks.found[m] == year + 1 {
+                assert!(us.discover.iter().all(|&(g, x)| per_head(g) >= 0.99 * x), "{year}: found below its floor a head");
+            }
+        }
+        let y = s.st.tasks.found[m];
+        assert!(y >= us.found_after.max(2022), "island 7 finds models by {TO} (if a later rule stops that, this test must be set again), found {y}");
+        assert!(farm_after > 0.0, "no farm came to hold any of its judging by machine by {TO}, found in {y}");
+        assert!(first > 0, "no works was founded after the find in {y} with judging to hold");
+        assert!(dropped > 0, "no works dropped any of its models in a month by {TO}");
+        eprintln!("models found in {y}; the most a farm held of its judging: {farm_after:.3}; {first} works held their town's target in their first month; {dropped} works-months dropped models");
+        (at2021, save::check(&s))
+    });
+    let off = played(models(false), content(&models(false)));
+    let P = models(true);
+    let mut out = content(&P);
+    let m = use_of(&out, "models");
+    out.tasks.uses.remove(m);
+    let out = played(P, out);
+    let (on, off, out) = (on.join().unwrap(), off.join().unwrap(), out.join().unwrap());
+    assert_eq!(on.0, off.0, "the switch on moved the run before 2022, though nothing is found before then");
+    assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with models taken out of the table");
+    assert_ne!(on.1, off.1, "models moved nothing by {TO}");
 }
 
 /// The ceiling on yield is inert before 1950 by construction: island 7 to
