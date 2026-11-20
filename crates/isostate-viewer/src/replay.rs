@@ -208,6 +208,16 @@ pub struct Header {
     /// did not keep them, whose roads are bridged wherever they cross a river.
     #[serde(default)]
     pub crossings: Vec<CrossLink>,
+    /// the content's techs, by name, in the order of `town_know`'s last
+    /// dimension (a run that lists none has its towns' knowledge unread)
+    #[serde(default)]
+    pub techs: Vec<TechName>,
+}
+
+/// A tech as the header lists it: its name is all the viewer reads.
+#[derive(Deserialize, Clone, Debug)]
+pub struct TechName {
+    pub name: String,
 }
 
 /// A link between two neighbouring cells whose way crosses water, and how it
@@ -305,6 +315,65 @@ pub struct Replay {
     /// What the ground holds and what each town makes, for the map views of
     /// where a good is made and of the deposits (`overlay.rs`).
     pub holds: Holds,
+    /// What a town's lots are built by after 1900 (`scatter/towns/forms.rs`):
+    /// how densely each square is built, its land value, and what each town
+    /// knows. Empty where the run does not keep them.
+    pub builds: Builds,
+}
+
+/// How densely each square of a town is built and what its land is worth,
+/// year by year, and what each town knew of what builders need: what the
+/// lots of a town past 1900 are built and rebuilt by (the core's
+/// `record::GROUND_LAYERS`, and its `town_know`). Each part is empty where the
+/// run does not have it: a run to 1900, a run under the port's rules, or one
+/// recorded before these were.
+#[derive(Clone, Default, Debug)]
+pub struct Builds {
+    /// `[year, cell]`: 0 off town ground, else 1 plus hundredths of `dens` above 1
+    pub dens: Vec<u8>,
+    /// `[year, cell]`: 0 where unknown, else 1 plus twentieths of a doubling of
+    /// the land value above a sixteenth
+    pub value: Vec<u8>,
+    /// `[year, town, tech]`: what each town knows of each, 0 to 255
+    pub know: Vec<u8>,
+    /// towns and techs to a year of `know`
+    pub know_towns: usize,
+    pub techs: usize,
+    /// the places among the techs of the steel frame and of electricity
+    /// (`coal_power_station`), where the content has them
+    pub steel: Option<usize>,
+    pub power: Option<usize>,
+}
+
+impl Builds {
+    /// Whether the run says how densely its squares are built.
+    pub fn kept(&self) -> bool {
+        !self.dens.is_empty() && !self.value.is_empty()
+    }
+
+    /// How densely cell `c` is built in year `k` (1 where the run does not say).
+    pub fn dens(&self, n: usize, k: usize, c: usize) -> f32 {
+        self.dens.get(k * n + c).filter(|&&b| b > 0).map_or(1.0, |&b| 1.0 + (b - 1) as f32 / 100.0)
+    }
+
+    /// The land value of cell `c` in year `k`, if the run knows it.
+    pub fn value(&self, n: usize, k: usize, c: usize) -> Option<f32> {
+        self.value.get(k * n + c).filter(|&&b| b > 0).map(|&b| ((b - 1) as f32 / 20.0 - 4.0).exp2())
+    }
+
+    /// Whether town `t` knew the tech at `tech` (half or more of it) in year `k`;
+    /// None where the run does not say.
+    pub fn knows(&self, k: usize, t: usize, tech: Option<usize>) -> Option<bool> {
+        let j = tech?;
+        (t < self.know_towns && j < self.techs).then(|| self.know.get((k * self.know_towns + t) * self.techs + j).is_some_and(|&b| b >= 128))
+    }
+
+    /// The places of the two techs, by the content's names in order.
+    pub fn name_techs(&mut self, names: &[String]) {
+        self.techs = names.len();
+        self.steel = names.iter().position(|n| n == "steel_frame");
+        self.power = names.iter().position(|n| n == "coal_power_station");
+    }
 }
 
 /// What the ground holds and what each town makes, as far as the run keeps
@@ -480,6 +549,13 @@ impl Replay {
     /// The residents of cell `c` in year `k` (nothing in a run that does not record them).
     pub fn residents(&self, k: usize, c: usize) -> f32 {
         self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * self.res_unit())
+    }
+
+    /// The residents of cell `c` in year `k` over how densely it is built
+    /// (`Builds::dens`): the ground its houses take, in people as a square of
+    /// 1900 holds them. The residents themselves where the run does not say.
+    pub fn footprint(&self, k: usize, c: usize) -> f32 {
+        self.residents(k, c) / self.builds.dens(self.n, k, c)
     }
 
     /// What year `k`'s rent bytes were taken over: 1 in a run to 1900.
@@ -787,6 +863,25 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             }
         }
     }
+    // what the lots of a town past 1900 are built by: all of `dens` and `value` or neither,
+    // and the towns' knowledge where the header names its techs
+    let mut builds = Builds::default();
+    if has("dens") && has("value") {
+        let (dens, value) = (u8s("dens")?, u8s("value")?);
+        if dens.len() == ny * w * h && value.len() == ny * w * h {
+            builds.dens = dens;
+            builds.value = value;
+        }
+    }
+    if has("town_know") && !header.techs.is_empty() {
+        let know = u8s("town_know")?;
+        let names: Vec<String> = header.techs.iter().map(|t| t.name.clone()).collect();
+        builds.name_techs(&names);
+        if know.len() == ny * n_towns * names.len() {
+            builds.know = know;
+            builds.know_towns = n_towns;
+        }
+    }
     // state (the core's docs/rules/state.md, "The university"): the universities, read
     // from the header a second time, since the viewer's header leaves them out
     #[derive(Deserialize)]
@@ -801,6 +896,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     }
     let unis = serde_json::from_slice::<UniOnly>(&buf[4..base]).ok().and_then(|u| u.university).map_or_else(Vec::new, |u| u.universities);
     let mut r = Replay {
+        builds,
         w,
         h,
         n: w * h,

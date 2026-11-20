@@ -1525,6 +1525,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // time one against the other on the same machine in the same minute
     let old = std::env::var("ISOSTATE_WORKS").map_or(false, |v| v == "old");
     let begun = std::time::Instant::now();
+    // (office works drawn as buildings of the forms, for ISOSTATE_TIMING)
+    let mut offices = 0usize;
     // what each works' plan is made from this year, and the plans themselves. Where many are
     // not made yet (a game just opened, a replay opened on a late year or moved a long way)
     // they are made on every core; most years want a handful
@@ -1576,6 +1578,13 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
                 plots.entry(c1).or_default().push(lot);
             }
         }
+        // an office works after 1900 stands in a building of the forms, by its hands, its year
+        // and its square's land value (`towns::lots::office`); every other works as the planner lays it
+        if let Some(b) = towns::lots::office(r, f, k) {
+            towns::lots::draw_office(g, p, &b, f, lod, lk, &mut works_b, &mut smoke);
+            offices += 1;
+            continue;
+        }
         // (its yard level, at the height of the highest land under its plot)
         let site_ = Site::on(Vec3::new(p.0, slots.firm_level[f], p.1), p.2, &height);
         // as much of it as the camera can see, as for a house
@@ -1583,7 +1592,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         site::site(&mut works_b, &mut smoke, &mut lanes, &site_, &fs.plan, &now, lk);
     }
     if std::env::var_os("ISOSTATE_TIMING").is_some() || std::env::var_os("ISOSTATE_BENCH").is_some() {
-        eprintln!("timing year works: {:.1} ms for {} vertices of works and {} of their ground; {} plans are kept", begun.elapsed().as_secs_f64() * 1000.0, works_b.pos.len(), lanes.pos.len(), slots.plans.lock().unwrap().len());
+        eprintln!("timing year works: {:.1} ms for {} vertices of works and {} of their ground; {} plans are kept; {offices} offices in buildings of the forms", begun.elapsed().as_secs_f64() * 1000.0, works_b.pos.len(), lanes.pos.len(), slots.plans.lock().unwrap().len());
         if !old {
             eprintln!("{}", plans_said(r, slots, k, &sites));
         }

@@ -371,6 +371,44 @@ pub fn year_start(st: &mut State, C: &Content, P: &Params, year: i64) {
     }
 }
 
+/// Each cell's land value, for the record (the picture builds by it): the
+/// cell's rent a unit of room over its town's rent of `from`, both over the
+/// long run's anchor, reckoned as `year_start` reckons the aim of `dens` (whose
+/// square root that aim is) but from the rent as it stands now. NaN on ground
+/// no town holds, and everywhere while the rule has not taken over. It only
+/// reads the state.
+pub fn land_value(st: &State, P: &Params) -> Vec<f64> {
+    let N = st.N;
+    let mut out = vec![f64::NAN; N];
+    if !(P.ground.enabled && P.ground.room && st.ground.on) || st.ground.rent.len() != st.T_max {
+        return out;
+    }
+    let anchor = crate::longrun::anchor(st, P);
+    for i in 0..st.T_max {
+        if !st.town_active[i] || st.town_ground[i].is_empty() {
+            continue;
+        }
+        let r0 = st.ground.rent0[i] / st.ground.anchor0[i];
+        if !(r0 > 0.0) {
+            continue;
+        }
+        let list = &st.town_ground[i];
+        let dmax = list.iter().map(|&c| st.dist[(i, c)]).fold(0.0, f64::max);
+        let fringe = dmax + 1.0;
+        let fall = |c: usize| (1.0 - st.dist[(i, c)] / fringe).max(0.0);
+        let room: f64 = list.iter().map(|&c| st.town_room[c]).sum();
+        let mean_fall = list.iter().map(|&c| st.town_room[c] * fall(c)).sum::<f64>() / room.max(1e-9);
+        let r = st.ground.rent[i] / anchor;
+        if !(mean_fall > 0.0) || !r.is_finite() {
+            continue;
+        }
+        for &c in list {
+            out[c] = (r * fall(c) / mean_fall / r0).max(0.0);
+        }
+    }
+    out
+}
+
 /// Put away the year whose months have just run.
 fn close_year(st: &mut State, P: &Params, year: i64) {
     let anchor = crate::longrun::anchor(st, P);

@@ -128,6 +128,18 @@ reckoned from 1750 and given in the gauges' year only after 1900: before it
 rent is a fixed share of the wage a head, so the figure says little, and the
 run file of the played century is left as it was.
 
+**What the record keeps for the picture** (since 20 November 2026). A record
+past 1900 of a run that counts room by what is built carries two more layers,
+a byte a square a year (`record::GROUND_LAYERS`): `dens`, as hundredths above
+1, and the square's land value, its rent a unit of room over its town's rent
+of 1900 (both over the anchor), on a scale of twentieths of a doubling from a
+sixteenth (`ground::land_value`, which reads the state and changes nothing;
+it is the square of what `dens` moves toward). The viewer builds each lot of
+a town after 1900 by them (the viewer's `scatter/towns/kept/lots.rs`). A live
+game sends the same bytes each year (20 kB). On island 7 to 2050 they are
+3.03 MB each raw and 0.10 MB each gzipped, 2.8 per cent of the record's 213 MB
+raw; a record to 1900 and the port's carry neither.
+
 ## The numbers
 
 | | | |

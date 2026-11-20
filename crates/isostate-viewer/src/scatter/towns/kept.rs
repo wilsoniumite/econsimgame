@@ -98,6 +98,13 @@
 //!     given a new front in; from these the generators make a street's
 //!     family of walls and roofs and its habits (`houses::Street`). A house
 //!     told none of them is the house it was before they were told.
+//! 14. After 1900, where the record says how densely each square is built
+//!     and what its land is worth, a lot first built is built as a form of
+//!     its year, and a square that comes to hold more than its buildings do
+//!     is rebuilt in part (`lots.rs`, where the rule is). A square's houses
+//!     then take as many plots as its residents over its `dens` ask
+//!     (`Replay::footprint`), and what a house built by 1900 grows into is
+//!     read from the houses its cell had by 1900 (`Story::most_to`).
 //!
 //! `ISOSTATE_TOWNS=1` prints a year's count of houses against residents,
 //! `=towns` the same town by town, `=cells` the cells that are short of
@@ -106,6 +113,8 @@
 //! became of every plot of one cell.
 
 use super::*;
+
+pub(crate) mod lots;
 
 /// A quick hash for the small whole-number keys the layout looks things up
 /// by, many thousands of times a year (the standard one is made to stand up
@@ -276,6 +285,10 @@ pub struct Census {
     /// open closes left, and on cells that are built up whole
     pub short: usize,
     pub short_full: usize,
+    /// after 1900 (`lots.rs`): groups of plots built as forms of their year,
+    /// and of them those that stand where houses of 1900 or before stood
+    pub forms: usize,
+    pub rebuilt: usize,
 }
 
 /// A street that may be laid on kept town ground.
@@ -327,7 +340,7 @@ impl Story {
         }
         let mut steps: Vec<(usize, usize)> = Vec::new();
         for y in since..=k {
-            let n = (r.residents(y, c) / world::PEOPLE_TO_A_HOUSE).round() as usize;
+            let n = (r.footprint(y, c) / world::PEOPLE_TO_A_HOUSE).round() as usize;
             if steps.last().map_or(true, |s| n > s.0) {
                 steps.push((n, y));
             }
@@ -348,6 +361,17 @@ impl Story {
     /// cell loses people.
     fn most(&self) -> usize {
         self.steps.last().map_or(self.houses, |s| s.0.max(self.houses))
+    }
+
+    /// The most houses the cell had by year `last` (counted from the start),
+    /// in a layout of year `k`: after 1900 a house grows by the forms'
+    /// rule (`lots.rs`), and by its own only as far as its cell had grown by
+    /// 1900.
+    fn most_to(&self, k: usize, last: usize) -> usize {
+        if last >= k {
+            return self.most();
+        }
+        self.steps.iter().filter(|s| s.1 <= last).map(|s| s.0).max().unwrap_or(0)
     }
 
     /// How many houses the cell had when the turn of a plot came: when its
@@ -1203,7 +1227,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         note(lot.cell, lot.kind, 0);
         standing.push(Stood { lot, before, year, roof, neighbours: (false, false) });
     }
-    find_neighbours(&mut standing);
+    find_neighbours(&mut standing, (r.builds.kept() && r.y0 + k as i32 > lots::FROM).then_some(lots::FROM));
 
     // the lanes, where houses front them: a lane is drawn along each group of houses it has,
     // a cross street from where it starts to its last house (or to the lane it reaches, if
@@ -1289,10 +1313,14 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
 
 /// Put the houses in order, street by street and along each, and say of each
 /// whether a house stands on the next plot to its left and to its right.
-fn find_neighbours(standing: &mut [Stood]) {
+/// With `old` (the forms' year, `lots::FROM`, in a layout after it), a house
+/// built by then counts only the houses that were built by then too: what a
+/// house of 1900 is drawn as does not change when a lot beside it is built.
+fn find_neighbours(standing: &mut [Stood], old: Option<i32>) {
     standing.sort_by_key(|s| (s.lot.pl.run, s.lot.pl.index));
     for i in 0..standing.len() {
-        let next_to = |j: usize| standing[j].lot.pl.run == standing[i].lot.pl.run && (standing[j].lot.pl.index - standing[i].lot.pl.index).abs() == 1;
+        let counts = |j: usize| old.is_none_or(|y| standing[i].year > y || standing[j].year <= y);
+        let next_to = |j: usize| standing[j].lot.pl.run == standing[i].lot.pl.run && (standing[j].lot.pl.index - standing[i].lot.pl.index).abs() == 1 && counts(j);
         let (before, after) = (i > 0 && next_to(i - 1), i + 1 < standing.len() && next_to(i + 1));
         standing[i].neighbours = if standing[i].lot.pl.run.1 == 1 { (after, before) } else { (before, after) };
     }
@@ -1301,7 +1329,7 @@ fn find_neighbours(standing: &mut [Stood]) {
     for i in 0..standing.len() {
         if standing[i].lot.kind == 9 && standing[i].lot.pl.index == 0 {
             let run = standing[i].lot.pl.run;
-            if let Some(j) = (i + 1..standing.len()).take_while(|&j| standing[j].lot.pl.run == run).find(|&j| standing[j].lot.pl.index == ring) {
+            if let Some(j) = (i + 1..standing.len()).take_while(|&j| standing[j].lot.pl.run == run).find(|&j| standing[j].lot.pl.index == ring && old.is_none_or(|y| (standing[i].year <= y) == (standing[j].year <= y))) {
                 standing[i].neighbours.0 = true;
                 standing[j].neighbours.1 = true;
             }
@@ -1348,6 +1376,8 @@ impl What {
 /// villa by the works its cell had the year it went up, not this year's.
 fn what_stands(r: &Replay, k: usize, sq: &[Square], standing: &[Stood], stories: &HashMap<u32, Story>) -> Vec<What> {
     let mut whats = Vec::with_capacity(standing.len());
+    // (after 1900, where the forms build the town, a house grows as far as its cell had grown by 1900)
+    let grown_to = if r.builds.kept() { ((lots::FROM - r.y0).max(0) as usize).min(k) } else { k };
     let mut i = 0;
     while i < standing.len() {
         let first = &standing[i];
@@ -1360,14 +1390,14 @@ fn what_stands(r: &Replay, k: usize, sq: &[Square], standing: &[Stood], stories:
         }
         if j - i >= 2 {
             // a brick terrace: two storeys, and a third only in a cell that has filled long since
-            let storeys = 2 + (story.most() >= first.before + 96 + (32.0 * first.lot.pl.u) as usize) as u8;
+            let storeys = 2 + (story.most_to(k, grown_to) >= first.before + 96 + (32.0 * first.lot.pl.u) as usize) as u8;
             whats.push(What::Terraced { storeys, row: (j - i) as u8 });
             whats.extend((i + 1..j).map(|_| What::Terraced { storeys, row: 0 }));
         } else {
             let s = first;
             let pl = &s.lot.pl;
             let seed = Seed::new(pl.u, pl.v);
-            let most = story.most();
+            let most = story.most_to(k, grown_to);
             let (joined, both) = (s.neighbours.0 || s.neighbours.1, s.neighbours.0 && s.neighbours.1);
             // villas: on the lanes and the ways out, on ground that had little works on it
             // the year the house went up, and never in a row
@@ -1392,7 +1422,7 @@ fn what_stands(r: &Replay, k: usize, sq: &[Square], standing: &[Stood], stories:
                 What::Townhouse {
                     storeys: 2 + third as u8 + fourth as u8,
                     era: Era::of(story.year_of(r, k, rebuilt, pl.u).max(s.year)),
-                    shop: s.lot.road && houses::shop_at(((most - s.before) as f32 / 84.0).min(1.0), seed),
+                    shop: s.lot.road && houses::shop_at((most.saturating_sub(s.before) as f32 / 84.0).min(1.0), seed),
                     fronted,
                 }
             } else {
@@ -1455,12 +1485,29 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         }
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
+    // after 1900: which plots are built as forms of their year (`lots.rs`)
+    let drawn = lots::drawn(r, k, &standing);
+    if std::env::var_os("ISOSTATE_LOTS").is_some() {
+        lots::tell(r, k, &standing, &whats.iter().map(What::storeys).collect::<Vec<u8>>(), &drawn);
+    }
     for (i, (s, what)) in standing.iter().zip(&whats).enumerate() {
         let pl = &s.lot.pl;
         let seed = Seed::new(pl.u, pl.v);
         let upland = r.terrain[s.lot.cell as usize] >= 2;
         let street = houses::Street::of(s.lot.family);
         let storeys = what.storeys();
+        match drawn[i] {
+            lots::Drawn::House => {}
+            lots::Drawn::Covered => continue,
+            lots::Drawn::Form(b, plots) => {
+                lots::draw(g, &standing, i, plots, &b, lk, into);
+                census.forms += 1;
+                census.rebuilt += (s.year <= lots::FROM) as usize;
+                let tall = (b.storeys as usize).clamp(1, 3) - 1;
+                census.storeys[tall] += plots;
+                continue;
+            }
+        }
         match *what {
             What::Terraced { row: 0, .. } => continue,
             What::Terraced { row, .. } => {
@@ -1606,6 +1653,84 @@ mod tests {
     /// The houses a cell's residents ask for at `PEOPLE_TO_A_HOUSE` each, over the town.
     fn asked(r: &Replay, k: usize) -> usize {
         (0..r.n).map(|c| (r.residents(k, c) / world::PEOPLE_TO_A_HOUSE).round() as usize).sum()
+    }
+
+    /// The made-up town moved on to 1898, so that its seven years run 1898
+    /// to 1904, with the two layers a record past 1900 keeps of its squares
+    /// (`lots.rs`): in year `k` every square of town ground is built up
+    /// `dens(k)` times and its land is worth `value(k)` times its town's of 1900.
+    fn past_1900(dens: impl Fn(usize) -> f64, value: impl Fn(usize) -> f64) -> Replay {
+        let mut r = made_up(true);
+        r.y0 = 1898;
+        r.header.meta.start_year = 1898;
+        let n = r.n;
+        r.builds.dens = vec![0; r.ny * n];
+        r.builds.value = vec![0; r.ny * n];
+        for k in 0..r.ny {
+            for c in (0..n).filter(|&c| r.built[k * n + c] > 0) {
+                r.builds.dens[k * n + c] = isostate_core::record::dens_byte(dens(k));
+                r.builds.value[k * n + c] = isostate_core::record::value_byte(value(k));
+            }
+        }
+        r
+    }
+
+    /// Every house of a year's layout by its plot: the year it went up, what
+    /// stands (as `What` says it, in words) and how it is drawn.
+    fn drawn_in(r: &Replay, g: &Ground, k: usize) -> std::collections::BTreeMap<((i32, u8), i32), (i32, String, lots::Drawn)> {
+        let cen = crate::network::centres(r);
+        let land = world::year_land(r, g, k);
+        let layout = lay_out(r, g, &cen, k, &[], &|_, _| false, None, &land);
+        let drawn = lots::drawn(r, k, &layout.standing);
+        layout.standing.iter().zip(&layout.whats).zip(drawn).map(|((s, w), d)| ((s.lot.pl.run, s.lot.pl.index), (s.year, format!("{w:?}"), d))).collect()
+    }
+
+    /// A town whose ground never grew dear keeps in 1903 every house it had
+    /// in 1900, as it was: none is rebuilt, raised or given a new front; and
+    /// what is built on the square it takes in 1902 is built in the forms of
+    /// its year. (Its old squares hold the people they held in 1900. Where
+    /// they grow, a house the old rule dates before 1900 can come to stand
+    /// beside a house of 1900 that stood alone, which then joins it as a
+    /// townhouse: see the notes of `look-follows`.)
+    #[test]
+    fn a_town_whose_ground_never_grew_dear_keeps_its_houses_of_1900() {
+        let mut r = past_1900(|_| 1.0, |_| 0.8);
+        let n = r.n;
+        for c in (0..n).filter(|&c| r.built[2 * n + c] > 0) {
+            for k in 3..r.ny {
+                r.res[k * n + c] = r.res[2 * n + c];
+            }
+        }
+        let g = world::build_ground(&r);
+        let (then, now) = (drawn_in(&r, &g, 2), drawn_in(&r, &g, 5));
+        assert!(then.len() > 80, "{} houses in 1900", then.len());
+        for (plot, was) in &then {
+            assert_eq!(was.2, lots::Drawn::House, "{plot:?} in 1900");
+            assert_eq!(now.get(plot), Some(was), "{plot:?}: in 1900 {was:?}");
+        }
+        let new: Vec<_> = now.iter().filter(|(p, _)| !then.contains_key(p)).collect();
+        assert!(!new.is_empty() && new.iter().all(|(_, d)| d.0 > lots::FROM && d.2 != lots::Drawn::House), "{new:?}");
+        // the same record draws the same town, however often it is drawn
+        assert_eq!(drawn_in(&r, &g, 5), now);
+    }
+
+    /// A town whose ground grows dear after 1900 rebuilds some of its old
+    /// lots in the forms of the years it grew in, and every house of 1900 not
+    /// rebuilt stands as it was.
+    #[test]
+    fn a_town_whose_ground_grows_dear_rebuilds_some_and_keeps_the_rest() {
+        let r = past_1900(|k| [1.0, 1.0, 1.0, 1.3, 1.6, 1.9, 1.9][k], |k| if k <= 2 { 1.0 } else { 6.0 });
+        let g = world::build_ground(&r);
+        let (then, now) = (drawn_in(&r, &g, 2), drawn_in(&r, &g, 5));
+        let rebuilt = then.keys().filter(|p| matches!(now.get(p).map(|d| d.2), Some(lots::Drawn::Form(..)) | Some(lots::Drawn::Covered))).count();
+        assert!(rebuilt > 0 && rebuilt * 2 < then.len(), "{rebuilt} of {} rebuilt", then.len());
+        for (plot, was) in &then {
+            match now.get(plot) {
+                Some((_, _, lots::Drawn::Form(b, _))) => assert!(b.year > lots::FROM && b.storeys >= 4, "{plot:?}: {b:?}"),
+                Some((_, _, lots::Drawn::Covered)) => {}
+                other => assert_eq!(other, Some(was), "{plot:?}"),
+            }
+        }
     }
 
     #[test]
@@ -1828,7 +1953,7 @@ mod tests {
                     s.lot.pl.index = (s.lot.pl.index + 1).rem_euclid(RING_PLOTS);
                     s.neighbours = (false, false);
                 }
-                find_neighbours(&mut standing);
+                find_neighbours(&mut standing, None);
                 let ring: Vec<&Stood> = standing.iter().filter(|s| s.lot.kind == 9).collect();
                 let stands = |i: i32| ring.iter().any(|s| s.lot.pl.index == i.rem_euclid(RING_PLOTS));
                 assert!(ring.len() >= 4, "year {k}: {} houses round the market place", ring.len());
