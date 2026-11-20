@@ -1344,3 +1344,57 @@ fn the_work_charts_hold_what_the_core_kept() {
     assert!(last_haul > 0.0, "hauling by machine in {}: {last_haul}", game.last_year());
     eprintln!("the work charts held the core's figures to the end of {}, hauling by machine {:.4} then; {:.1} s", game.last_year(), last_haul, t0.elapsed().as_secs_f32());
 }
+
+#[test]
+fn made_here_draws_every_good_that_is_made_and_the_ground_is_held_year_by_year() {
+    // The map views of where a good is made and of what the ground holds read
+    // what the game's thread hands over each year (`holds_year`). Island 7 is
+    // played eighty years under the game's rules, which keep the books and the
+    // mines; it leans on no history, only on the books and the workings being kept.
+    use crate::overlay::{self, Overlay};
+    let mut game = isostate_core::save::Game::new(7, 6, 0);
+    let p = &game.sim.params;
+    assert!(p.accounts.enabled && p.mines.enabled, "the case is played with the books and the mines on");
+    let mut board = Board::new(&game.sim);
+    for _ in 0..80 {
+        game.year().unwrap();
+        board.year(&game.sim);
+        game.turn();
+    }
+    let (r, st, ng) = (&board.r, &game.sim.st, game.sim.content.G);
+    let k = (game.last_year() - game.sim.content.start_year) as usize;
+    // what each town made is the books' own, to the bit, in every year played
+    let h = &st.acct.hist;
+    let kg = isostate_core::accounts::KG;
+    let slots = h.goods.len() / (h.n * ng * kg);
+    assert_eq!((h.n, r.holds.made_towns), (k + 1, slots));
+    for j in [0, k / 2, k] {
+        for t in 0..slots {
+            for g in 0..ng {
+                let want = h.goods[((j * slots + t) * ng + g) * kg];
+                assert_eq!(r.holds.made(j, t, g, ng).map(f32::to_bits), Some(want.to_bits()), "year {j}, town {t}, good {g}");
+            }
+        }
+    }
+    // every good made that year draws a map, and only those say nobody made any
+    let mut drawn = 0;
+    for g in 0..ng {
+        let made: f32 = (0..slots).filter_map(|t| r.holds.made(k, t, g, ng)).sum();
+        let w = overlay::wash(r, k, Overlay::Made, g, None, overlay::Scaling { range: crate::ranges::Range::Year, ends: overlay::year_ends(r, k, Overlay::Made, g) });
+        let lit = (0..r.n).filter(|&c| w.cells[c * 4..c * 4 + 3] != [0xd9, 0xd3, 0xc4] && w.cells[c * 4 + 3] != 0).count();
+        if made > 0.0 {
+            assert!(w.legend.range.is_some() && lit > 0, "{} was made ({made}) and drew no map: {}", r.header.goods[g].name, w.legend.note);
+            drawn += 1;
+        } else {
+            assert!(w.legend.note.starts_with("Nobody made any"), "{}: {}", r.header.goods[g].name, w.legend.note);
+        }
+    }
+    assert!(drawn >= 10, "only {drawn} goods were made");
+    // the timber standing and what is left of the deposits, year by year
+    assert_eq!(r.holds.cover.len(), r.ny * r.n);
+    assert_eq!(&r.holds.cover[k * r.n..(k + 1) * r.n], &isostate_core::record::field_bytes(&st.cover)[..]);
+    assert!(r.holds.left.get(k).is_some_and(|l| !l.is_empty()), "no deposit was worked in eighty years");
+    let coal = overlay::ground_map(r, k, 0).unwrap();
+    assert!(coal.share_left.is_some_and(|s| s > 0.0 && s < 1.0), "{:?}", coal.share_left);
+    eprintln!("{drawn} goods made in {} drew their maps; {:.1}% of the coal is left", game.last_year(), coal.share_left.unwrap() * 100.0);
+}

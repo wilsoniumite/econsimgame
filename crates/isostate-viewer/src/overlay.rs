@@ -507,7 +507,11 @@ fn tick_words(kind: Overlay, v: f32) -> String {
         Overlay::Made => amount(v),
         Overlay::Growth => format!("{v:.0}"),
         Overlay::Residents => ui::thousands(v),
-        Overlay::Deposits => format!("{v:.1}"),
+        Overlay::Deposits => {
+            let s = format!("{v:.2}");
+            let s = s.trim_end_matches('0');
+            s.strip_suffix('.').map_or(s.to_string(), |w| w.to_string())
+        }
         Overlay::Areas => String::new(),
     }
 }
@@ -786,11 +790,21 @@ fn sample(r: &Replay, k: usize, kind: Overlay, which: usize) -> Option<Vec<f32>>
     (!v.is_empty()).then_some(v)
 }
 
+/// On a scale by ratio, figures under the year's greatest over this set no end.
+const TRACE: f32 = 1e4;
+
 /// Year `k`'s own ends for a view, in its scale's measure.
 pub fn year_ends(r: &Replay, k: usize, kind: Overlay, which: usize) -> Option<Ends> {
     let spec = kind.spec();
-    let vals = sample(r, k, kind, which)?;
-    ranges::year_ends(vals.into_iter().map(|v| measure(v, spec.log)).collect(), spec.pinned.map(|p| measure(p, spec.log)))
+    let mut vals: Vec<f32> = sample(r, k, kind, which)?.into_iter().map(|v| measure(v, spec.log)).collect();
+    if spec.log {
+        // on a scale by ratio a trace (a town that made a ten-thousandth of what the most
+        // did) would stretch the scale over powers of ten nobody can see: it is drawn in
+        // the palest tint and sets no end
+        let top = vals.iter().copied().fold(f32::MIN, f32::max);
+        vals.retain(|&m| m >= top - TRACE.ln());
+    }
+    ranges::year_ends(vals, spec.pinned.map(|p| measure(p, spec.log)))
 }
 
 /// The ends a view is painted with: the range chosen, and the ends it gives,
@@ -854,7 +868,11 @@ fn ramp_bar(stops: &[u32; 5]) -> Vec<[u8; 3]> {
 /// The legend's figures for a scale: its round figures, where each stands,
 /// and the two ends in words.
 fn scale_words(kind: Overlay, sc: &Scale) -> (Vec<(f32, String)>, String) {
-    let ticks = ranges::ticks(sc.lo, sc.hi, sc.log).into_iter().map(|v| (sc.at(v), tick_words(kind, v))).collect();
+    let values = ranges::ticks(sc.lo, sc.hi, sc.log);
+    // money is written alike along one scale: £2 among £1.80 and £2.20 is £2.00
+    let whole = values.iter().all(|v| v.fract().abs() < 1e-3);
+    let words = |v: f32| if matches!(kind, Overlay::Price | Overlay::Wages) && !whole { coin(v) } else { tick_words(kind, v) };
+    let ticks = values.iter().map(|&v| (sc.at(v), words(v))).collect();
     (ticks, format!("{} to {}", tick_words(kind, sc.lo), tick_words(kind, sc.hi)))
 }
 
@@ -971,7 +989,8 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
         Overlay::Made => {
             let good = which;
             let label = r.header.goods.get(good).map_or("goods".to_string(), |g| g.label.to_lowercase());
-            let title = format!("Where {label} was made in {year}");
+            // (services, chemicals and electricals are many things)
+            let title = format!("Where {label} {} made in {year}", if label.ends_with('s') { "were" } else { "was" });
             let blank = |cells: &mut Vec<u8>| {
                 for c in (0..r.n).filter(|&c| land(r, c)) {
                     let reg = market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8);
