@@ -10,8 +10,9 @@
 //!   every machine's minders; clerking; judging. Their hands are the works',
 //!   the land's and the carters' together (`hands_of`, from `TasksYear`).
 //! - **What the island hires of a class at one wage is the demand at equal
-//!   pay.** Demand at pay `p` is that hiring times `p` to the power of minus
-//!   `bend`.
+//!   pay**, its share of all hands taken over the last five years
+//!   (`SETTLE_YEARS`), since the works' hiring lurches every other year. Demand
+//!   at pay `p` is that hiring times `p` to the power of minus `bend`.
 //! - **Hands follow the work.** In 1900 each class has the hands its work
 //!   takes; each year after, its hands move one part in `follow_years` of the
 //!   way to where the work is.
@@ -109,14 +110,25 @@ impl Reckoned {
     }
 }
 
+/// The years whose work the demand at equal pay is the mean of: the year and
+/// the four before it, from 1900. The works' hiring of a class lurches every
+/// other year with their building (clerks' hands move 7 per cent a year on
+/// the mean island from 1951 to 2050, and their pay at a bend of 0.3 would
+/// move 18 per cent a year with it); the demand is the settled hiring, not one
+/// year's lurch. Five years is one turn of that cycle and of timber's, as the
+/// linked measure's window is.
+pub const SETTLE_YEARS: usize = 5;
+
 /// Each group's pay over the mean, year by year, for hands `hands` (a year a
-/// row, the four classes in it) and the classes grouped as `groups`. The first
+/// row, the four classes in it) and the classes grouped as `groups`. The work's
+/// shares are the means of the last `SETTLE_YEARS` years with hands. The first
 /// year's hands are where its work is; a year with no hands at all gives no
 /// figure and moves nobody.
 fn play(hands: &[[f64; 4]], groups: &[&[usize]], bend: f64, follow_years: f64) -> Vec<Vec<f64>> {
     let (bend, tau) = (bend.max(LEAST_BEND), follow_years.max(FEWEST_YEARS));
     let G = groups.len();
     let mut n: Vec<f64> = Vec::new();
+    let mut seen: Vec<Vec<f64>> = Vec::new();
     let mut out = Vec::with_capacity(hands.len());
     for h in hands {
         let all: f64 = h.iter().sum();
@@ -124,8 +136,11 @@ fn play(hands: &[[f64; 4]], groups: &[&[usize]], bend: f64, follow_years: f64) -
             out.push(vec![f64::NAN; G]);
             continue;
         }
-        // the work's shares of the groups: where the hands would be at one wage
-        let d: Vec<f64> = groups.iter().map(|g| g.iter().map(|&i| h[i]).sum::<f64>() / all).collect();
+        // the work's shares of the groups, settled over the last years: where the hands
+        // would be at one wage
+        seen.push(groups.iter().map(|g| g.iter().map(|&i| h[i]).sum::<f64>() / all).collect());
+        let last = &seen[seen.len().saturating_sub(SETTLE_YEARS)..];
+        let d: Vec<f64> = (0..G).map(|j| last.iter().map(|s| s[j]).sum::<f64>() / last.len() as f64).collect();
         if n.is_empty() {
             n = d.clone();
         }
@@ -309,9 +324,11 @@ mod tests {
         assert_eq!(rows[0].pay, [1.0; 4]);
         // the hands of 1900 are the work's of 1900, moved a quarter of the way to its
         // shares of the first year (they are the same), so in the second year they are
-        // still 0.4, 0.4, 0.1, 0.1; the work is 2/9, 4/9, 2/9, 1/9
+        // still 0.4, 0.4, 0.1, 0.1; the work that year is 2/9, 4/9, 2/9, 1/9, and the
+        // settled work the mean of the two years'
         let n: [f64; 4] = [0.4, 0.4, 0.1, 0.1];
-        let d: [f64; 4] = [2.0 / 9.0, 4.0 / 9.0, 2.0 / 9.0, 1.0 / 9.0];
+        let d2: [f64; 4] = [2.0 / 9.0, 4.0 / 9.0, 2.0 / 9.0, 1.0 / 9.0];
+        let d: Vec<f64> = (0..4).map(|k| (n[k] + d2[k]) / 2.0).collect();
         let p: Vec<f64> = (0..4).map(|k| (d[k] / n[k]).powf(1.0 / bend)).collect();
         let m: f64 = (0..4).map(|k| n[k] * p[k]).sum();
         for k in 0..4 {
@@ -321,17 +338,33 @@ mod tests {
         // the hands' mean pay is the one wage
         let mean: f64 = (0..4).map(|k| n[k] * rows[1].pay[k]).sum();
         assert!((mean - 1.0).abs() < 1e-12);
-        // a third year at the second's work: the hands have moved a quarter of the way, and
-        // the gaps narrow
-        let h3 = vec![h[0], h[1], h[1]];
-        let rows3 = reckon(&h3, bend, tau);
-        assert!(rows3[2].pay[0] > rows3[1].pay[0] && rows3[2].pay[0] < 1.0);
-        assert!(rows3[2].pay[2] < rows3[1].pay[2] && rows3[2].pay[2] > 1.0);
+        // sixty years at the second's work: the gaps narrow as the hands follow, and are
+        // gone at the end
+        let long: Vec<[f64; 4]> = (0..60).map(|y| if y == 0 { h[0] } else { h[1] }).collect();
+        let rows = reckon(&long, bend, tau);
+        let gap = |y: usize| (rows[y].pay[0] - 1.0).abs();
+        assert!(gap(1) > 0.05 && gap(15) < gap(1) && gap(30) < gap(15) && gap(59) < 1e-3, "{} {} {} {}", gap(1), gap(15), gap(30), gap(59));
         // the more demand bends, the less pay moves
         let loose = reckon(&h, 2.0, tau);
-        assert!(loose[1].pay[0] > rows[1].pay[0] && loose[1].pay[2] < rows[1].pay[2]);
+        let tight = reckon(&h, bend, tau);
+        assert!(loose[1].pay[0] > tight[1].pay[0] && loose[1].pay[2] < tight[1].pay[2]);
         // the schooled over the plain: clerks' and judges' work grew from 0.2 to 1/3
-        assert!(rows[1].schooled_over_plain() > 1.0);
+        assert!(tight[1].schooled_over_plain() > 1.0);
+    }
+
+    #[test]
+    fn the_work_is_settled_over_five_years() {
+        // clerks' work that swings a fifth either way every other year about a steady share:
+        // on the year's work alone their pay would go from (1.2)^3.3 = 1.8 to (0.8)^3.3 = 0.5
+        // of the mean and back each year; on five years' it moves by a quarter (the five
+        // years hold three of one year and two of the other, a twentieth either way), and in
+        // the islands' own hiring, which does not swing so evenly, by 0.03 a year from 0.18
+        // (docs/rules/pay.md)
+        let h: Vec<[f64; 4]> = (0..40).map(|y| if y % 2 == 0 { [30.0, 40.0, 12.0, 18.0] } else { [30.0, 40.0, 8.0, 22.0] }).collect();
+        let rows = reckon(&h, 0.3, 10.0);
+        let swing: f64 = (21..40).map(|y| (rows[y].pay[2] - rows[y - 1].pay[2]).abs()).sum::<f64>() / 19.0;
+        assert!(swing < 0.3, "clerks' pay swings {swing} a year");
+        assert_eq!(SETTLE_YEARS, 5);
     }
 
     #[test]

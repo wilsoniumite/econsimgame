@@ -196,10 +196,13 @@
 # Taken: pay by class of task, a watcher (docs/rules/pay.md): its series,
 # nothing before 1900 and counted with the books' own, move 1750-1900 books,
 # 1901-2050 books and run.bin; economy and news hold in both eras
+# Taken: pay by class of task: the work settled over five years
+# (pay::SETTLE_YEARS) moves its series after 1900, so 1901-2050 books and
+# run.bin again; economy and news hold in both eras
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0x04b0974e4e77f3f5
 1750-1900 news     0x5d3a55a39961b3e2
 1901-2050 economy  0x588a1bb84f1ae1fe
-1901-2050 books    0x99601543306ac22e
+1901-2050 books    0x59bdbf8ba19a8cee
 1901-2050 news     0xfd6b3077b36e5ca4
-1901-2050 run.bin  0xc759a1491b4331a9
+1901-2050 run.bin  0xeff64f9b4820a4c1

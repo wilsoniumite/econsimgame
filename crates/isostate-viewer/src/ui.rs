@@ -1311,7 +1311,7 @@ fn panel_rebuild(
     commands.entity(be).with_children(|p| match tab {
         // (in a sandbox nobody's family is "Your family")
         Tab::News => news_panel(p, &f, r, news_to, ui.news, ui.news_rows, fam.and_then(|v| v.player).filter(|_| sandbox.is_none())),
-        Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, by_month, accent),
+        Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, by_month, accent, &rules),
         Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival, stands),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
         Tab::Hand => crate::hand_tab::panel(p, &f, r, k, &hand),
@@ -1603,7 +1603,7 @@ fn unsold_until_made(price: &mut [f32], made: &[f32]) {
 
 /// `by_month` is the marked month's place in the run when the panel goes month by month.
 #[allow(clippy::too_many_arguments)]
-fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, by_month: Option<usize>, accent: Color) {
+fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, by_month: Option<usize>, accent: Color, rules: &crate::rulebook::RulesParams) {
     // three halves, chosen by a chip: the goods, the island as a whole, or its work; and the
     // first two either by the year or by the month (the Work half's figures are whole years')
     p.spawn(Node { column_gap: Val::Px(5.0), margin: UiRect::bottom(Val::Px(2.0)), align_items: AlignItems::Center, ..default() }).with_children(|row| {
@@ -1619,7 +1619,11 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     });
     match show {
         MarketsShow::Island => return island_charts(p, f, images, r, k, by_month, accent),
-        MarketsShow::Work => return crate::work_charts::panel(p, f, images, r, k),
+        MarketsShow::Work => {
+            // pay by class is drawn at the dials the rules last told (a sandbox's), whose chips stand over it
+            let dials = crate::work_charts::Dials::of(rules.known.as_deref());
+            return crate::work_charts::panel(p, f, images, r, k, dials, &|p| crate::rulebook::dial_chips(p, f, rules));
+        }
         MarketsShow::Prices => {}
     }
     let first_year = r.y0;
