@@ -54,7 +54,8 @@ pub const USAGE: &str = "usage: isostate-core atlas making --out DIR [--seeds 1-
                                   [--set NAME=VALUE]... [--step 10] [--no-towns] [--jobs N] [--quiet]
        isostate-core atlas making --from DIR [--out DIR2]   (draw the page again from DIR/making.json)";
 
-/// The plates, in the order the backlog ranks them; only the first is built.
+/// The plates, in the order the backlog ranks them; the first and the third
+/// are built (the third in `atlas_ideas.rs`).
 pub const PLATES: [&str; 4] = ["making", "moving", "ideas", "ground"];
 
 /// What the command line asked for.
@@ -82,7 +83,8 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
     let plate = args.first().map(String::as_str);
     match plate {
         Some("making") => {}
-        Some(p) if PLATES.contains(&p) => return Err(format!("the plate {p:?} is designed (docs/BACKLOG.md, \"The atlas\") and not built; only \"making\" is\n{USAGE}")),
+        Some("ideas") => return Err(format!("the plate \"ideas\" reads its own command line (atlas_ideas::parse_args)\n{}", crate::atlas_ideas::USAGE)),
+        Some(p) if PLATES.contains(&p) => return Err(format!("the plate {p:?} is designed (docs/BACKLOG.md, \"The atlas\") and not built; \"making\" and \"ideas\" are\n{USAGE}")),
         Some(p) => return Err(format!("{p:?} is not a plate of the atlas; the plates are {}\n{USAGE}", PLATES.join(", "))),
         None => return Err(format!("name the plate: making\n{USAGE}")),
     }
@@ -98,7 +100,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         from: None,
         jobs: None,
         quiet: false,
-        command: format!("isostate-core atlas {}", args.join(" ")),
+        command: command_line(args),
     };
     let mut out: Option<PathBuf> = None;
     let mut it = args[1..].iter();
@@ -1494,11 +1496,32 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     command(args, true)
 }
 
+/// The command as the page's header and README.txt give it: each folder or
+/// file it names (`--out`, `--from`, `--against`, `--edits`) by its own name
+/// only, so that no path of the machine it was made on is carried in the page.
+pub fn command_line(args: &[String]) -> String {
+    let mut out = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        out.push(a.clone());
+        if ["--out", "--from", "--against", "--edits"].contains(&a.as_str()) {
+            if let Some(v) = it.next() {
+                let p = std::path::Path::new(v);
+                out.push(p.file_name().map_or(v.clone(), |n| n.to_string_lossy().into_owned()));
+            }
+        }
+    }
+    format!("isostate-core atlas {}", out.join(" "))
+}
+
 /// The subcommand, with or without its summary on stdout (the tests leave it off).
 pub fn command(args: &[String], print: bool) -> Result<(), String> {
     if args.iter().any(|a| a == "-h" || a == "--help") {
-        println!("{USAGE}");
+        println!("{USAGE}\n{}", crate::atlas_ideas::USAGE);
         return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("ideas") {
+        return crate::atlas_ideas::command(args, print);
     }
     let o = parse_args(args)?;
     if let Some(from) = &o.from {

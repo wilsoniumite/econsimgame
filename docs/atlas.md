@@ -5,8 +5,10 @@ on 11 November ("flowcharts of industries within a region or market with
 prices and volumes and transport costs") and again on 19 November ("Can I see
 a production flowchart? See recipe usage"). Four plates are ranked in the
 backlog under "The atlas": the making, the moving, the ideas and the ground.
-The first is built, as a page that a command writes; the panel in the game
-and the hand on it come later.
+The first and the third are built, each as a page that a command writes; the
+panels in the game and the hand on them come later. The third came with a
+pin for the lab: an idea found in a year of one's choosing ("The pin",
+below, and `docs/lab.md`).
 
 The atlas is a tool, not a rule. It changes nothing a run does, so it has no
 switch and no page under `docs/rules/`. The code is
@@ -192,6 +194,79 @@ and 640 lines.
 - **What could not be shared out** is nothing to the third decimal of a per
   cent on these runs: every plant purchase found a works that paid for
   plant, every purchase by the land a sector, every household's good a need.
+
+## The third plate: the ideas
+
+```text
+isostate-core atlas ideas --out DIR [--seeds 1-16] [--rules port|game] [--families N] [--end-year Y]
+                          [--set NAME=VALUE]... [--pin NAME@YEAR]... [--hold NAME@YEAR]... [--edits FILE.json]
+                          [--against DIR0] [--jobs N] [--quiet]
+isostate-core atlas ideas --from DIR [--out DIR2] [--against DIR0]
+```
+
+What the designer asked on 19 November: "Can I see a tech timeline? Move
+things around in it?" The command plays the islands (by default the game's
+rules, six families, islands 1 to 16, to 2050) and writes `DIR/ideas.html`, a
+page that opens with no network, beside `ideas.json` (its figures; `--from`
+draws the page again from them), `ideas.txt` (its tables in words) and
+`README.txt`. The code is `crates/isostate-core/src/atlas_ideas.rs`, with the
+page's drawing code in `atlas_ideas.html`; `tests/atlas_ideas.rs` holds it to
+what is said here.
+
+Each island is played as the lab plays an arm (`edits::play_noting`): with no
+`--pin`, `--hold` or `--edits` it is the sweep's own island to the bit, and
+with them every island is played with the same list (the pin, below). At each
+year's end the command notes, for every idea, the year each town's knowledge
+of it first stood above 0.02 (from which a works of it may be built there),
+the year each of its thresholds was met and the year all were, and the year
+the first works of each method stood. It costs what a sweep of the same
+islands does: sixteen islands to 2050 took RUNTIME s, eight at a time.
+
+**Which ideas.** Every idea in the data the runs were played on, read when
+the command runs: the tree's methods and techniques (`data/content.toml` with
+`data/game.toml` laid over it) that are not known in 1750, and every use of
+the tasks rule (`data/tasks.toml`). Those known in 1750 are named under the
+tables, not drawn. An idea added to the data tomorrow is drawn tomorrow.
+
+**History's year** is the data's own `target`. The overlay's ideas have one;
+the port's own (the coke furnace, the powered mill, the engine works,
+crucible steel, the rolling mill, railways, improved husbandry, farm
+machinery) have none in the data, and their rows say "no year in the data".
+The uses carried their year only in comments; they now have a `target` key
+too, which nothing in a run reads: the electric drive 1901, the tractor 1915,
+the cutter 1920, the combine 1935, office computing 1960 and models 2022,
+each the year its comment gives as the year it is to be had. The hoist, a
+stand-in with "poor history", has none.
+
+## How to read the third plate
+
+- **A row for each idea**, in the order of history's year (an idea with none
+  stands at its median find). Uses of the tasks rule are in italic.
+- **On each row**: a dark red tick at history's year; a dot for the year each
+  island found it, filled for islands 1 to 8 and open for 9 to 16 (dots of
+  one year are stacked); a pale band from the first island to the last; and
+  at the right the band's length in years and "×n" for the islands that never
+  found it by the end of the run. A pinned idea carries ⌖ and a diamond at
+  its year.
+- **Under the pointer**, a row gives each island's year, the year every
+  threshold was met (the draw then begins in earnest: at its full height the
+  chance is 0.09 a year, a mean wait of eleven years), the year each good was
+  met, and for a method the year its first works stood.
+- **One island, town by town**: for the island and the idea chosen (a click
+  on a row chooses it), a map of the island with each town shaded by the year
+  it came to know the idea (dark early, pale late, an open ring never; the
+  double ring is the town that found it), and beside it the towns in the
+  order they came to know it. The uses of the tasks rule are found by the
+  island whole and have no towns.
+- **The tables**: the ten ideas found furthest apart, the ten furthest from
+  history on the mean, and for every idea one line on what it is found on
+  (each good's threshold, written as the data writes it, "xN" being N years
+  of the island's own 1750 making; the draw; the year it is sought from; for
+  a use, whether it is read a head, and the switch it stands behind).
+- **`--against DIR0`** lays another folder's spread under each row as a faint
+  grey line with its median, and adds a table of each idea of 1900 and after:
+  its spread there and here. That is how the pinned page below is read.
+- The page's address keeps the choice (`ideas.html#island=14&idea=electrical_works&show=1900`).
 
 ## Not yet built
 

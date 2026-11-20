@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The ideas</title>
+<!-- The atlas, third plate (isostate-core atlas ideas; docs/atlas.md). Everything is in this file:
+     the figures below in ATLAS, and the code that draws them. Nothing is fetched. -->
+<style>
+:root {
+  --paper: #f5efe2; --card: #fbf8f1; --ink: #2b2620; --muted: #776d60; --rule: #d9cfbd;
+  --band: #e3d3ae; --ghost: #b8ad9a; --sea: #dfe6e4; --land: #efe6d2; --hist: #8a2f1c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 Georgia, "Times New Roman", serif; }
+header { padding: 14px 20px 6px; }
+h1 { font-size: 22px; margin: 0 0 2px; font-weight: normal; }
+h2 { font-size: 16px; margin: 20px 0 6px; font-weight: normal; border-bottom: 1px solid var(--rule); padding-bottom: 3px; }
+.sub { color: var(--muted); font-size: 12.5px; max-width: 1200px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 8px 20px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); background: var(--card); position: sticky; top: 0; z-index: 3; }
+.controls label { font-size: 13px; color: var(--muted); }
+select, input { font: inherit; font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; padding: 6px 20px 4px; font-size: 12.5px; color: var(--muted); align-items: center; }
+.legend svg { vertical-align: middle; }
+main { display: flex; align-items: flex-start; }
+#timeline { flex: 1 1 auto; overflow-x: auto; padding: 4px 0 0 8px; }
+#timeline svg { display: block; }
+aside { flex: 0 0 340px; padding: 10px 16px 20px; border-left: 1px solid var(--rule); background: var(--card); min-height: 100vh; font-size: 13px; position: sticky; top: 44px; }
+aside h3 { font-size: 14px; margin: 10px 0 4px; }
+#details table { border-collapse: collapse; font-size: 12px; }
+#details td { padding: 0 8px 0 0; font-variant-numeric: tabular-nums; }
+section.below { padding: 0 20px 30px; max-width: 1500px; }
+table.t { border-collapse: collapse; font-size: 12.5px; }
+table.t th, table.t td { border-bottom: 1px solid var(--rule); padding: 2px 10px 2px 0; text-align: left; vertical-align: top; }
+table.t td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: 12.5px; max-width: 980px; }
+.spreadbox { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.row:hover rect.hit { fill: rgba(120,100,60,0.08); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The ideas: when each idea was found, island by island, against our own history</h1>
+  <div class="sub" id="made"></div>
+</header>
+<div class="controls">
+  <span><label for="show">Rows</label> <select id="show"><option value="all">every idea</option><option value="1900">ideas of 1900 and after</option><option value="tree">the tree's ideas</option><option value="use">the uses of the tasks rule</option></select></span>
+  <span><label for="island">One island</label> <select id="island"></select></span>
+  <span><label for="idea">and one idea, town by town</label> <select id="idea"></select></span>
+</div>
+<div class="legend" id="legend"></div>
+<main>
+  <div id="timeline"></div>
+  <aside>
+    <h3>Under the pointer</h3>
+    <div id="details"><span class="note">Point at a row. A click chooses its idea for the island town by town, below.</span></div>
+  </aside>
+</main>
+<section class="below">
+  <h2 id="spreadTitle">One island, town by town</h2>
+  <p class="note" id="spreadNote"></p>
+  <div class="spreadbox" id="spread"></div>
+  <h2 id="againstTitle" style="display:none"></h2>
+  <div id="againstBox"></div>
+  <h2>The ten found furthest apart</h2>
+  <p class="note">The years from the first island to find each idea to the last; an island that never found it is counted under "never", not in the years.</p>
+  <div id="apart"></div>
+  <h2>The ten furthest from history on the mean</h2>
+  <p class="note">The mean year of the islands that found it, less history's year (the data's own <code>target</code>). Ideas with no year in the data are left out of this table, and named in the next.</p>
+  <div id="history"></div>
+  <h2>What each idea is found on</h2>
+  <p class="note" id="knownNote"></p>
+  <div id="on"></div>
+</section>
+<script>
+const A = /*ATLAS_DATA*/null;
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const st = { show: "all", island: 0, idea: null, hover: null };
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
+function fmt(v, d) { return v == null || !isFinite(v) ? "-" : v.toLocaleString("en-GB", { maximumFractionDigits: d == null ? 0 : d, minimumFractionDigits: d == null ? 0 : d }); }
+function key(r) { return r.kind + ":" + r.name; }
+function found(r) { return r.years.filter((y) => y != null).sort((a, b) => a - b); }
+function mean(v) { return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
+function median(v) { const n = v.length; return n ? (n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2) : null; }
+function spread(r) { const f = found(r); return f.length >= 2 ? f[f.length - 1] - f[0] : null; }
+function never(r) { return r.years.filter((y) => y == null).length; }
+function seeds() { return A.islands.map((i) => i.seed); }
+function pinOf(r) {
+  for (const d of A.edits || []) { const e = d.edit; if (e.what === "pin" && e.idea === r.name) return e; }
+  return null;
+}
+function shown(r) {
+  if (st.show === "tree") return r.kind !== "use";
+  if (st.show === "use") return r.kind === "use";
+  if (st.show === "1900") { const k = r.target != null ? r.target : median(found(r)); return k == null || k >= 1900; }
+  return true;
+}
+
+// ---- the timeline
+const LEFT = 250, RIGHT = 120, ROW = 22, TOP = 30;
+function draw() {
+  const host = $("timeline");
+  host.innerHTML = "";
+  const rows = A.order.map((k) => A.rows[k]).filter(shown);
+  const W = Math.max(900, Math.min(1500, window.innerWidth - 380)), H = TOP + rows.length * ROW + 30;
+  const svg = el("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, "font-family": "Georgia, serif" }, host);
+  const X = (y) => LEFT + (W - LEFT - RIGHT) * (y - A.y0) / (A.y1 - A.y0);
+  for (let y = Math.ceil(A.y0 / 10) * 10; y <= A.y1; y += 10) {
+    const major = y % 50 === 0;
+    el("line", { x1: X(y), x2: X(y), y1: TOP - 6, y2: H - 22, stroke: y === 1900 ? "#a89a80" : "#e2d8c4", "stroke-width": y === 1900 ? 1.2 : major ? 0.9 : 0.5 }, svg);
+    if (major) {
+      el("text", { x: X(y), y: TOP - 10, "font-size": 11, "text-anchor": "middle", fill: "#776d60" }, svg).textContent = y;
+      el("text", { x: X(y), y: H - 8, "font-size": 11, "text-anchor": "middle", fill: "#776d60" }, svg).textContent = y;
+    }
+  }
+  el("text", { x: W - RIGHT + 26, y: TOP - 10, "font-size": 11, fill: "#776d60" }, svg).textContent = "spread · never";
+  const half = seeds().length > 1 ? 8 : 1e9;
+  rows.forEach((r, k) => {
+    const y = TOP + k * ROW + ROW / 2, g = el("g", { class: "row", cursor: "pointer" }, svg);
+    el("rect", { class: "hit", x: 0, y: y - ROW / 2, width: W, height: ROW, fill: "transparent" }, g);
+    const pin = pinOf(r);
+    const lab = el("text", { x: LEFT - 8, y: y + 4, "font-size": 12, "text-anchor": "end", fill: "#2b2620", "font-style": r.kind === "use" ? "italic" : "normal" }, g);
+    lab.textContent = (r.label.length > 30 ? r.label.slice(0, 29) + "…" : r.label) + (pin ? " ⌖" : "");
+    // the other folder's spread, faint, under the row
+    const ag = A.against && A.against.rows[key(r)];
+    if (ag && ag[0] != null) {
+      el("line", { x1: X(ag[0]), x2: X(ag[1]), y1: y + 8, y2: y + 8, stroke: "var(--ghost)", "stroke-width": 2.2, "stroke-linecap": "round" }, g);
+      if (ag[2] != null) el("line", { x1: X(ag[2]), x2: X(ag[2]), y1: y + 5, y2: y + 11, stroke: "var(--ghost)", "stroke-width": 1.4 }, g);
+    }
+    const f = found(r);
+    if (f.length) el("rect", { x: X(f[0]) - 1, y: y - 5, width: Math.max(2, X(f[f.length - 1]) - X(f[0]) + 2), height: 10, rx: 4, fill: "var(--band)" }, g);
+    if (pin) {
+      const px = X(pin.year);
+      el("path", { d: "M" + px + "," + (y - 9) + " l4,4 l-4,4 l-4,-4 z", fill: "none", stroke: "#2b2620", "stroke-width": 1 }, g);
+    }
+    // history's year: a tall dark tick
+    if (r.target != null && r.target >= A.y0 && r.target <= A.y1) el("line", { x1: X(r.target), x2: X(r.target), y1: y - 9, y2: y + 9, stroke: "var(--hist)", "stroke-width": 2.2 }, g);
+    // the islands: stacked where several share a year
+    const seen = {};
+    A.islands.forEach((isl, i) => {
+      const yr = r.years[i];
+      if (yr == null) return;
+      const n = seen[yr] = (seen[yr] || 0) + 1, dy = Math.max(-7, Math.min(7, ((n % 2 ? 1 : -1) * Math.floor(n / 2)) * 1.8));
+      const filled = isl.seed <= half;
+      el("circle", { cx: X(yr), cy: y + dy, r: 3.1, fill: filled ? "#2b2620" : "#fbf8f1", stroke: "#2b2620", "stroke-width": filled ? 0.6 : 1.1 }, g);
+    });
+    const sp = spread(r), nv = never(r);
+    const right = el("text", { x: W - RIGHT + 26, y: y + 4, "font-size": 11.5, fill: "#2b2620" }, g);
+    right.textContent = (sp == null ? "-" : sp + " y") + (nv ? "  ×" + nv : "");
+    if (r.target == null) el("text", { x: LEFT + 2, y: y + 4, "font-size": 10, fill: "#9a8f7e", "font-style": "italic" }, g).textContent = f.length && X(f[0]) < LEFT + 120 ? "" : "no year in the data";
+    g.addEventListener("mouseenter", () => details(r));
+    g.addEventListener("click", () => { if (r.kind !== "use") { st.idea = r.index; $("idea").value = r.index; writeHash(); spreadDraw(); } details(r); });
+  });
+}
+
+function details(r) {
+  const f = found(r), sp = spread(r), pin = pinOf(r);
+  let h = "<b>" + esc(r.label) + "</b> <span class='note'>(" + r.kind + ", <code>" + esc(r.name) + "</code>)</span><table>";
+  h += "<tr><td>history's year</td><td>" + (r.target == null ? "none in the data" : r.target) + "</td></tr>";
+  if (pin) h += "<tr><td>pinned</td><td>" + (pin.when === "not_before" ? "held back until " : "to ") + pin.year + "</td></tr>";
+  h += "<tr><td>found</td><td>" + f.length + " of " + r.years.length + " islands</td></tr>";
+  h += "<tr><td>first, last</td><td>" + (f.length ? f[0] + ", " + f[f.length - 1] : "-") + "</td></tr>";
+  h += "<tr><td>spread</td><td>" + (sp == null ? "-" : sp + " years") + "</td></tr>";
+  h += "<tr><td>mean</td><td>" + fmt(mean(f), 1) + (r.target != null && f.length ? " (" + (mean(f) - r.target >= 0 ? "+" : "") + fmt(mean(f) - r.target, 1) + " on history)" : "") + "</td></tr>";
+  const ag = A.against && A.against.rows[key(r)];
+  if (ag) h += "<tr><td>in " + esc(A.against.label) + "</td><td>" + (ag[0] == null ? "never" : ag[0] + " to " + ag[1] + ", " + (ag[1] - ag[0]) + " years") + "</td></tr>";
+  h += "</table><p>" + esc(r.on) + "</p><table><tr><td><b>island</b></td><td><b>found</b></td><td><b>" + (r.kind === "use" ? "" : "all met") + "</b></td><td><b>each good met</b></td></tr>";
+  A.islands.forEach((isl, i) => {
+    const met = r.kind === "use" ? isl.use_met[r.index] : isl.met[r.index];
+    const ready = r.kind === "use" ? null : isl.ready[r.index];
+    h += "<tr><td>" + isl.seed + "</td><td>" + (r.years[i] == null ? "never" : r.years[i]) + "</td><td>" + (ready == null ? "" : ready) + "</td><td>" +
+      (met || []).map((m) => esc(A.goods[m[0]].toLowerCase()) + " " + (m[2] == null ? "never" : m[2])).join(", ") + "</td></tr>";
+  });
+  h += "</table>";
+  if (r.kind !== "use" && r.index < A.methods) {
+    const w = A.islands.map((isl) => isl.works[r.index]);
+    h += "<p class='note'>The first works of it standing, island by island: " + w.map((y) => y == null ? "none" : y).join(" ") + ".</p>";
+  }
+  $("details").innerHTML = h;
+}
+
+// ---- one island, town by town
+function landPath(isl, s) {
+  const [wh, runs] = isl.land.split(";"), [W, H] = wh.split(",").map(Number), r = runs.split(",").map(Number);
+  let d = "", c = 0, land = false;
+  for (const n of r) {
+    if (land) {
+      let a = c, left = n;
+      while (left > 0) {
+        const x = a % W, y = Math.floor(a / W), take = Math.min(left, W - x);
+        d += "M" + (x * s) + "," + (y * s) + "h" + (take * s) + "v" + s + "h" + (-take * s) + "z";
+        a += take; left -= take;
+      }
+    }
+    c += n; land = !land;
+  }
+  return { d: d, W: W, H: H };
+}
+function shade(t) { const a = [58, 52, 44], b = [228, 214, 182]; return "rgb(" + a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(",") + ")"; }
+function spreadDraw() {
+  const box = $("spread");
+  box.innerHTML = "";
+  const isl = A.islands[st.island], t = st.idea;
+  if (!isl || t == null) { $("spreadNote").textContent = "Choose an island and an idea of the tree above, or click a row."; return; }
+  const yr = isl.found[t], here = isl.town[t];
+  const towns = isl.towns.map((tw) => ({ tw: tw, y: tw.knew[t] }));
+  const known = towns.filter((x) => x.y != null).map((x) => x.y).sort((a, b) => a - b);
+  $("spreadTitle").textContent = "Island " + isl.seed + ": " + A.tech_label[t] + ", town by town";
+  $("spreadNote").innerHTML = yr == null ? "Island " + isl.seed + " never found it." :
+    "Found in " + yr + (here != null ? " in " + esc((isl.towns.find((x) => x.t === here) || {}).name || "town " + here) : "") +
+    ". A town is drawn as knowing it from the first year's end at which its knowledge stood above " + A.knows + ", from which a works of it may be built there. " +
+    (known.length ? known.length + " of " + towns.length + " towns came to know it, the first in " + known[0] + " and the last in " + known[known.length - 1] + " (" + (known[known.length - 1] - known[0]) + " years)" : "No town came to know it") +
+    ". Dark is early, pale is late; an open ring never knew it; the double ring is the town that found it.";
+  // the map
+  const s = Math.max(2, Math.min(5, Math.floor(560 / Math.max(1, +isl.land.split(",")[0]))));
+  const lp = landPath(isl, s);
+  const svg = el("svg", { width: lp.W * s + 20, height: lp.H * s + 20, viewBox: "-10 -10 " + (lp.W * s + 20) + " " + (lp.H * s + 20) }, box);
+  el("rect", { x: -10, y: -10, width: lp.W * s + 20, height: lp.H * s + 20, fill: "var(--sea)" }, svg);
+  el("path", { d: lp.d, fill: "var(--land)" }, svg);
+  const lo = known.length ? known[0] : 0, hi = known.length ? known[known.length - 1] : 1;
+  towns.slice().sort((a, b) => (b.y == null ? 1e9 : b.y) - (a.y == null ? 1e9 : a.y)).forEach(({ tw, y }) => {
+    const cx = tw.x * s + s / 2, cy = tw.y * s + s / 2;
+    const g = el("g", {}, svg);
+    if (tw.t === here) el("circle", { cx: cx, cy: cy, r: 9, fill: "none", stroke: "#2b2620", "stroke-width": 1.2 }, g);
+    el("circle", { cx: cx, cy: cy, r: 6, fill: y == null ? "#fbf8f1" : shade(hi > lo ? (y - lo) / (hi - lo) : 0), stroke: "#2b2620", "stroke-width": 0.9 }, g);
+    if (y != null) el("text", { x: cx + 8, y: cy + 4, "font-size": 10.5, fill: "#2b2620" }, g).textContent = y;
+    const tip = el("title", {}, g); tip.textContent = tw.name + " (town " + tw.t + ", from " + tw.from + "): " + (y == null ? "never knew it" : "knew it from " + y);
+  });
+  // the strip: each town's year, in order
+  const list = towns.slice().sort((a, b) => (a.y == null ? 1e9 : a.y) - (b.y == null ? 1e9 : b.y) || a.tw.t - b.tw.t);
+  const y0 = Math.min(yr == null ? A.y1 : yr, lo) - 2, y1 = Math.max(hi, (yr == null ? lo : yr) + 5) + 2;
+  const SW = 520, SL = 150, SH = 14 * list.length + 40;
+  const sv = el("svg", { width: SW, height: SH }, box);
+  const X = (v) => SL + (SW - SL - 20) * (v - y0) / Math.max(1, y1 - y0);
+  for (let v = Math.ceil(y0 / 5) * 5; v <= y1; v += 5) {
+    el("line", { x1: X(v), x2: X(v), y1: 16, y2: SH - 16, stroke: "#e2d8c4", "stroke-width": v % 10 ? 0.5 : 1 }, sv);
+    if (v % 10 === 0) el("text", { x: X(v), y: 11, "font-size": 10, "text-anchor": "middle", fill: "#776d60" }, sv).textContent = v;
+  }
+  if (yr != null) el("line", { x1: X(yr), x2: X(yr), y1: 14, y2: SH - 14, stroke: "var(--hist)", "stroke-width": 1, "stroke-dasharray": "3 2" }, sv);
+  list.forEach(({ tw, y }, k) => {
+    const yy = 26 + k * 14;
+    el("text", { x: SL - 6, y: yy + 4, "font-size": 10.5, "text-anchor": "end", fill: y == null ? "#9a8f7e" : "#2b2620" }, sv).textContent = tw.name + (tw.from > A.y0 ? " (" + tw.from + ")" : "");
+    if (tw.from > (yr == null ? A.y1 : yr) && tw.from >= y0) el("line", { x1: X(tw.from), x2: X(tw.from), y1: yy - 4, y2: yy + 4, stroke: "#776d60" }, sv);
+    if (y != null) el("circle", { cx: X(y), cy: yy, r: 3.4, fill: tw.t === here ? "#fbf8f1" : "#2b2620", stroke: "#2b2620", "stroke-width": 1.2 }, sv);
+    else el("text", { x: SW - 18, y: yy + 4, "font-size": 10, "text-anchor": "end", fill: "#9a8f7e" }, sv).textContent = "never";
+  });
+}
+
+// ---- the tables
+function tables() {
+  const R = A.rows;
+  const apart = R.map((r, k) => k).filter((k) => spread(R[k]) != null).sort((a, b) => spread(R[b]) - spread(R[a]) || a - b).slice(0, 10);
+  let h = "<table class='t'><tr><th>idea</th><th>spread</th><th>first</th><th>last</th><th>never</th><th>history</th></tr>";
+  for (const k of apart) { const r = R[k], f = found(r); h += "<tr><td>" + esc(r.label) + "</td><td class='n'>" + spread(r) + " years</td><td class='n'>" + f[0] + "</td><td class='n'>" + f[f.length - 1] + "</td><td class='n'>" + never(r) + "</td><td class='n'>" + (r.target == null ? "none" : r.target) + "</td></tr>"; }
+  $("apart").innerHTML = h + "</table>";
+  const gap = (r) => { const m = mean(found(r)); return m == null || r.target == null ? null : m - r.target; };
+  const far = R.map((r, k) => k).filter((k) => gap(R[k]) != null).sort((a, b) => Math.abs(gap(R[b])) - Math.abs(gap(R[a])) || a - b).slice(0, 10);
+  h = "<table class='t'><tr><th>idea</th><th>mean less history</th><th>history</th><th>mean</th><th>never</th></tr>";
+  for (const k of far) { const r = R[k]; h += "<tr><td>" + esc(r.label) + "</td><td class='n'>" + (gap(r) >= 0 ? "+" : "") + fmt(gap(r), 1) + " years</td><td class='n'>" + r.target + "</td><td class='n'>" + fmt(mean(found(r)), 1) + "</td><td class='n'>" + never(r) + "</td></tr>"; }
+  $("history").innerHTML = h + "</table>";
+  $("knownNote").textContent = "Every idea of the data the runs were played on is a row: " + R.filter((r) => r.kind !== "use").length + " of the tree's (methods and techniques) and " + R.filter((r) => r.kind === "use").length +
+    " uses of the tasks rule. Known in 1750, and so not rows (" + A.known.length + "): " + A.known.join(", ") + ".";
+  h = "<table class='t'><tr><th>idea</th><th>history</th><th>found on</th></tr>";
+  for (const k of A.order) { const r = R[k]; h += "<tr><td>" + esc(r.label) + "<br><small class='note'>" + r.kind + "</small></td><td class='n'>" + (r.target == null ? "<i>none in the data</i>" : r.target) + "</td><td>" + esc(r.on) + "</td></tr>"; }
+  $("on").innerHTML = h + "</table>";
+  if (A.against) {
+    $("againstTitle").style.display = "";
+    $("againstTitle").textContent = "Here against " + A.against.label + ": the spread of each idea";
+    const rows = A.order.map((k) => R[k]).filter((r) => { const k2 = r.target != null ? r.target : median(found(r)); return k2 == null || k2 >= 1900; });
+    h = "<p class='note'>The faint grey line under each row of the timeline is " + esc(A.against.label) + " (" + esc(A.against.command || "") + "): its first to its last island, with its median. For each idea of 1900 and after, the years between the first island and the last, there and here.</p>" +
+      "<table class='t'><tr><th>idea</th><th>history</th><th>" + esc(A.against.label) + "</th><th>here</th><th>change</th></tr>";
+    for (const r of rows) {
+      const ag = A.against.rows[key(r)], a = ag && ag[0] != null ? ag[1] - ag[0] : null, b = spread(r);
+      h += "<tr><td>" + esc(r.label) + "</td><td class='n'>" + (r.target == null ? "none" : r.target) + "</td><td class='n'>" + (a == null ? "-" : a + " y" + (ag[3] ? ", ×" + ag[3] : "")) + "</td><td class='n'>" + (b == null ? "-" : b + " y" + (never(r) ? ", ×" + never(r) : "")) + "</td><td class='n'>" + (a == null || b == null ? "" : (b - a >= 0 ? "+" : "") + (b - a)) + "</td></tr>";
+    }
+    $("againstBox").innerHTML = h + "</table>";
+  }
+}
+
+function legend() {
+  const dot = (filled) => "<svg width='12' height='12'><circle cx='6' cy='6' r='3.2' fill='" + (filled ? "#2b2620" : "#fbf8f1") + "' stroke='#2b2620' stroke-width='" + (filled ? 0.6 : 1.1) + "'/></svg>";
+  let h = "<span>" + dot(true) + " islands 1 to 8 · " + dot(false) + " islands 9 to 16, each at the year it found the idea</span>" +
+    "<span><svg width='34' height='12'><rect x='1' y='1' width='32' height='10' rx='4' fill='#e3d3ae'/></svg> from the first island to the last</span>" +
+    "<span><svg width='8' height='18'><line x1='4' x2='4' y1='0' y2='18' stroke='#8a2f1c' stroke-width='2.2'/></svg> our own history's year (the data's target)</span>" +
+    "<span>×n: islands that never found it by " + A.y1 + "</span><span><i>italic</i>: a use of the tasks rule</span>";
+  if ((A.edits || []).some((d) => d.edit.what === "pin")) h += "<span><svg width='12' height='12'><path d='M6,1 l4,4 l-4,4 l-4,-4 z' fill='none' stroke='#2b2620'/></svg> ⌖ pinned by hand to that year</span>";
+  if (A.against) h += "<span><svg width='34' height='12'><line x1='2' x2='32' y1='6' y2='6' stroke='#b8ad9a' stroke-width='2.2' stroke-linecap='round'/></svg> the same in " + esc(A.against.label) + "</span>";
+  $("legend").innerHTML = h;
+}
+
+function pickers() {
+  const si = $("island");
+  si.innerHTML = "";
+  A.islands.forEach((isl, i) => { const o = document.createElement("option"); o.value = i; o.textContent = "Island " + isl.seed; si.appendChild(o); });
+  si.value = st.island;
+  const sd = $("idea");
+  sd.innerHTML = "";
+  for (const k of A.order) {
+    const r = A.rows[k];
+    if (r.kind === "use") continue;
+    const o = document.createElement("option"); o.value = r.index; o.textContent = r.label + (r.target ? " (" + r.target + ")" : ""); sd.appendChild(o);
+  }
+  if (st.idea == null) st.idea = +sd.options[0].value;
+  sd.value = st.idea;
+}
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  const isl = h.get("island");
+  if (isl != null) { const i = A.islands.findIndex((x) => String(x.seed) === isl); if (i >= 0) st.island = i; }
+  const idea = h.get("idea");
+  if (idea != null) { const t = A.tech_name.indexOf(idea); if (t >= 0) st.idea = t; }
+  const show = h.get("show");
+  if (show) st.show = show;
+}
+function writeHash() {
+  const parts = ["island=" + A.islands[st.island].seed];
+  if (st.idea != null) parts.push("idea=" + A.tech_name[st.idea]);
+  if (st.show !== "all") parts.push("show=" + st.show);
+  history.replaceState(null, "", "#" + parts.join("&"));
+}
+function start() {
+  if (!A) { document.body.innerHTML = "<p>No figures in this page.</p>"; return; }
+  const pins = (A.edits || []).filter((d) => d.edit.what === "pin").map((d) => d.edit.idea + (d.edit.when === "not_before" ? " held back until " : " pinned to ") + d.edit.year);
+  $("made").textContent = "Made " + A.made + " by " + A.command + ", code " + A.code + "; the " + A.rules + " rules, " + A.families + " families" + (A.sets ? ", with " + A.sets : "") +
+    "; islands " + A.islands.map((i) => i.seed).join(" ") + ", " + A.y0 + " to " + A.y1 + ". " +
+    (A.edits && A.edits.length ? "Played with edits by hand: " + (pins.length ? pins.join(", ") : A.edits.length + " of them") + "." : "No edits: each island is the sweep's own.") +
+    (A.failed.length ? " Runs that failed and are not drawn: " + A.failed.map((x) => "island " + x[0] + " (" + x[1] + ")").join("; ") + "." : "");
+  readHash();
+  $("show").value = st.show;
+  pickers(); legend(); draw(); tables(); spreadDraw();
+  $("show").onchange = (e) => { st.show = e.target.value; writeHash(); draw(); };
+  $("island").onchange = (e) => { st.island = +e.target.value; writeHash(); spreadDraw(); };
+  $("idea").onchange = (e) => { st.idea = +e.target.value; writeHash(); spreadDraw(); };
+  window.addEventListener("resize", draw);
+}
+start();
+</script>
+</body>
+</html>

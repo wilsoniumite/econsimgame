@@ -26,6 +26,7 @@
 pub mod ablate;
 pub mod accounts;
 pub mod atlas;
+pub mod atlas_ideas;
 pub mod canals;
 pub mod carting;
 pub mod chronicle;

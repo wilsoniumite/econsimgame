@@ -7,6 +7,7 @@
 //! routes. Its productivity then climbs a learning curve with cumulative output.
 
 use crate::content::Content;
+use crate::edits::Pinned;
 use crate::names::surname;
 use crate::params::Params;
 use crate::rng::{Rng, choice_index, choice_p, random};
@@ -26,35 +27,43 @@ pub fn discovery(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i
             continue;
         }
         // a pin by hand (edits::Pin; not in the Python): held back, or found in
-        // its year with no draw. A run with no edits has no pins, and then
-        // this is the Python's loop, draw for draw
-        if !st.by_hand.pins.is_empty() {
-            match crate::edits::pin_says(st, crate::edits::Idea::Tech(t), year) {
-                crate::edits::Pinned::Hold => continue,
-                crate::edits::Pinned::Find if crate::woods::sought(C, P, t) => {
-                    crate::edits::find_pinned(st, C, t, year, events);
-                    found.push(t);
-                    continue;
-                }
-                _ => {}
-            }
-        }
+        // its year with no draw of its own. A run with no edits has no pins,
+        // and then this is the Python's loop, draw for draw
+        let pinned = if st.by_hand.pins.is_empty() { Pinned::Free } else { crate::edits::pin_says(st, crate::edits::Idea::Tech(t), year) };
         // nothing is sought before the year the content says (the overlay's
         // `found_after`; never in the port's content), and managed woodland only
         // with its rule on (woods, docs/rules/woods.md): no number is drawn for it
         if year < C.tech_after.get(t).copied().unwrap_or(0) ||!crate::woods::sought(C, P, t) {
+            if pinned == Pinned::Find && crate::woods::sought(C, P, t) {
+                crate::edits::find_pinned(st, C, t, year, events);
+                found.push(t);
+            }
             continue;
         }
         let X0 = st.disc_X0.row(t).to_vec();
         let req: Vec<usize> = (0..C.G).filter(|&g| X0[g] > 0.0).collect();
         if req.is_empty() {
+            if pinned == Pinned::Find {
+                crate::edits::find_pinned(st, C, t, year, events);
+                found.push(t);
+            }
             continue;
         }
         let min_ratio = req.iter().map(|&g| st.cumprod[g] / X0[g]).fold(f64::INFINITY, f64::min);
         let progress = min_ratio.max(0.0);
         let p4 = progress.powf(4.0);
         let hz = P.discovery_rate * p4 / (1.0 + p4);
-        if random(rng) < hz {
+        let hit = random(rng) < hz;
+        // a pinned idea takes its year's number as the loop would, so that the
+        // island's draws stay its own until the pin changes a find
+        if pinned != Pinned::Free {
+            if pinned == Pinned::Find {
+                crate::edits::find_pinned(st, C, t, year, events);
+                found.push(t);
+            }
+            continue;
+        }
+        if hit {
             let act: Vec<usize> = (0..st.T_max).filter(|&i| st.town_active[i]).collect();
             // the likeliest place is the one handling most of the ingredients,
             // but any town that handles them at all has a chance

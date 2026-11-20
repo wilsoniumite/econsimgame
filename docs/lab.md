@@ -41,6 +41,7 @@ runs, about what two sweeps cost. Grids of many settings, or many edits from
 
 ```text
 isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
+                  [--pin NAME@YEAR]... [--hold NAME@YEAR]...
                   [--seeds 1-8] [--rules port|game] [--families N] [--end-year Y]
                   [--years 1850,1900,1950,2000,2050] [--facts NAME,...] [--jobs N] [--quiet]
 ```
@@ -55,6 +56,10 @@ isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
   `sweep --set`.
 - `--edits FILE.json` reads a list of dated edits (below), the file
   `run --edits` reads, and puts it in the treated arm before any `--rule`.
+- `--pin NAME@YEAR` pins an idea to be found in YEAR on every island, and
+  `--hold NAME@YEAR` holds one back until YEAR (the pin, below). Both are
+  given before January of the run's first year, and the name is checked
+  against the content before any run.
 - `--seeds` (islands 1 to 8), `--rules` (the game's), `--families` (6) and
   `--end-year` (2050) say which islands are played, and how.
 - `--years` (1850, 1900, 1950, 2000 and 2050, those of them inside the run)
@@ -157,6 +162,46 @@ by row from the island's north-west corner), founded at the year's end;
 `rule` sets a rule by name. A town numbered here is the same town in both
 arms only up to the edit, so a town or a square is best named for an edit
 early in the run, or for one island at a time.
+
+### The pin
+
+```json
+[
+  {"before": [1750, 1], "edit": {"what": "pin", "idea": "electrical_works", "year": 1885}},
+  {"before": [1750, 1], "edit": {"what": "pin", "idea": "office_computing", "year": 1970, "when": "not_before"}}
+]
+```
+
+`pin` names an idea: one of the tree's methods or techniques, by its name in
+the data (`data/content.toml`, `data/game.toml`), or a use of the tasks rule
+(`data/tasks.toml`). With `"when": "in"`, which may be left out, the island
+does not find it before `year` and finds it in that year whatever it has
+made: an idea of the tree in the town that handled most of what it is found
+on the year before (the town `tech::discovery` weighs heaviest, with no draw
+and no inventor named), a use at that year's turn. With `"when":
+"not_before"` it is held back until `year`, and after that found as it would
+have been, by its thresholds and its draw. The pin stands from the month it
+is given to the end of the run, and a second pin of the same idea takes the
+first one's place. It is refused for a name that is no idea, an idea known in
+1750 or found already, and a year to find it in that is gone (an idea of the
+tree is looked for at a year's end, a use at the turn into the next year, so
+a pin given before January 1900 may find an idea of the tree in 1900 and a
+use from 1901).
+
+Nothing else changes: the thresholds stay as the data has them, and an idea
+pinned early is found on an island that may not yet make what it needs (a
+power station found before the island makes electrical goods builds nothing
+until it does). With no pin given the rules that find ideas never ask after
+one, and a run is the run to the bit (`tests/atlas_ideas.rs`).
+
+A kept session of the sandbox treats a pin as any edit by hand: it is one
+more order in the game's log (`save::Order::ByHand`), dated by the year and
+month it was given, so the session played again gives the pin again in the
+same month, and the island is the same to the last digit. Its news, "By hand:
+Electrical works pinned to 1885", stands in the island's history, and the
+find, when it comes, is told as a discovery "in the year it was pinned to".
+The game has no button for it yet; the hand on the atlas's timeline is a
+later piece.
 
 ## Three experiments
 
