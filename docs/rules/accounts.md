@@ -881,6 +881,15 @@ and the canals three things had to be told to them, and the tests said so
 
 `tests/accounts.rs` (`the_books_keep_up_with_the_mines_and_the_canals`)
 holds all three in place against the mines' and the canals' own counts.
+
+The state's purse ([state.md](state.md)) was the next. Its flows (the teachers'
+pay, the pensions and the rate on pay) are paid after the month's check of
+incomes, so the towns' kinds still add up to what was checked, and the books
+are told them apart (`accounts::note_state`): the island's account has
+`pay_state` among the wage bill and among spending (the treasury bought the
+teachers' work), `pensions` and `tax_pay` among what reached the households,
+and the treasury among who holds the money. Each is left out of the run file
+while it is nothing, so a run without the purse writes the books it wrote.
 Kept town ground needed nothing: a works' rent is still its `f_rent`. Nor
 did the island made by water (`land`, off in the game until the viewer can
 draw it): with it thrown the books balance and change nothing
