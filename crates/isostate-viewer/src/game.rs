@@ -317,7 +317,7 @@ fn arrive(r: &Replay, g: &world::Ground, slots: &scatter::Slots, held: Vec<Box<i
     for m in &held {
         live::apply_month(&mut r, m);
     }
-    live::apply_year(&mut r, &end.year);
+    end.apply(&mut r);
     let t2 = t0.elapsed().as_secs_f32();
     let mut slots = slots.clone();
     scatter::place_new_firms(&r, g, &mut slots);
@@ -430,7 +430,7 @@ pub(crate) fn pump(
                         months_into_run(&mut game, &mut data, &mut ui);
                         let Data { r, g, slots, .. } = &mut *data;
                         let r = std::sync::Arc::make_mut(r);
-                        live::apply_year(r, &end.year);
+                        end.apply(r);
                         scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
                     } else {
                         let (r, g, slots) = (data.r.clone(), data.g.clone(), data.slots.clone());

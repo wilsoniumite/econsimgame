@@ -302,6 +302,118 @@ pub struct Replay {
     /// core's longrun anchor, docs/rules/longrun.md); empty for a run to 1900,
     /// whose rent bytes are in 1750's money.
     pub rent_scale: Vec<f32>,
+    /// What the ground holds and what each town makes, for the map views of
+    /// where a good is made and of the deposits (`overlay.rs`).
+    pub holds: Holds,
+}
+
+/// What the ground holds and what each town makes, as far as the run keeps
+/// them: the deposits and the soil (once for the run), what each town made of
+/// each good in each year (the books' `made`, under the game's rules), and in a
+/// game the standing timber and how much of each worked deposit is left.
+/// Anything the run does not keep is empty, and the views say so.
+#[derive(Clone, Default, Debug)]
+pub struct Holds {
+    /// Each land sector's name and the good it makes, in the core's order.
+    pub sectors: Vec<(String, usize)>,
+    /// The fields of the ground by name (`isostate_core::record::STATIC_FIELDS`:
+    /// fertility, ore, coal, rock, clay, pasture, forest_pot), 0 to 255 a cell.
+    pub fields: Vec<(String, Vec<u8>)>,
+    /// What each town made of each good in a year, `[year, town, good]`, with
+    /// `made_towns` towns to a year; empty for a run that kept no books.
+    pub made: Vec<f32>,
+    pub made_towns: usize,
+    /// The timber standing on each cell as each year ends, 0 to 255 on the
+    /// fields' scale, `[year, cell]`; empty where it is not known (a recorded run).
+    pub cover: Vec<u8>,
+    /// For each year, the cells whose deposit has been worked: the cell, the
+    /// kind (`DEPOSIT_FIELDS`) and the share of its first richness the hands
+    /// still meet there, 0 to 255. Empty where it is not known (a recorded run).
+    pub left: Vec<Vec<(u32, u8, u8)>>,
+}
+
+/// The fields that are deposits, in the order `Holds::left` numbers them.
+pub const DEPOSIT_FIELDS: [&str; 4] = ["coal", "ore", "clay", "rock"];
+
+impl Holds {
+    /// A field of the ground by name, if the run has it.
+    pub fn field(&self, name: &str) -> Option<&[u8]> {
+        self.fields.iter().find(|f| f.0 == name).map(|f| f.1.as_slice())
+    }
+
+    /// What town `t` made of good `g` in year `k`, if the run kept it.
+    pub fn made(&self, k: usize, t: usize, g: usize, ng: usize) -> Option<f32> {
+        if t >= self.made_towns {
+            return None;
+        }
+        self.made.get((k * self.made_towns + t) * ng + g).copied().filter(|v| v.is_finite())
+    }
+
+    /// Write the year a game has just played: what its towns made, its standing
+    /// timber and what is left of its deposits (`live::holds_year`).
+    pub fn take_year(&mut self, k: usize, ny: usize, n: usize, ng: usize, y: &HoldsYear) {
+        if k >= ny {
+            return;
+        }
+        if !y.made.is_empty() && ng > 0 {
+            let nt = y.made.len() / ng;
+            if self.made_towns != nt {
+                // the towns' slots are fixed for a game, so this happens once
+                self.made = vec![0.0; ny * nt * ng];
+                self.made_towns = nt;
+            }
+            self.made[k * nt * ng..(k + 1) * nt * ng].copy_from_slice(&y.made);
+        }
+        if y.cover.len() == n {
+            if self.cover.len() != ny * n {
+                self.cover = vec![0; ny * n];
+            }
+            self.cover[k * n..(k + 1) * n].copy_from_slice(&y.cover);
+        }
+        if self.left.len() < ny {
+            self.left.resize(ny, Vec::new());
+        }
+        self.left[k] = y.left.clone();
+    }
+}
+
+/// One year of `Holds` as a game hands it over.
+#[derive(Clone, Default, Debug)]
+pub struct HoldsYear {
+    /// `[town, good]`
+    pub made: Vec<f32>,
+    /// `[cell]`
+    pub cover: Vec<u8>,
+    pub left: Vec<(u32, u8, u8)>,
+}
+
+/// The cell field a land sector works, by the sector's name: the farms the
+/// soil, the woods the trees, each digging its deposit.
+pub fn sector_field(sector: &str) -> Option<&'static str> {
+    Some(match sector {
+        "farm" => "fertility",
+        "pasture" => "pasture",
+        "forestry" => "forest_pot",
+        "quarry" => "rock",
+        "claypit" => "clay",
+        "ironmine" => "ore",
+        "coalmine" => "coal",
+        _ => return None,
+    })
+}
+
+/// The display class of a land sector, by its name (`isostate_core::record::DISP`).
+pub fn sector_class_named(sector: &str) -> Option<u8> {
+    Some(match sector {
+        "farm" => 1,
+        "pasture" => 2,
+        "forestry" => 3,
+        "quarry" => 5,
+        "claypit" => 6,
+        "ironmine" => 7,
+        "coalmine" => 8,
+        _ => return None,
+    })
 }
 
 /// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
@@ -635,6 +747,46 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         }
         None => None,
     };
+    // what the ground holds and what each town made (`Holds`): the sectors are read
+    // from the header a second time, since the viewer's header leaves them out
+    #[derive(Deserialize)]
+    struct SectorsOnly {
+        #[serde(default)]
+        sectors: Vec<SectorInfo>,
+    }
+    #[derive(Deserialize)]
+    struct SectorInfo {
+        name: String,
+        good: usize,
+    }
+    let sectors = serde_json::from_slice::<SectorsOnly>(&buf[4..base]).map(|s| s.sectors).unwrap_or_default();
+    let mut holds = Holds { sectors: sectors.into_iter().map(|s| (s.name, s.good)).collect(), ..Default::default() };
+    for name in isostate_core::record::STATIC_FIELDS {
+        if has(name) {
+            let v = u8s(name)?;
+            if v.len() == w * h {
+                holds.fields.push((name.to_string(), v));
+            }
+        }
+    }
+    // the books' table of goods, `[year, town, good, column]`: only its first column, what was made
+    if has("acct_goods") {
+        let shape = find("acct_goods")?.shape.clone();
+        let ng = header.goods.len();
+        let kg = isostate_core::accounts::KG;
+        let made_col = isostate_core::accounts::GOODS_FIELDS.iter().position(|&c| c == "made").unwrap_or(0);
+        if shape.len() == 4 && shape[2] == ng && shape[3] == kg && shape[0] <= ny {
+            let table = f32s("acct_goods")?;
+            let nt = shape[1];
+            if table.len() == shape[0] * nt * ng * kg {
+                holds.made = vec![0.0; ny * nt * ng];
+                holds.made_towns = nt;
+                for (i, row) in table.chunks_exact(kg).enumerate() {
+                    holds.made[i] = row[made_col];
+                }
+            }
+        }
+    }
     Ok(Replay {
         w,
         h,
@@ -676,6 +828,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         works,
         workings,
         rent_scale,
+        holds,
     })
 }
 

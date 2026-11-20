@@ -35,8 +35,8 @@ The first build compiles Bevy and takes a while. On Linux you need `pkg-config`,
 | Wheel, R / F | zoom |
 | Click | ask about a works, a town or a square |
 | 1 2 3 4 | the Family, Holdings, Markets and News panels (in a sandbox 1 to 5: Hand, Rules, Markets, News, Families) |
-| M | map views: rent, markets, reach, prices, wages, town growth, residents, then the plain map (Shift+M back) |
-| G | the next good, when prices are mapped (Shift+G back) |
+| M | map views: rent, markets, reach, prices, made here, wages, town growth, residents, deposits, then the plain map (Shift+M back) |
+| G | the next good, when prices or where a good is made are mapped, or the next kind of ground on the deposits (Shift+G back) |
 | H | every key |
 | Esc | close the note about what was clicked, put off a decision, or close the card at the century's end |
 | T | tilt-shift (miniature focus) on and off |
@@ -82,21 +82,35 @@ How families work inside the economy, and what the scripted test players found, 
 
 ### Map views
 
-Press **M** to step through seven views washed over the ground (Shift+M steps back), or click a chip on the legend card at the bottom of the screen. On the plain map the card shrinks to a "Map views" button, which brings back the view last used.
+Press **M** to step through nine views washed over the ground (Shift+M steps back), or click a chip on the legend card at the bottom of the screen. On the plain map the card shrinks to a "Map views" button, which brings back the view last used.
 
 | View | What it shows | Scale |
 |---|---|---|
-| Rent | what the ground of each square earns its owners in a year | by ratio, leaving out the poorest tenth and the dearest twentieth of the land, so the ends read "or less" and "or more" |
+| Rent | what the ground of each square earns its owners in a year | by ratio |
 | Markets | the country that trades in each town's market, with ink lines where one town's pull gives way to the next | none: six soft tints, no two neighbours alike |
-| Reach | how far each square is from the market it trades in, as kilometres of flat open country | from "at the market" to a round distance nine tenths of the land is within |
-| Prices | the year's average price of one good in each square's market town | from the cheapest town to the dearest, both named |
-| Wages | what a month's work pays in each town, across its market area | from the lowest-paying town to the highest |
-| Town growth | the year each square of town ground joined its town | from the oldest ground the record dates to the run's last year, the same in every year |
-| Residents | how many people live on each square of town ground | by ratio, from 300 to 1,400, the same in every year |
+| Reach | how far each square is from the market it trades in, as kilometres of flat open country | evenly, from "at the market" |
+| Prices | the year's average price of one good in each square's market town; the note names the cheapest and the dearest town | evenly |
+| Made here | how much of one good was made in the year: a good of the land (grain, wool, timber, stone, clay, ore, coal) square by square, a good of the works over each town's own ground | by ratio |
+| Wages | what a month's work pays in each town, across its market area | evenly |
+| Town growth | the year each square of town ground joined its town | evenly; over the whole run, from the oldest ground the record dates to the run's last year, the same in every year |
+| Residents | how many people live on each square of town ground | by ratio |
+| Deposits | what the ground holds, one kind at a time: coal, iron ore, clay, stone, the standing timber, the soil and the grazing | evenly, from "none" |
 
-The last two need a record that holds the towns' ground, which a run under the game's rules has; on a run under the port's rules they say so and leave the land blank.
+Town growth and residents need a record that holds the towns' ground, and Made here one that kept the books of account; a run under the game's rules has both, and on a run under the port's rules they say so and leave the land blank.
 
-The price map starts with grain. **G** shows the next good and Shift+G the one before, as do Back and Next on the card; opening a good in the Markets panel sets the map to that good too. The legend card gives the year, one sentence on what is shown, and the real figures at the two ends. Click a square with a view on and the inspector adds the view's value there. Trees are hidden while a view is on, and the views that go by market towns name every town. Nothing is shown that the record does not hold: rent is stored on a scale that stops at 1000 a month, so the middle of a town reads "or more".
+**How the colours are spread.** Every view that colours by a number has three chips on its card, "Colours from" This year, 30 years and Whole run, and the one lit says which is in use. The choice is kept for each view while the viewer is open (`src/ranges.rs`).
+
+- *This year*: the palest and the darkest tints stand at the least and the greatest of what the view shows this year.
+- *30 years*, which every view opens on but Town growth and Deposits: the least and greatest of the last thirty years. The two ends glide: each year an end goes a fifth of the way (`ranges::PACE`) from where it stood toward where the thirty years would put it, so a wild year coming into the window, or leaving it thirty years on, moves the colours a little each year and never at a jump. Looking back at an earlier year shows the ends as they stood then.
+- *Whole run*: the least and greatest of every year played so far, or of the whole record in a recorded run. Town growth and Deposits open on it, since their scales are their own: the run's years, and the ground as it lay before anything was worked.
+
+The least and the greatest are never one odd town's or square's. They are taken a little inside the extremes: the twentieth part of the towns or squares at either end is left out (`ranges::LOW`, `ranges::HIGH`), at least one at each end, so the one dear market of twenty does not squeeze the other nineteen into two tints; with fewer than five the ends are the least and the greatest. What lies beyond the ends is drawn in the end's tint, and the card says "and below" and "and above" under them. Along the bar stand three to six round figures (£1.00, £1.20, £1.40; 10, 100, 1,000 on a scale by ratio), each at its place with a fine mark on the bar. A year's ends are reckoned once and kept: a year that arrives is reckoned in its frame, which costs a few tenths of a millisecond, and when a view is opened on a run of many years (30 years and Whole run want every year before) the years are reckoned off the main thread, the year's own ends standing in until they come.
+
+**Made here** reads the books of account, which keep what each town made of each good in a year, its land and its works together. The record keeps no figure of a farm square by square, so a crop, wool and timber are each town's figure shared among the squares of its market by how much of each square the record gives to that use and how rich its ground is for it (the soil, the grazing, the timber standing). A pit's, a quarry's and a mine's figure is its own: each working with what it raised, on its pit head's square. A good of the works is each town's figure laid over the town's own ground. A good nobody made that year says so, in place of a map of nothing.
+
+**Deposits** shows the ground's fields as the core keeps them, from 0 to 1, and in a game how much of each worked deposit is left: the richness the hands meet there now, which falls as it is worked (the core's `docs/rules/mines.md`, E), with the squares that have been worked ruled round in ink and the note saying what share of the island's first deposit is left. The standing timber is the woods' cover as each year ends. A recorded run keeps neither, and says so: its deposits are drawn as they lay at the start, and its timber as what the ground could carry where it is wood. Nothing can be changed here yet.
+
+The price and made maps start with grain and the deposits with coal. **G** shows the next good or kind and Shift+G the one before, as do Back and Next on the card; opening a good in the Markets panel sets the maps to that good too. The legend card gives the year, one sentence on what is shown, and the scale. Click a square with a view on and the inspector adds the view's value there. Trees are hidden while a view is on, and the views that go by market towns name every town. Nothing is shown that the record does not hold: rent is stored on a scale that stops at 1000 a month, so the middle of a town reads "or more".
 
 In a live game, where the top bar shows a month, the price and wage maps show the last finished month in place of the year's average, and the legend and the inspector name it ("The price of grain in March 1751"). What the towns paid and charged month by month is held only for the months played since the game was opened; before that, and in a recorded run, the two maps show the year's average. The other views are the year's, as the map is.
 
@@ -215,7 +229,7 @@ WGPU_BACKEND=vulkan cargo run -p isostate-viewer -- runs/rust7/run.bin --size 16
     --view out/island.png,1900
 ```
 
-Each `--view` is `path,year,x,z,yaw,pitch,distance[,season][,words]` in map cells and degrees; missing values fall back to the whole-island view (or the home town in a game), and a value that is not a number is refused. A number after the distance is the season (0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn), overriding `--season` for that shot. Words after the distance may come in any order: the side panel to show (`family`, `holdings`, `markets`, `news`, or `none`), a map view (`rent`, `areas`, `reach`, `price`, `price:coal` or any other good's name, `wages`, `growth`, `residents`, `plain`; `--overlay NAME` sets it for the whole run), and `island` or `open:GOOD` for what the Markets panel shows (`island:months` and `open:GOOD:months` show it month by month). A word that is none of these is refused, as is a good that the run does not have, whether in a map view (`price:cole`) or for the Markets panel (`open:cole`), and both are refused before the island is made, under the option the word came from. A picture is taken as soon as its year's scenery is on screen, the renderer has every shader it is drawn with, and `--frames 12` frames have passed for it all to settle (40 unless said). `--wait 100` is the longest it waits for the shaders, in seconds (45 unless said, and 120 for `--shots` and `--land-shots`); a picture taken without them says so in the terminal. A `--view` of a year a game has not reached shows the newest year. `--shot PATH` is one picture of the view the viewer would open on, which `--year`, `--at`, `--yaw`, `--pitch` and `--dist` set.
+Each `--view` is `path,year,x,z,yaw,pitch,distance[,season][,words]` in map cells and degrees; missing values fall back to the whole-island view (or the home town in a game), and a value that is not a number is refused. A number after the distance is the season (0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn), overriding `--season` for that shot. Words after the distance may come in any order: the side panel to show (`family`, `holdings`, `markets`, `news`, or `none`), a map view (`rent`, `areas`, `reach`, `price`, `price:coal` or any other good's name, `made`, `made:coal`, `wages`, `growth`, `residents`, `deposits`, `deposits:coal` or `ore`, `clay`, `stone`, `timber`, `soil`, `grazing`, `plain`, each with `+year`, `+30` or `+all` after it for how its colours are spread, as `price:coal+year`; `--overlay NAME` sets it for the whole run), and `island` or `open:GOOD` for what the Markets panel shows (`island:months` and `open:GOOD:months` show it month by month). A word that is none of these is refused, as is a good that the run does not have, whether in a map view (`price:cole`) or for the Markets panel (`open:cole`), and both are refused before the island is made, under the option the word came from. A picture is taken as soon as its year's scenery is on screen, the renderer has every shader it is drawn with, and `--frames 12` frames have passed for it all to settle (40 unless said). `--wait 100` is the longest it waits for the shaders, in seconds (45 unless said, and 120 for `--shots` and `--land-shots`); a picture taken without them says so in the terminal. A `--view` of a year a game has not reached shows the newest year. `--shot PATH` is one picture of the view the viewer would open on, which `--year`, `--at`, `--yaw`, `--pitch` and `--dist` set.
 
 ```bash
 cargo run -p isostate-viewer -- --advance 100 --view out/coal.png,1850,60,46,0,52,130,markets,price:coal,open:coal
@@ -273,8 +287,9 @@ That one starts a game thirty years in, closes the opening card, puts off a deci
 | `print[:NOTE]` | print the clock and its date, the line under it, the cards, the orders that wait for the year's end, the cash promised to them and the squares staked out, the order panel and the side panel, and what scenery is on screen and what putting it there cost; in a sandbox also how wide the tray is laid out, how many ticks of the hand the timeline holds and the island's money each December, and on the Rules tab the names that differ from the game's |
 | `scenery[:NOTE]` | build the year on the clock afresh and say whether what is on screen is that; stops the run if it is not |
 | `tab:NAME`, `pick:X,Z`, `look:X,Z,DIST`, `scroll:PIXELS` | open a side panel (`family`, `holdings`, `markets`, `news`, or `none` to close it; any other name is refused with the script), click the map, point the camera, scroll the side panel |
-| `chip:NAME` | click a chip of the legend card: `rent`, `areas`, `reach`, `price`, `wages`, `growth`, `residents`, `plain`, or `pill` for the Map views button |
-| `good:next`, `good:back` | the legend's steps through the goods |
+| `chip:NAME` | click a chip of the legend card: `rent`, `areas`, `reach`, `price`, `made`, `wages`, `growth`, `residents`, `deposits`, `plain`, or `pill` for the Map views button |
+| `good:next`, `good:back` | the legend's steps through the goods, or the kinds of ground |
+| `range:year`, `range:30`, `range:all` | the legend's chip for how the colours are spread; `map` then adds the range, its ends and its round figures |
 | `row:GOOD` | click a good's row in the Markets panel |
 | `half:island`, `half:goods`, `half:work` | click a chip of the Markets panel; `print` on the Work half adds a `work:` line for each fifty-year mark the game holds and one for the year on the clock, every figure to four places as its charts hold it ("none" where there is none) and every class of task whether drawn or not; `isostate-core`'s example `work_charts` prints the same lines from the core, to set beside them; and from 1900 a `pay:` line for 1900, each fifty-year mark after it and the year on the clock, with the dials and every figure of the charts of pay to four places |
 | `map[:NOTE]` | let the panels catch up, then print in one line what the map and the Markets panel show |

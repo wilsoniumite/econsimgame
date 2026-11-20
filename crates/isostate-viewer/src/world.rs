@@ -1878,6 +1878,7 @@ pub(crate) mod tests {
             workings: Vec::new(),
             rent_scale: Vec::new(),
             land: None,
+            holds: Default::default(),
         };
         for c in (0..n).filter(|&c| land(c)) {
             (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = if c % w < 7 { (FARM, WOOD, 153) } else { (PASTURE, HEATH, 102) };
