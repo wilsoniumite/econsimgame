@@ -89,6 +89,11 @@ pub fn said(told: &Result<Told, String>) -> String {
                 let rows: Vec<String> = g.rows.iter().map(|(n, f)| format!("{n} {f}")).collect();
                 s.push_str(&format!(" | {}: {}", g.name, rows.join("; ")));
             }
+            // a town's ideas (`town_ideas`), counted by where they stand
+            if let Some(i) = &t.ideas {
+                use isostate_core::inspect::Stands;
+                s.push_str(&format!(" | Its ideas: {} known here, {} elsewhere, {} nowhere", i.count(Stands::Here), i.count(Stands::Elsewhere), i.count(Stands::Nowhere)));
+            }
             s
         }
         Err(why) => format!("refused: {why}"),
@@ -394,7 +399,7 @@ mod tests {
 
     #[test]
     fn an_answer_is_said_in_one_line_and_a_works_is_asked_for_by_its_slot() {
-        let told = Told { title: "Melbourne".into(), as_of: "March 1791".into(), groups: vec![Group { name: "People".into(), rows: vec![("people in the town".into(), "9,690".into()), ("hands in works".into(), "1,200".into())] }] };
+        let told = Told { title: "Melbourne".into(), as_of: "March 1791".into(), groups: vec![Group { name: "People".into(), rows: vec![("people in the town".into(), "9,690".into()), ("hands in works".into(), "1,200".into())] }], ideas: None };
         assert_eq!(said(&Ok(told)), "Melbourne, March 1791 | People: people in the town 9,690; hands in works 1,200");
         assert_eq!(said(&Err("The square at 3, 4 is sea.".into())), "refused: The square at 3, 4 is sea.");
         assert_eq!(thing_of(Pick::Firm(12)), Thing::Works(12));

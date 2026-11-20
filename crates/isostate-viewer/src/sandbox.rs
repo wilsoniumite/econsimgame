@@ -335,7 +335,7 @@ impl Sandbox {
                     return Err("The ideas not yet found are still being asked for: nothing was changed. Try again in a moment.");
                 }
                 let Some(tech) = self.idea.clone() else { return Err("Choose an idea first: the chips are the methods and techniques not yet found.") };
-                Ok(Edit::Discover { tech, town: at(false)?.unwrap_or(0) })
+                Ok(discover_edit(tech, at(false)?.unwrap_or(0)))
             }
             Tool::Town => match what {
                 Some(Pick::Cell(cell)) => Ok(Edit::FoundTown { cell }),
@@ -670,6 +670,35 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
     game.busy = true;
     game.note = None;
     sb.sent = Some(tool);
+}
+
+/// The hand's edit for an idea, found in a town: the Idea tool's, and a
+/// town's card's (`town_ideas`), made by this one function so that the two
+/// cannot differ.
+pub(crate) fn discover_edit(tech: String, town: usize) -> Edit {
+    Edit::Discover { tech, town }
+}
+
+/// The edit the Idea tool makes with `name` chosen, on a click on town `town`:
+/// for holding a town's card to the same edit (`town_ideas`).
+#[cfg(test)]
+pub(crate) fn idea_tool_edit(name: &str, town: usize) -> Edit {
+    let mut sb = Sandbox { tool: Tool::Idea, ..default() };
+    sb.keep_ideas(vec![(name.to_string(), name.replace('_', " "))]);
+    sb.idea = Some(name.to_string());
+    sb.edit(Some(town), Some(Pick::Town(town))).expect("the Idea tool makes an edit with an idea chosen and a town clicked")
+}
+
+/// Send an edit made somewhere other than the map, under the tray's guards,
+/// as if the tool `tool` had made it: its answer goes up as that tool's does
+/// (`answers`). Or the guard's refusal, and nothing is sent.
+pub(crate) fn send_as(tool: Tool, edit: Edit, sb: &mut Sandbox, tl: &Timeline, data: &Data, live: &Live, game: &mut Game) -> Result<(), &'static str> {
+    may_act(sb, tl, data, live, game)?;
+    live.send(Cmd::ByHand(edit));
+    game.busy = true;
+    game.note = None;
+    sb.sent = Some(tool);
+    Ok(())
 }
 
 /// The hand works only in the present, and one thing at a time: the tray's

@@ -553,7 +553,7 @@ fn the_thread_tells_of_a_thing_what_a_game_played_to_the_same_month_tells() {
     // are played under the game's rules as they stand, side by side, so the
     // case leans on no one island's history and sets no rule by name.
     use isostate_core::edits::Edit;
-    use isostate_core::inspect::{tell, Thing, Told};
+    use isostate_core::inspect::{Thing, Told};
     let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 9, ..default() });
     assert_eq!(a.year(), 1759);
     for _ in 0..5 {
@@ -561,8 +561,11 @@ fn the_thread_tells_of_a_thing_what_a_game_played_to_the_same_month_tells() {
     }
     let rules = isostate_core::params::Rules::Game;
     let mut b = isostate_core::save::Game::under_to(rules, 7, 6, 0, isostate_core::save::content_last_year(rules)).unwrap();
+    // (a town's card dates its ideas by what is watched at each year's end, as the thread watches it)
+    let mut learnt = isostate_core::inspect::Learnt::default();
     for _ in 0..10 {
         b.year().unwrap();
+        learnt.year_end(&b.sim);
         b.turn();
     }
     for _ in 0..5 {
@@ -574,7 +577,7 @@ fn the_thread_tells_of_a_thing_what_a_game_played_to_the_same_month_tells() {
     for &t in &towns {
         let told = a.ask(Thing::Town(t)).expect("a town that stands is told of");
         assert_eq!(told.as_of, "June 1760");
-        assert_eq!(Ok(told), tell(&b.sim, Thing::Town(t)), "{}", a.r.header.towns[t].name);
+        assert_eq!(Ok(told), isostate_core::inspect::tell_with(&b.sim, Thing::Town(t), Some(&learnt)), "{}", a.r.header.towns[t].name);
     }
     // five works that stand, each asked for by its place in the record's list
     let mut works = 0;
@@ -703,6 +706,56 @@ fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_
     let line = a.turned.iter().find(|t| t.1.starts_with("By hand")).unwrap_or_else(|| panic!("{:?}", a.turned));
     assert!(line.0 && line.1.contains("built for"), "{line:?}");
     assert!(a.live.standing.waiting.is_empty() && a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing);
+}
+
+#[test]
+fn a_towns_ideas_come_with_its_card_opening_it_changes_nothing_and_discover_is_the_idea_tools_edit() {
+    // A town's ideas on its card (town_ideas.rs). On island 7 in January
+    // 1791, played under the game's rules as they stand, six families, nobody
+    // at the first: every town's card, asked three times as the inspector asks
+    // it, has its ideas, dated by what the thread has watched, and none of it
+    // is an edit (the island's card still says "none yet"). Then the edit the
+    // card's Discover it here makes for an idea found nowhere in the first
+    // town is the Idea tool's, is carried out at once in the line it writes in
+    // the news, and the card has the idea known there, found by hand. It leans
+    // on no one island's history beyond some idea of the tree being found
+    // nowhere in 1791, and looks for one rather than naming it.
+    use isostate_core::inspect::{Stands, Thing};
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() });
+    assert_eq!(a.year(), 1790);
+    let towns: Vec<usize> = (0..a.r.n_towns.min(a.r.header.towns.len())).filter(|&t| a.r.town_active[(a.r.filled - 1) * a.r.n_towns + t] != 0).collect();
+    for _ in 0..3 {
+        for &t in &towns {
+            let told = a.ask(Thing::Town(t)).unwrap();
+            let ideas = told.ideas.as_ref().expect("a town's card has its ideas");
+            assert_eq!((ideas.town, ideas.from, ideas.to), (t, 1750, 1791));
+            // every idea known here is dated, and only one found nowhere may be found here by hand
+            for i in ideas.all() {
+                assert!(i.stands != Stands::Here || i.year.is_some(), "{}: {}", told.title, i.name);
+                assert!(!i.discover || i.stands == Stands::Nowhere, "{}: {}", told.title, i.name);
+            }
+        }
+    }
+    let island = a.ask(Thing::Island).unwrap();
+    let edits = island.groups.iter().find(|g| g.name == "By hand").and_then(|g| g.rows.iter().find(|r| r.0 == "edits carried out")).map(|r| r.1.clone());
+    assert_eq!(edits.as_deref(), Some("none yet"), "opening the cards made no edit");
+    // Discover it here, on the first town's first idea found nowhere
+    let t = towns[0];
+    let ideas = a.ask(Thing::Town(t)).unwrap().ideas.unwrap();
+    let idea = ideas.all().find(|i| i.discover).expect("some idea of the tree is found nowhere in 1791").clone();
+    let edit = crate::sandbox::discover_edit(idea.name.clone(), t);
+    assert_eq!(edit, crate::sandbox::idea_tool_edit(&idea.name, t), "the card's edit is the Idea tool's");
+    assert!(a.order("by_hand", Cmd::ByHand(edit)), "{}", a.said);
+    assert_eq!(a.said, format!("By hand: {} found in {} in 1791", idea.label, a.r.header.towns[t].name));
+    let now = a.ask(Thing::Town(t)).unwrap().ideas.unwrap();
+    let found = now.all().find(|i| i.name == idea.name).unwrap();
+    assert_eq!((found.stands, found.year, found.discover), (Stands::Here, Some(1791), false));
+    assert!(found.how.ends_with("by hand"), "{}", found.how);
+    // and the same idea is now known elsewhere, not found nowhere, on every other town's card
+    for &o in towns.iter().filter(|&&o| o != t) {
+        let there = a.ask(Thing::Town(o)).unwrap().ideas.unwrap();
+        assert_ne!(there.all().find(|i| i.name == idea.name).unwrap().stands, Stands::Nowhere);
+    }
 }
 
 #[test]
