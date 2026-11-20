@@ -211,6 +211,11 @@ pub(crate) enum Open {
     Mouth { within: Rgba, round: bool },
     /// slats that let the heat out and keep the rain off
     Louvre,
+    /// a pane of a curtain wall or of a modern window, in a glass of its own
+    /// (a token of `[modern]`: the glass of its decade) in a slim frame of
+    /// the wall's `frame`, barely let into the wall: `cols` lights across and
+    /// `rows` up. (The forms after 1900; nothing older uses it.)
+    Glazed { glass: Rgba, cols: u8, rows: u8 },
 }
 
 /// An opening in a wall: its middle along the wall, its foot, how wide and how tall.
@@ -618,6 +623,7 @@ impl<'a, 's> Kit<'a, 's> {
                 let dark = shade(*self.pal.smoke.soot, 1.5);
                 self.panel(f, u0, u1, y0, y1, PROUD, dark, dark);
             }
+            Open::Glazed { glass, .. } => self.panel(f, u0, u1, y0, y1, PROUD, glass, shade(glass, 1.08)),
         }
     }
 
@@ -796,6 +802,24 @@ impl<'a, 's> Kit<'a, 's> {
                 for i in 0..n {
                     let y = y0 + step * (i as f32 + 1.0);
                     self.quad([self.fp(f, u0, y - step * 0.75, 0.0), self.fp(f, u1, y - step * 0.75, 0.0), self.fp(f, u1, y, -REVEAL), self.fp(f, u0, y, -REVEAL)], slat, Vec3::Y + out);
+                }
+            }
+            Open::Glazed { glass, cols, rows } => {
+                // a curtain wall's glass stands nearly flush: a shallow reveal in the frame's
+                // colour, the glass lighter at its head where it takes the sky, and its bars
+                let depth = REVEAL * 0.5;
+                let frame = shade(w.frame, k);
+                jambs(self, depth, frame);
+                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], shade(frame, 1.1), Vec3::Y);
+                self.panel(f, u0, u1, y0, y1, -depth, shade(glass, 0.9), shade(glass, 1.1));
+                let (d, t) = (-depth + LAYER * 0.5, 0.0004);
+                for i in 1..cols.max(1) {
+                    let u = u0 + (u1 - u0) * i as f32 / cols as f32;
+                    self.panel(f, u - t, u + t, y0, y1, d, frame, frame);
+                }
+                for i in 1..rows.max(1) {
+                    let y = y0 + (y1 - y0) * i as f32 / rows as f32;
+                    self.panel(f, u0, u1, y - t, y + t, d + 0.0001, frame, frame);
                 }
             }
         }

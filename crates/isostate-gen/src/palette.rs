@@ -45,6 +45,9 @@ pub struct Ground {
     pub garden_bed: Colour,
     pub garden_path: Colour,
     pub back_yard: Colour,
+    pub tarmac: Colour,
+    pub tarmac_worn: Colour,
+    pub road_line: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -163,6 +166,7 @@ pub struct Brick {
     pub terrace_sooty: Colour,
     pub chimney: Colour,
     pub barn: Colour,
+    pub pale: Colour,
 }
 
 impl Brick {
@@ -303,6 +307,37 @@ pub struct Vehicles {
     pub boat_mast: Colour,
     pub sail: Colour,
     pub jib: Colour,
+    pub cars: Vec<Colour>,
+}
+
+/// The materials of the twentieth century and after: the building forms of
+/// the run to 2050 (`forms`) take their colours from here.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Modern {
+    pub concrete: Colour,
+    pub render: Colour,
+    pub portland: Colour,
+    pub spandrel: Colour,
+    pub mullion: Colour,
+    pub curtain_glass: Colour,
+    pub tower_glass: Colour,
+    pub sky_glass: Colour,
+    pub bronze_glass: Colour,
+    pub green_glass: Colour,
+    pub stone_panel: Colour,
+    pub terracotta: Colour,
+    pub copper: Colour,
+    pub cladding_blue: Colour,
+    pub cladding_green: Colour,
+    pub cladding_white: Colour,
+    pub cladding_timber: Colour,
+    pub shed_roof: Colour,
+    pub felt: Colour,
+    pub gravel: Colour,
+    pub green_roof: Colour,
+    pub solar_panel: Colour,
+    pub panels: Vec<Colour>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -342,6 +377,7 @@ pub struct Palette {
     pub bridges: Bridges,
     pub vehicles: Vehicles,
     pub marks: Marks,
+    pub modern: Modern,
 }
 
 /// The look file as it stands in the source tree. The palette's tables are
@@ -351,7 +387,7 @@ const LOOK_FILE: &str = include_str!("../../isostate-viewer/assets/look.toml");
 impl Palette {
     /// The tables of the look file that are the palette's.
     pub const TABLES: &'static [&'static str] =
-        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "goods", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
+        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "goods", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks", "modern"];
 
     /// The walls of a shed in a works yard: brick of one sort or another, or stone.
     pub fn yard_shed_wall(&self, v: f32) -> Rgba {
@@ -420,6 +456,9 @@ impl Palette {
             garden_bed,
             garden_path,
             back_yard,
+            tarmac,
+            tarmac_worn,
+            road_line,
         } = &mut self.ground;
         mark(
             &mut [
@@ -453,7 +492,7 @@ impl Palette {
         );
         // what grows round a house, the wet bank of a river, and a railway's own ground
         let (f, w) = (&mut self.foliage, &mut self.water);
-        mark(&mut [&mut f.hedge, &mut f.vegetables, &mut w.river_bank, &mut self.bridges.causeway], FROST);
+        mark(&mut [&mut f.hedge, &mut f.vegetables, &mut w.river_bank, &mut self.bridges.causeway, &mut self.modern.green_roof], FROST);
         // the railway's tokens are all named here too, as the ground's are: its banks (of
         // grass, of scree on the fells, pitched with stone by the sea) take frost; its track
         // is run over every day and keeps clear, with the rope of an inclined plane between
@@ -472,6 +511,9 @@ impl Palette {
             &mut [
                 road_gravel,
                 lane_dust,
+                tarmac,
+                tarmac_worn,
+                road_line,
                 ballast,
                 rails,
                 rope,
@@ -501,6 +543,8 @@ impl Palette {
             ("vehicles.wagons", &self.vehicles.wagons),
             ("roofs.awnings", &self.roofs.awnings),
             ("walls.door_paints", &self.walls.door_paints),
+            ("vehicles.cars", &self.vehicles.cars),
+            ("modern.panels", &self.modern.panels),
         ] {
             if list.is_empty() {
                 return Err(format!("`{name}` needs at least one colour"));
