@@ -228,6 +228,10 @@
 # moved to it, its staff and rooms on the rate on pay
 # Taken: the university placed on a dry square near its town's centre, and its
 # first founding the heaviest news of its decade
+# Taken: On the merged batch of the state's purse, the university and a town's
+# ideas: against main 1901-2050 economy, books, news and run.bin moved by the
+# purse and the university, which act from 1901; 1750-1900 held; a town's
+# ideas move nothing
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
