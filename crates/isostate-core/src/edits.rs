@@ -85,6 +85,8 @@ pub const FIXED_AT_START: &[&str] = &[
     "pay.watch",
     // (the people's ages: their series are made with the record, and their rows at the start)
     "ages.watch",
+    // (the state's purse: its treasury and its book are kept from the start; its chips may be set)
+    "state.enabled",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where
@@ -210,6 +212,12 @@ pub enum Edit {
         #[serde(default)]
         when: PinWhen,
     },
+    /// A university founded by the treasury in the town whose district holds
+    /// the square (docs/rules/state.md, "The university"). It waits for the
+    /// year's turn, and takes its first students at the year's end.
+    FoundUniversity { cell: usize },
+    /// A town's university closed. It waits for the year's turn.
+    CloseUniversity { town: usize },
 }
 
 /// What a pin asks of its idea.
@@ -318,7 +326,7 @@ impl Edit {
     /// (`check`), kept with the orders that wait, and carried out in January,
     /// after the books are closed. The others are carried out at once.
     pub fn at_turn(&self) -> bool {
-        matches!(self, Edit::BuildWorks { .. } | Edit::CloseWorks { .. })
+        matches!(self, Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. })
     }
 }
 
@@ -425,6 +433,19 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
             close_works(sim, *works)?
         }
         Edit::Pin { idea, year, when } => pin(sim, idea, *year, *when)?,
+        Edit::FoundUniversity { cell: c } => {
+            let t = university_town(sim, *c)?;
+            cell = Some(sim.st.town_node[t]);
+            let year = sim.year;
+            let (title, text) = crate::university::found(&mut sim.st, t, year, true);
+            (format!("By hand: {title}"), text, Some(t))
+        }
+        Edit::CloseUniversity { town: t } => {
+            crate::university::may_close(&sim.st, &sim.params, *t)?;
+            let year = sim.year;
+            let (title, text) = crate::university::close(&mut sim.st, *t, year).expect("checked that a university is open there");
+            (format!("By hand: {title}"), text, Some(*t))
+        }
     };
     let when = sim.year as f64 + (months_played(sim) as f64 + 0.5) / 12.0;
     let mut ev = Event::new(when, "hand", NEWS_WEIGHT, title.clone(), text);
@@ -704,6 +725,8 @@ fn what_waits(edit: &Edit) -> &'static str {
     match edit {
         Edit::BuildWorks { .. } => "a works built by hand",
         Edit::CloseWorks { .. } => "a works closed by hand",
+        Edit::FoundUniversity { .. } => "a university founded by hand",
+        Edit::CloseUniversity { .. } => "a university closed by hand",
         _ => "this edit",
     }
 }
@@ -720,8 +743,25 @@ pub fn check(sim: &Sim, edit: &Edit) -> Result<(), String> {
     match edit {
         Edit::BuildWorks { method, cell } => build_plan(sim, method, *cell).map(|_| ()),
         Edit::CloseWorks { works } => closable(sim, *works),
+        Edit::FoundUniversity { cell } => university_town(sim, *cell).map(|_| ()),
+        Edit::CloseUniversity { town } => crate::university::may_close(&sim.st, &sim.params, *town),
         _ => Ok(()),
     }
+}
+
+/// The town a university founded by hand on `cell` would stand in: the town
+/// whose district the square trades through, if one may be founded there.
+fn university_town(sim: &Sim, cell: usize) -> Result<usize, String> {
+    let st = &sim.st;
+    if cell >= st.N {
+        return Err(format!("there is no square {cell} on the island, which has {}", st.N));
+    }
+    let t = st.catch[cell];
+    if t < 0 {
+        return Err(format!("the square at {} trades through no town", square_at(st, cell)));
+    }
+    crate::university::may_found(st, &sim.params, t as usize)?;
+    Ok(t as usize)
 }
 
 /// A square's place, "31, 40".

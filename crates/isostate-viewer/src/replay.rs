@@ -882,7 +882,20 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             builds.know_towns = n_towns;
         }
     }
-    Ok(Replay {
+    // state (the core's docs/rules/state.md, "The university"): the universities, read
+    // from the header a second time, since the viewer's header leaves them out
+    #[derive(Deserialize)]
+    struct UniOnly {
+        #[serde(default)]
+        university: Option<UniHeader>,
+    }
+    #[derive(Deserialize)]
+    struct UniHeader {
+        #[serde(default)]
+        universities: Vec<UniRecord>,
+    }
+    let unis = serde_json::from_slice::<UniOnly>(&buf[4..base]).ok().and_then(|u| u.university).map_or_else(Vec::new, |u| u.universities);
+    let mut r = Replay {
         builds,
         w,
         h,
@@ -925,7 +938,70 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         workings,
         rent_scale,
         holds,
-    })
+    };
+    stand_universities(&mut r, &unis);
+    Ok(r)
+}
+
+/// A university as the record's header has it (the core's `university::header`).
+#[derive(Deserialize, Clone, Debug)]
+struct UniRecord {
+    town: i32,
+    cell: usize,
+    founded: i32,
+    #[serde(default)]
+    closed: Option<i32>,
+    name: String,
+    /// its students at each year's end: (year, students)
+    #[serde(default)]
+    students: Vec<(i32, f32)>,
+}
+
+/// Students to a standard works' size: a university of 400 is drawn as one
+/// standard works of the offices, one of 20,000 as fifty.
+const STUDENTS_A_SIZE: f32 = 400.0;
+
+/// Each university of a recorded run stands on the map as a works does, until it
+/// has a drawing of its own: it is put at the end of the record's works, of the
+/// offices' kind (a building of storeys planned from the offices' process, as
+/// `works::site` plans a kind it does not know), on its town's centre square,
+/// its size each year by its students. A run with no offices among its methods
+/// (the port's content) has no university to stand. A live game's works are
+/// the simulation's own slots, and a university is not drawn there yet.
+fn stand_universities(r: &mut Replay, unis: &[UniRecord]) {
+    let Some(m) = r.header.methods.iter().position(|x| x.name == "offices") else { return };
+    let k0 = r.header.methods[m].k0.max(1e-6);
+    for u in unis {
+        let first = (u.founded - r.y0).max(0) as usize;
+        let last = u.closed.map_or(r.ny, |y| ((y - r.y0).max(0) as usize).min(r.ny));
+        if first >= last {
+            continue;
+        }
+        let mut seen = 0.0f32;
+        let sizes: Vec<f32> = (first..last)
+            .map(|k| {
+                if let Some(&(_, n)) = u.students.iter().find(|s| s.0 == r.y0 + k as i32) {
+                    seen = n;
+                }
+                // a works has capacity from its first year: a university is drawn at its least size until its students come
+                (seen / STUDENTS_A_SIZE).max(0.4) * k0
+            })
+            .collect();
+        r.firm_first.push(first as i32);
+        r.firm_len.push(sizes.len() as i32);
+        r.firm_off.push(r.firm_k.len() as i32);
+        r.firm_k.extend(sizes);
+        r.header.firms.push(Firm {
+            name: u.name.clone(),
+            method: m,
+            cell: u.cell,
+            town: u.town,
+            born: u.founded,
+            died: u.closed.unwrap_or(-1),
+            reason: None,
+            owner: None,
+        });
+    }
 }
 
 /// The rent a cell's land earns in a month, from the record's byte: 0 is no

@@ -320,6 +320,9 @@ pub struct Money {
     pub families: f64,
     pub projects: f64,
     pub fund: f64,
+    /// The treasury (docs/rules/state.md); left out of the run file while it is nothing.
+    #[serde(skip_serializing_if = "is_nothing")]
+    pub treasury: f64,
 }
 
 /// The island's income account for one year. Money is the year's total.
@@ -369,6 +372,17 @@ pub struct IslandYear {
     pub issue: f64,
     /// The common fund's dividend to households (rents, under the commons regime).
     pub fund_div: f64,
+    // ---- the state (docs/rules/state.md), each left out of the run file while it is nothing
+    /// The teachers' pay, which the treasury pays: pay for work, among the
+    /// wage bill, and the state's buying, among spending.
+    #[serde(skip_serializing_if = "is_nothing")]
+    pub pay_state: f64,
+    /// Pensions paid to households.
+    #[serde(skip_serializing_if = "is_nothing")]
+    pub pensions: f64,
+    /// The rate on pay, taken from households.
+    #[serde(skip_serializing_if = "is_nothing")]
+    pub tax_pay: f64,
     // ---- who received it
     /// Pay, dividends, the fund's dividend and new money.
     pub to_households: f64,
@@ -542,6 +556,11 @@ struct Acc {
     hh_in: f64,
     fund_div: f64,
     issue: f64,
+    /// The state's flows (docs/rules/state.md): the teachers' pay, the
+    /// pensions and the rate on pay, paid after the month's check of incomes.
+    state_pay: f64,
+    state_pensions: f64,
+    state_tax: f64,
     /// The worst month's income check.
     income_err: f64,
 }
@@ -648,6 +667,8 @@ pub struct Month<'a> {
     pub ot: &'a [usize],
     pub inv_got: &'a Mat,
     pub proj_got: &'a [Vec<f64>],
+    /// the university's rooms got, by town and good (docs/rules/state.md), booked as a project's materials
+    pub uni_got: &'a [(usize, usize, f64)],
     // markets
     pub R: &'a Mat,
     pub sold: &'a Mat,
@@ -790,6 +811,7 @@ fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam
     a.month = 0;
     (a.fund_in, a.lords_in, a.hh_in, a.fund_div, a.issue, a.income_err) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     a.lords_div = 0.0;
+    (a.state_pay, a.state_pensions, a.state_tax) = (0.0, 0.0, 0.0);
 }
 
 /// The works' tables of the year in progress hold a row for each of the `F`
@@ -1084,6 +1106,13 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         a.towns[t * KT + T_PROJECTS] += pay + wages;
         mk[t * kinds + hk(T_PAY_PROJ)] += wages;
     }
+    // ---- the university's rooms, bought by the treasury as a project's materials
+    for &(t, g, got) in m.uni_got {
+        if got != 0.0 {
+            a.goods[(t * G + g) * KG + G_PROJ] += got;
+            a.towns[t * KT + T_PROJECTS] += got * p[(t, g)];
+        }
+    }
 
     // ---- households, landlords and families; the markets
     // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree,
@@ -1189,6 +1218,18 @@ pub fn note_dividends(b: &mut Books, div: &[f64]) {
         // (into the same buffer every month: see `Hist`)
         b.div.clear();
         b.div.extend_from_slice(div);
+    }
+}
+
+/// The state's flows of the month (docs/rules/state.md), paid after the
+/// month's incomes were checked: the teachers' pay, the pensions and the rate
+/// on pay. They go into the island's account, not the towns' kinds.
+pub fn note_state(st: &mut State, pay: f64, pensions: f64, tax: f64) {
+    if st.acct.on {
+        let a = &mut st.acct.cur;
+        a.state_pay += pay;
+        a.state_pensions += pensions;
+        a.state_tax += tax;
     }
 }
 
@@ -1403,13 +1444,24 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     y.to_households = a.hh_in;
     y.to_landlords = a.lords_in;
     y.to_fund = a.fund_in;
+    // state (docs/rules/state.md): the teachers' pay and the pensions reach the
+    // households, the tax leaves them; nothing of it while the purse pays nothing
+    (y.pay_state, y.pensions, y.tax_pay) = (a.state_pay, a.state_pensions, a.state_tax);
+    if y.pay_state != 0.0 || y.pensions != 0.0 || y.tax_pay != 0.0 {
+        y.to_households += y.pay_state + y.pensions - y.tax_pay;
+    }
 
     // ---- the headlines
     let rents = y.rent_farm + y.rent_pits + y.rent_sites + y.rent_town;
     let merchants = y.merchants_div + y.merchants_kept;
     y.wage_bill = y.pay_works + y.pay_land + y.pay_projects + y.carting + y.managers;
-    y.income = y.wage_bill + profit + merchants + rents;
     y.spending = y.spend_households + y.spend_landlords + y.spend_families + y.rent_town + y.invest + y.projects;
+    // state: the teachers are paid for work, and the treasury bought their work
+    if y.pay_state != 0.0 {
+        y.wage_bill += y.pay_state;
+        y.spending += y.pay_state;
+    }
+    y.income = y.wage_bill + profit + merchants + rents;
     let inc = if y.income.abs() > 1e-9 { y.income } else { f64::NAN };
     y.share_work = y.wage_bill / inc;
     y.share_works = profit / inc;
@@ -1439,6 +1491,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         families: families::cash_total(st),
         projects: st.projects.iter().map(|pr| pr.cash).sum(),
         fund: st.fund_cash,
+        treasury: st.purse.treasury,
     };
     let bill = if y.wage_bill > 1e-9 { y.wage_bill } else { f64::NAN };
     y.works_years = y.works_value / bill;

@@ -1194,6 +1194,11 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
             for y in &yards {
                 eprintln!("the church of town {} stands at {:.2}, {:.2} from {}{}", y.town, y.at.x, y.at.y, r.y0 + y.from as i32, if y.to == usize::MAX { String::new() } else { format!(" to {}", r.y0 + y.to as i32) });
             }
+            // and the universities, which stand as works (`replay::stand_universities`)
+            for f in (0..n).filter(|&f| r.header.firms[f].name.starts_with("The University of")) {
+                let (x, z, _) = slots.firm_pos[f];
+                eprintln!("{} stands at {x:.2}, {z:.2}, drawn no bigger than {:.1} times the standard size", r.header.firms[f].name, slots.firm_cap.get(f).copied().unwrap_or(f32::MAX));
+            }
         }
         eprintln!("works laid out in {} cells: {} of {} drawn smaller than they are for want of room, {} with no ground of their own, {} on the ground of a church ({} churchyards over the years)", dirty.len(), squeezed, n, homeless, in_churchyard, yards.len());
         // in those cells: how many were new, how many were found ground again (and stayed where they stood), how many kept theirs

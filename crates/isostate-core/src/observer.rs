@@ -175,6 +175,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::pay::add_series(&mut reg, P, n_months);
     // ages (docs/rules/ages.md): the people's ages, reckoned beneath the played totals
     crate::ages::add_series(&mut reg, P, n_months);
+    // state (docs/rules/state.md): the rate on pay, and what the treasury pays out
+    crate::purse::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
@@ -210,6 +212,9 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     s.set("ag_share", t, ag / emp);
     s.set("ind_share", t, pairwise_sum(&ms.firm_labor_by_method) / emp);
     let gdp = ms.hh_spend + ms.lord_spend + ms.urban_rent + st.m_invest;
+    // state (docs/rules/state.md): and what the treasury bought, its teachers
+    let bought = crate::purse::month_buying(st);
+    let gdp = if bought != 0.0 { gdp + bought } else { gdp };
     s.set("gdp_nom", t, gdp);
     let basket = &st.cpi_basket;
     let G = C.G;
@@ -281,6 +286,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     crate::woods::record_month(st, C, P, &mut s, t, wage, &P_nat);
     // linked (docs/rules/measures.md): nothing while it is off
     crate::linked::record_month(st, C, P, &mut s, t, wage, &P_nat);
+    // state (docs/rules/state.md): nothing while the purse is off
+    crate::purse::record_month(st, P, &mut s, t, gdp);
     st.series = s;
 }
 

@@ -506,6 +506,8 @@ macro_rules! state_parts {
                 city: Default::default(),
                 // ages (docs/rules/ages.md): carried across as the roads are
                 ages: Default::default(),
+                // state (docs/rules/state.md): carried across as the roads are
+                purse: Default::default(),
             }
         }
 
@@ -635,6 +637,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.ground = carry.ground.clone();
     st.linked = carry.linked.clone();
     st.ages = carry.ages.clone();
+    st.purse = carry.purse.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

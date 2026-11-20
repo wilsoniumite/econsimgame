@@ -218,14 +218,28 @@
 # leans from shelter and clothing to comfort. The people's ages (ages.watch, a
 # watcher on from 1750) add their series to the books, so books in both eras
 # and run.bin move with them, the economy and the news of the first era held.
-# Taken: night/g-look-follows: a record past 1900 keeps two more layers, dens
-# and value (how densely each square of town is built and its land value), for
-# the picture to build each lot by; only run.bin of 1901-2050 moved, the
-# economy, books and news of both eras held
+# Taken: 1901-2050 all four: the state's purse (state.enabled,
+# docs/rules/state.md), a rate on pay, the teachers the treasury hires and the
+# pensions it pays from 1901 under the default book, whose acts, met at the
+# end of 1900, are news in January 1901; 1750-1900 held (its series are
+# nothing before 1901)
+# Taken: the university (state.university): the seat chosen at the end of
+# 1900, a university founded there in 1905 and a second in 1955, its students
+# moved to it, its staff and rooms on the rate on pay
+# Taken: the university placed on a dry square near its town's centre, and its
+# first founding the heaviest news of its decade
+# Taken: On the merged batch of the state's purse, the university and a town's
+# ideas: against main 1901-2050 economy, books, news and run.bin moved by the
+# purse and the university, which act from 1901; 1750-1900 held; a town's
+# ideas move nothing
+# Taken: night/g-look-follows merged with main (the state's purse, the
+# university, a town's ideas): against main only 1901-2050 run.bin moved, by
+# the record's two new layers dens and value; the economy, books and news of
+# both eras held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x75e4cec8abf51342
-1901-2050 books    0xc648c945efd032cc
-1901-2050 news     0x861a66b321ab0332
-1901-2050 run.bin  0xdb7736e989c7eb0f
+1901-2050 economy  0x1d7f92f3ce7ef952
+1901-2050 books    0xb5c2235b161e5b20
+1901-2050 news     0x93e916658c0d7e0f
+1901-2050 run.bin  0x3cc91b30dee62039

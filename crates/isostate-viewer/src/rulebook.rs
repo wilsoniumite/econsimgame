@@ -358,6 +358,10 @@ pub fn plain(name: &str) -> Option<&'static str> {
     match name {
         "pay.bend" => Some("How far demand for a class bends to its pay"),
         "pay.follow_years" => Some("How many years hands take to follow the work"),
+        "state.school_years" => Some("Years of school the treasury pays for every child"),
+        "state.pension_age" => Some("The age the pension is paid from"),
+        "state.pension_share" => Some("The pension, as a share of the town's wage"),
+        "state.university_share" => Some("The share of each cohort the university takes after school"),
         _ => None,
     }
 }

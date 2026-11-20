@@ -59,7 +59,10 @@ gains the inventions, the town's knowledge of each takes the place of the year.
 age: those who turn fifteen take `2 + 3 * ramp(y, 3, 8)` years, with `y` the town's baskets a head averaged
 over about the last ten years. Two years at a bare living, five where eight baskets a head can buy three
 more; until a state pays for schools nothing else buys them. They keep their years as they age and move. The
-figure kept is the mean years of school of the people aged 15 to 64.
+figure kept is the mean years of school of the people aged 15 to 64. Since the state's purse
+([state.md](state.md)) a cohort takes the years the treasury paid for while it was at school where that is
+more; the ages are then read by the purse (its pupils and pensioners) and are no longer only a watcher after
+1900.
 
 ## What a later piece reads
 

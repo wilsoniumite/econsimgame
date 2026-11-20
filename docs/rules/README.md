@@ -1005,3 +1005,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   with it; births and deaths a thousand, life at birth and the shares by age
   as series and facts, and a pyramid in the viewer's island charts.
   [ages.md](ages.md), `ages.watch`.
+- **state** (acts only from 1901 on the default book): a treasury in the money's total and the books, a
+  rate on pay set each year so that the budget balances with two months of spending in hand, schools whose
+  teachers the treasury hires from each town's hands, and a pension of a share of the wage over an age, under
+  a book of acts the island meets by itself from 1900, with three chips in the Rules tab that override it.
+  With the book at `none` the run is the run without it. [state.md](state.md), `state.enabled`,
+  `state.book`.
