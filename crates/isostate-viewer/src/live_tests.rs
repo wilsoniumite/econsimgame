@@ -772,8 +772,9 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     let st = &g.sim.st;
     // (the reckoning of pay, counted among the books' own, has no figure before 1900: docs/rules/pay.md)
     let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n) && !n.starts_with("pay_")).collect();
-    // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way
-    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
+    // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way,
+    // and the reckoning of the people's ages (docs/rules/ages.md)
+    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len() + isostate_core::ages::N_SERIES);
     for name in own {
         let held = replay::monthly(&a.r, name, 0, 48);
         let there = st.series.get(name);
@@ -782,8 +783,9 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
             assert_eq!(held[t].to_bits(), (there[t] as f32).to_bits(), "{name} in month {t}");
         }
         assert!(held[36..].iter().all(|v| v.is_nan()) && there[36..48].iter().all(|v| v.is_nan()), "{name}: the year in progress has no figure yet");
-        // (a gauge can read the same two years running, new work at nothing before anything is found)
-        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && (held[11] != held[12] || name.starts_with("gauge_")), "{name}: a year's figure, the same in its twelve months");
+        // (a gauge can read the same two years running, new work at nothing before anything is found,
+        // and so can the reckoned years of school, two on an island too poor to buy more)
+        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && (held[11] != held[12] || name.starts_with("gauge_") || name.starts_with("ages_")), "{name}: a year's figure, the same in its twelve months");
     }
     // which is the island's account of the year, and what a chart by the year shows
     let shares: Vec<f32> = st.acct.years.iter().map(|y| y.share_work as f32).collect();

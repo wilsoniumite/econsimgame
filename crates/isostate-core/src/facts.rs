@@ -647,6 +647,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::transition::facts(r) {
         b.num(name, kind, v);
     }
+    // ages (docs/rules/ages.md): births and deaths a thousand, life at birth, the shares
+    // by age and the years of school, reckoned beneath the played totals
+    for (name, kind, v) in crate::ages::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- work and wages
     b.group = GROUPS[1];

@@ -579,4 +579,9 @@ pub struct State {
     /// Each town's works' hands at the last yearly step, and its works'
     /// productivity factor for the year.
     pub city: crate::city::CityState,
+
+    // ---------------- ages (docs/rules/ages.md; empty while `ages.watch` is off)
+    /// Each town's people in seventeen five-year groups and their schooling,
+    /// reckoned beneath the played totals. The observer's alone.
+    pub ages: crate::ages::AgesState,
 }
