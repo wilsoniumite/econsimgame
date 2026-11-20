@@ -411,7 +411,7 @@ pub fn spawn_lines(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut 
     spawn_painted(p, f, images, &c.as_chart(), plot_lines(c), figure, figure);
 }
 
-fn image(p: &Plot) -> Image {
+pub fn image(p: &Plot) -> Image {
     let mut img = Image::new(
         Extent3d { width: p.w as u32, height: p.h as u32, depth_or_array_layers: 1 },
         TextureDimension::D2,

@@ -830,8 +830,9 @@ fn a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures() {
     let stat = live::live_static(&g.sim.st, &C);
     // (the reckoning of pay, counted among the books' own, has no figure before 1900: docs/rules/pay.md)
     let own: Vec<usize> = (0..stat.series.len()).filter(|&i| accounts::own_series(&stat.series[i].name) && !stat.series[i].name.starts_with("pay_")).collect();
-    // the books' eight, and the gauges' that are read off them (docs/rules/gauges.md), which come the same way
-    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
+    // the books' eight, and the gauges' that are read off them (docs/rules/gauges.md), which come the same way,
+    // and the reckoning of the people's ages (docs/rules/ages.md), which comes the same way too
+    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len() + isostate_core::ages::N_SERIES);
     let mut cursor = live::LiveCursor::new(&C);
     let mut held = vec![vec![f64::NAN; 36]; stat.series.len()];
     // the last year's month-end prices as they were sent, `[month][town * G + good]`

@@ -173,6 +173,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::linked::add_series(&mut reg, P, n_months);
     // pay (docs/rules/pay.md): each class's pay, reckoned from 1900
     crate::pay::add_series(&mut reg, P, n_months);
+    // ages (docs/rules/ages.md): the people's ages, reckoned beneath the played totals
+    crate::ages::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);

@@ -210,10 +210,13 @@
 # Taken: engel's lean after 1900 switched on in the game
 # (night/g-demand-shape): from 1901 a well-off household's further shilling
 # leans from shelter and clothing to comfort
+# Taken: the reckoning of the people's ages (ages.watch, docs/rules/ages.md):
+# its series are the books' own, so books and run.bin move in both eras and
+# economy and news hold
 1750-1900 economy  0x0d20ccc26eb3ba58
-1750-1900 books    0x04b0974e4e77f3f5
+1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
 1901-2050 economy  0x75e4cec8abf51342
-1901-2050 books    0x55660e4473548e6e
+1901-2050 books    0xc648c945efd032cc
 1901-2050 news     0x861a66b321ab0332
-1901-2050 run.bin  0xf23761882e5449a2
+1901-2050 run.bin  0xc7d27336dd8522be

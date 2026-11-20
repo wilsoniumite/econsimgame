@@ -216,6 +216,8 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         st.pp_income_term[t] = inc;
     }
     st.pp_growth = g.clone();
+    // ages (docs/rules/ages.md): who took ship from each town, for the reckoning of ages
+    crate::ages::sailed(st, P, &left);
     // news when a thousandth of the island takes ship in one year
     let gone = pairwise_sum(&left);
     let island = pairwise_sum(&st.pop);
@@ -718,6 +720,8 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
         // transition (docs/rules/transition.md): the newcomers bring their towns' measure
         // of how well townsfolk live, as they bring their cash
         crate::transition::move_with_cells(st, P, &pop, &share);
+        // ages (docs/rules/ages.md): and their ages and schooling (nothing while it is off)
+        crate::ages::move_with_cells(st, P, &pop, &share);
         // the town's wage starts the year as the average of what its old hands and its
         // new were paid (a new town has no old hands: it starts at the newcomers' wage)
         for j in 0..T {
