@@ -21,7 +21,9 @@ Nothing can be found before 1901, so
 the played century is untouched: every fact of the standing check is the
 same to the digit with either switch on and off. Two more settings are for
 sweeps and are unset under both rules: a ceiling on what the ground may
-yield, and a control that holds the machine still.
+yield, and a control that holds the machine still. The first machine for
+clerks' tasks, office computing, stands behind a switch of its own,
+`tasks.computing`, and has a page of its own, [computing.md](computing.md).
 
 ## The standing check
 

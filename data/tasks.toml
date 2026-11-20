@@ -136,10 +136,18 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #   found_after     nothing is found before this year
 #   discover        the island finds it at the first year's turn (from `found_after`) when it has made
 #                   at least this much of each good named, counted from 1750
-#   scale           one number, multiplying everything one machine takes (plant, run and minders),
+#   discover_per_head  (may be left out; false) true: `discover` is read per head, what the island has made
+#                   of each good over its people at the year's end, so that an island's size does not
+#                   decide its find (the tree's inventions reckon nothing per head; their "xN" counts years
+#                   of the island's own making in 1750, which is nothing for a good first made later)
+#   scale          one number, multiplying everything one machine takes (plant, run and minders),
 #                   refitted once in its first sweep so that it takes its first share when found
 #   replaces        (may be left out) the name of another use: where this one is laid, that one no
 #                   longer reaches the places this one is `on`
+#   switch          (may be left out) a switch of the rule the use stands behind, by name: while it is
+#                   off the use is never found, and has no cost, no part, no order and no plant, so the
+#                   run is the run without it. Today the one name is "computing" (`tasks.computing`);
+#                   the file refuses any other
 #
 # A use that names a good the content lacks (a good of a later stage of the tree's overlay) is not laid,
 # as the overlay drops an input of a later stage, and replaces nothing; so the electric drive and the
@@ -313,3 +321,55 @@ discover = { oil = 100000.0 }
 # islands 1 to 16 (0.162 to 0.214), so the unit was made exp(ln(1000) * (0.194 - 0.2)) = 0.96 times as
 # dear, to bring the mean to 0.20.
 scale = 0.96
+
+# ----------------------------------------------------------------------------------------------------
+# Machines that reckon (docs/rules/computing.md), behind their own switch, `tasks.computing`.
+# ----------------------------------------------------------------------------------------------------
+
+# Office computing: machines that reckon, taking clerks' tasks in the works (records, reckoning, routine
+# dealing), from the easiest to the hardest. A THIN SLICE: no computing good stands behind it yet, so it
+# is made of electrical goods and its running cost, which the full stage puts on computing and
+# electricity, goes on electricity alone; and its cost falls only by its pace, a twentieth a year in
+# quality, not by a falling price of computing. The land has no clerking, so it is used in the works.
+#
+# Sized from island 7's prices and wage of 1960 under the game's rules with six families, on the new land
+# (the game's island), the year it finds it (the year's island means: a wage of 16.69 a month, electrical
+# goods 10.74, electricity 4.86). When found, a unit costs 0.135 of a month's wage (2.253), of which six
+# tenths is the return a works must see and the wear on its plant ((0.12 + 1/8) / 12 a month on 3.97
+# months' wages of plant, 66.2, which is 6.17 electrical goods), a tenth is its minders (0.0135 of a hand)
+# and the rest, three tenths, is electricity (0.139 a month). At that cost a hand is worth 7.4 units, so
+# it takes ln(7.4) / ln(3000) = 0.25 of clerking. It starts from the easiest task (`from = 0`), not above
+# the office machines of the design, which are not built: when they come, the cheaper unit holds the class
+# from the bottom, as the computer took the typewriter's tasks.
+#
+# Found from 1960, the year the machine is to be had, on an island that has made at least 5.4 electrical
+# goods a head since 1750: the floor is half of what island 7 had made a head when the year came (10.90
+# by the end of 1959; the sweep's yearly output summed, over its people). The floor is read per head so
+# that a small island is not made late by its size. It is low on purpose: the islands are near one size
+# (0.93 to 1.15 million people in 1959) but came to electrical goods 35 years apart (island 5 first made
+# them in 1868, island 14 in 1904), so a high threshold on their own making, by head or in all, found it
+# from 1960 to 1992 (at 10.5 million made) or to 1996 (at island 7's 10.90 a head). At 5.4 a head, islands
+# 1 and 3 find it in 1967 and the other six of the first eight in 1960 (islands 9 to 16: 11 in 1967, 14
+# in 1965, the rest in 1960). The refit below was read with the earlier, later finds; at 1.10 the towns'
+# target in the year found is now 0.249 on the mean of islands 1 to 8 (0.242 to 0.255).
+[[use]]
+name = "office_computing"
+class = "clerk"
+on = ["works"]
+from = 0.0
+reach = 1.0
+plant = { electricals = 6.17 }
+run = { electricity = 0.139 }
+minders = 0.0135
+life = 8.0
+pace = 0.05
+cap = 100.0
+found_after = 1960
+discover = { electricals = 5.4 }
+discover_per_head = true
+switch = "computing"
+# Refitted once (19 November 2026): at 1.0 the towns' target in the year found was 0.262 on the mean of
+# islands 1 to 8 (0.259 to 0.266; found 1960 on islands 5 and 7, 1965 on 2, 1975 on 4 and 6, 1982 on 8,
+# 1983 on 1, 1986 on 3), so the unit was made exp(ln(3000) * (0.262 - 0.25)) = 1.10 times as dear, to
+# bring the mean to 0.25.
+scale = 1.10
