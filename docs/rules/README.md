@@ -775,6 +775,21 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 One line each as they arrive: the name, its page, its switch.
 
+**Switched off after the core's table.** Every so often the core's table
+(`isostate-core ablate`, `docs/core.md`) turns each rule off in turn, and a
+rule it finds idle is switched off under the game's rules and kept in the
+code, with a line in its page saying since when and why, unless its page
+states a behaviour a player sees, or it guards what no fact of the island can
+show (the books, a run that would stop, one town's year). The table of 20
+November 2026 found thirteen idle. Off since: `towns.mean_hands`, and
+`commons.carry_debt`, which the hands' rule now covers. Kept on, each with
+its reason in its page: the watchers (`chronicle.enabled`,
+`accounts.enabled`, `accounts.works`, which the inspector reads,
+`gauges.enabled`, `woods.record`); what is drawn (`crossings.enabled`,
+`ground.reach`); and the mends a player meets or that guard what no fact
+shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
+`towns.donor_wage`).
+
 - **prices**: merchants mark prices with the stock they hold and stop buying
   into a glut, which ends the false cycles in iron and on the farms.
   [prices.md](prices.md), `prices.enabled`.
@@ -821,7 +836,10 @@ One line each as they arrive: the name, its page, its switch.
 - **towns**: town ground that is kept. A town keeps the cells it builds on and
   grows outward from them along its roads, taking in the works beside it, so
   the island's town ground is some five times as wide in 1900 as in 1750 and
-  a cell that joins a town stays. [towns.md](towns.md), `towns.enabled`.
+  a cell that joins a town stays. [towns.md](towns.md), `towns.enabled`. Its
+  lesser switch `towns.mean_hands` (the year's mean of works' hands, not
+  December's) is off under the game's rules since 20 November 2026, when the
+  core's table found it idle, and kept in the code.
 - **mines**: a quarry, pit or mine is a working: a pit head with the lease
   of the deposit within its reach, sunk at a cost, paying a royalty to the
   cells it works under and taking land by its hands, so the diggings hold a
@@ -862,7 +880,9 @@ One line each as they arrive: the name, its page, its switch.
 - **commons**: under the commons the common fund in debt pays no dividend
   until its rents repay it, and charges nobody, where the port shares out its
   debt as a levy on every household. Under the landlords it does nothing.
-  [commons.md](commons.md), `commons.carry_debt`.
+  Off under the game's rules since 20 November 2026: the hands' rule spares
+  the fund the debts it was written for. [commons.md](commons.md),
+  `commons.carry_debt`.
 - **roads** (off under both sets of rules: a probe's prototype): roads,
   turnpikes and bridges that somebody pays for, a parish out of its rate and
   a turnpike trust out of its tolls. [dx-roads.md](../probes/dx-roads.md),

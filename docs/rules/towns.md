@@ -19,6 +19,22 @@ merge"), and a cell that joins a town stays.
 It is merged into the game's rules; what it does there, and the one number
 that moved at the merge, are under "In company, after the merge".
 
+**`mean_hands` is off under the game's rules since 20 November 2026**, and
+kept in the code. It was added so that a town's count of its people would
+not follow December's works' hands, whose wobble of 6 per cent a year made
+town ground come and go; kept ground itself now holds a town's cells through
+that wobble (a town gives up ground only after fifteen years well below its
+peak). The core's table (`docs/core.md`, 20 November 2026, islands 1 to 8 to
+2050) found it idle: with it off 3,388 of 3,678 facts differ and none stands
+apart, the twelve facts of the played century stay in their bands, and the
+growth after 1900 is 1.37 per cent a year, 1.27 and -0.073 against the
+control's 1.50, 1.22 and -0.076, all three met. `--set
+towns.mean_hands=true` (or `towns = { mean_hands = true }` in a parameters
+file) plays it again. Its two neighbours, `donor_wage` and `rent_floor`, stay
+on: `donor_wage` was idle too, and is kept because what it mends, a new town
+priced for a year as if its labour were free, is one town's year, which no
+fact of the island shows.
+
 ## Why the port's towns do not grow
 
 The diagnosis is in `.claude/night/reports/dx-towns.md`, measured on eight
@@ -118,7 +134,8 @@ Three smaller things ride with it, each with its own switch.
 
 - **The year's mean of works' hands** (`mean_hands`). The count of town
   people follows the mean of the year's twelve months, not December's
-  (`towns::month`, `towns::year_hands`).
+  (`towns::month`, `towns::year_hands`). Off under the game's rules since 20
+  November 2026 (above).
 - **A new town's first year** (`donor_wage`). A town founded at the end of a
   year has no year behind it: its mean wage is nothing and its mean prices
   are the first year's list. `land::sector_bids` then prices the land round

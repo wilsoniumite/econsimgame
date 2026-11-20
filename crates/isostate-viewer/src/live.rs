@@ -525,13 +525,17 @@ pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
 /// (as `ISOSTATE_NO_BOOKS` does, the game's own simulation is started again on
 /// the changed rules). Docs/rules/tree.md, "After 1900: electricity". With
 /// `old_land` it is played on the old island, which the game's rules left on 19
-/// November 2026 (docs/rules/land.md, "The switch").
+/// November 2026 (docs/rules/land.md, "The switch"). It is played with the
+/// year's mean of works' hands on (`towns.mean_hands`), as the game's rules
+/// had it until 20 November 2026 (docs/rules/towns.md), since the history it
+/// holds was found with it.
 #[cfg(test)]
 pub(crate) fn played_at_stage(seed: u64, families: usize, advance: usize, stage: u32, old_land: bool) -> Result<Replay, String> {
     let rules = iso::params::Rules::Game;
     let mut game = Game::under_to(rules, seed, families, 0, iso::save::content_last_year(rules))?;
     let mut P = game.sim.params.clone();
     P.tree.stage = stage;
+    P.towns.mean_hands = true;
     if old_land {
         P.land = Default::default();
     }

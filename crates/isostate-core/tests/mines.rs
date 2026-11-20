@@ -70,13 +70,17 @@ fn money_is_conserved_and_a_run_is_deterministic() {
     assert!(f.state.families.len() == 6 && f.state.mine_opened.iter().any(|&y| y != 0));
 }
 
-/// The game's rules under the commons, as `--rules game --regime commons` runs them.
+/// The game's rules under the commons, as `--rules game --regime commons` runs them,
+/// with the fund that carries its debt switched on by name: the game's rules
+/// turned it off on 20 November 2026 (docs/rules/commons.md), and these cases
+/// are the rule's own.
 fn commons(seed: u64, n_families: usize, end_year: i64) -> Params {
     let mut P = game_params();
     P.seed = seed;
     P.n_families = n_families;
     P.end_year = Some(end_year);
     P.rent_regime = RentRegime::Commons;
+    P.commons = CommonsParams::carrying();
     P
 }
 
@@ -160,9 +164,11 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
 
 #[test]
 fn the_fund_has_a_switch_of_its_own() {
-    // off under the port, on under the game, and the mines' switch does not move it
+    // off under the port, and under the game's rules since 20 November 2026
+    // (docs/rules/commons.md); on by name; and the mines' switch does not move it
     assert_eq!(default_params().commons, CommonsParams::default());
-    assert!(!default_params().commons.carry_debt && game_params().commons.carry_debt);
+    assert!(!default_params().commons.carry_debt && !game_params().commons.carry_debt);
+    assert!(CommonsParams::carrying().carry_debt);
     let mut P = default_params();
     P.mines = MineParams::game();
     assert!(!P.commons.carry_debt, "the port with the mines switched on keeps the port's fund");

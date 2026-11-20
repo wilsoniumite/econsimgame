@@ -413,11 +413,15 @@ fn no_station_no_drive() {
 /// their plant is delivered. Played on the old island, with the land off: since
 /// the game's rules took the new land (docs/rules/land.md, "The switch") island 7
 /// is another island, which does not find both the drive and the hoist by the
-/// test's last year.
+/// test's last year. And with the year's mean of works' hands on
+/// (`towns.mean_hands`), which the game's rules switched off on 20 November
+/// 2026 (docs/rules/towns.md): without it the old island 7 goes down another
+/// path and finds the hoist too late for the test's years.
 #[test]
 fn machines_work_once_they_stand() {
     let mut P = params(true);
     P.land = Default::default();
+    P.towns.mean_hands = true;
     let mut s = sim::start(&P, content(&P));
     let mut fresh: Vec<usize> = Vec::new();
     let (mut first_months, mut came) = (0, 0);

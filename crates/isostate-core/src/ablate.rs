@@ -113,6 +113,12 @@ pub struct LeftOut {
     pub why: String,
 }
 
+/// The lesser switches that were on under the game's rules, found idle by a
+/// table and switched off since, with the day: the page lists them as left
+/// out, so that none goes silently. A record of what was decided, not a list
+/// of what is asked (that is read from the tree's lists, below).
+pub const SWITCHED_OFF: [(&str, &str); 2] = [("towns.mean_hands", "20 November 2026"), ("commons.carry_debt", "20 November 2026")];
+
 /// The rules asked, by the dotted name `--set` takes, in the order of
 /// `Params`; and the names left out, with why. Read from the rulebook's walk of
 /// `game` and of `port`:
@@ -153,6 +159,10 @@ pub fn asked(game: &Params, port: &Params) -> (Vec<String>, Vec<LeftOut>) {
                 } else {
                     leave(&mut out, e, "on under the port's rules too: it is part of the port, not a rule the game adds".to_string());
                 }
+            }
+            Value::Bool(false) if SWITCHED_OFF.iter().any(|(n, _)| *n == e.name) => {
+                let since = SWITCHED_OFF.iter().find(|(n, _)| *n == e.name).map_or("", |(_, d)| d);
+                leave(&mut out, e, format!("switched off under the game's rules on {since}, when the table found it idle, and kept in the code: `--set {}=true` plays it", e.name));
             }
             Value::Bool(false) if SWITCHES.contains(&e.name.as_str()) => {
                 leave(&mut out, e, "off under the game's rules already: there is nothing to turn off".to_string());
@@ -1842,6 +1852,10 @@ mod tests {
             assert!(ask.contains(&name.to_string()), "{name} is not asked");
         }
         assert!(out.iter().any(|l| l.name == "tree.stage"), "tree.stage is not listed as left out");
+        // a switch turned off after a table found it idle is listed, not asked
+        for (name, _) in SWITCHED_OFF {
+            assert!(!ask.contains(&name.to_string()) && out.iter().any(|l| l.name == name), "{name} is switched off and not listed as left out");
+        }
         // every name asked can be set to false from the start
         for n in &ask {
             assert!(sweep::set_field(&game_params(), n, &Value::Bool(false)).is_ok(), "{n}");

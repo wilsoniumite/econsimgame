@@ -495,6 +495,11 @@ Added on 13 November 2026 as a mend of the pass over the rules
 (`docs/designs/rules-pass.md`, section 4.4 and section 5), behind
 `harvest.rent_as_paid`: on in the game's rules, off under the port.
 
+The core's table of 20 November 2026 (`docs/core.md`) found it idle: no fact
+of the island stands apart without it. It stays on, because what it mends is
+the price of land, which a player sees in a family's worth, and the sweep has
+no fact of the families' land (the table below is where it is measured).
+
 **The fault.** `average_rent` added to the rent a cell paid the crop the
 weather took from it, at that year's price less the carting, so that land
 would be priced on an average year. `docs/probes/tr-rent.md` (section 3)

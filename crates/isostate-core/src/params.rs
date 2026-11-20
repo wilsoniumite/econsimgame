@@ -314,7 +314,8 @@ pub struct Params {
     pub roads: crate::roads::RoadParams,
     /// A common fund in debt that charges nobody and pays no dividend until its
     /// rents repay it (not in the Python; see docs/rules/commons.md). Under the
-    /// landlords the fund never holds a penny.
+    /// landlords the fund never holds a penny. Off under both sets of rules
+    /// since 20 November 2026.
     #[serde(default, skip_serializing_if = "is_default")]
     pub commons: crate::commons::CommonsParams,
     /// A town cannot hire hands it does not have (not in the Python; see
@@ -613,7 +614,9 @@ pub fn game_params() -> Params {
     P.tree = crate::tree::TreeParams::game();
     P.accounts = crate::accounts::AccountsParams::game();
     P.gauges = crate::gauges::GaugesParams::game();
-    P.commons = crate::commons::CommonsParams::game();
+    // commons (docs/rules/commons.md): the fund that carries its debt is off
+    // under the game's rules since 20 November 2026, and kept in the code
+    // (`CommonsParams::carrying`): `hands` below spares the fund its debts
     P.hands = crate::hands::HandsParams::game();
     P.money = crate::money::MoneyParams::game();
     P.longrun = crate::longrun::LongrunParams::game();
