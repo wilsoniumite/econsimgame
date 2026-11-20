@@ -367,6 +367,11 @@ pub struct Params {
     /// docs/rules/measures.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub linked: crate::linked::LinkedParams,
+    /// Pay by class of task, reckoned from the hands the island plays with two
+    /// dials, and not played (not in the Python; it only watches; see
+    /// docs/rules/pay.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pay: crate::pay::PayParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -585,6 +590,7 @@ pub fn default_params() -> Params {
         crossings: crate::crossings::CrossingParams::default(),
         ground: crate::ground::GroundParams::default(),
         linked: crate::linked::LinkedParams::default(),
+        pay: crate::pay::PayParams::default(),
     }
 }
 
@@ -642,6 +648,8 @@ pub fn game_params() -> Params {
     P.ground = crate::ground::GroundParams::game();
     // linked (docs/rules/measures.md): watches only, and the news's slump clock reads it
     P.linked = crate::linked::LinkedParams::game();
+    // pay (docs/rules/pay.md): watches only, reckoning each class's pay from 1900
+    P.pay = crate::pay::PayParams::game();
     P
 }
 

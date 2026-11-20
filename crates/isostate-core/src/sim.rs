@@ -779,6 +779,8 @@ pub fn end_year(sim: &mut Sim) {
     crate::gauges::close_year(st, C, P, year);
     // owners: who holds the works and who was paid by them (docs/rules/owners.md)
     crate::owners::close_year(st, C, P, year);
+    // pay (docs/rules/pay.md): each class's pay reckoned from the tasks' record, watched only
+    crate::pay::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);

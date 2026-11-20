@@ -714,6 +714,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::tasks::facts(r) {
         b.num(name, kind, v);
     }
+    // pay (docs/rules/pay.md): each class's pay, reckoned from the hands and not played
+    for (name, kind, v) in crate::pay::facts(r) {
+        b.num(name, kind, v);
+    }
     // tree (docs/rules/tree.md, "After 1900: electricity"): electricity and electrical goods
     for (name, kind, v) in crate::tree::facts(r) {
         b.num(name, kind, v);

@@ -81,6 +81,8 @@ pub const FIXED_AT_START: &[&str] = &[
     "family_start_share",
     "family_start_cash",
     "linked",
+    // (its series are made with the record; its dials may be turned)
+    "pay.watch",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where

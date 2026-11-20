@@ -63,6 +63,7 @@ pub mod ndimage;
 pub mod observer;
 pub mod owners;
 pub mod params;
+pub mod pay;
 pub mod people;
 pub mod peopling;
 pub mod prices;

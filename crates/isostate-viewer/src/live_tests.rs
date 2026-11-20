@@ -770,7 +770,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
         g.month().unwrap();
     }
     let st = &g.sim.st;
-    let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n)).collect();
+    // (the reckoning of pay, counted among the books' own, has no figure before 1900: docs/rules/pay.md)
+    let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n) && !n.starts_with("pay_")).collect();
     // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way
     assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     for name in own {
