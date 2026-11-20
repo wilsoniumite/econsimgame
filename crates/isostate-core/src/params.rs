@@ -659,6 +659,9 @@ pub fn game_params() -> Params {
     // city (docs/rules/city.md): after 1900 people follow jobs, work gathers where
     // work is, and room is wanted less than in proportion as it dears; all three on
     P.city = crate::city::CityParams::game();
+    // engel's lean (docs/rules/engel.md, "After 1900"): from 1901 a well-off household's
+    // further shilling leans from shelter and clothing to comfort, complete in 1970
+    P.engel.lean = true;
     P
 }
 

@@ -271,13 +271,16 @@ fn content_can_say_the_richer_set() {
     assert!(short.contains("shares_lean must be 6 shares"), "{short}");
     assert!(with("shares_lean = [0.1, 0.1, 0.2, 0.2, 0.1, 0.2]").unwrap_err().contains("adds up to"));
     assert!(with("shares_lean = [0.1, 0.1, 0.2, 0.2, -0.1, 0.5]").is_err());
-    // the game's (laid by the production tree, as a run lays it): a tenth of a further
-    // shilling from shelter and one from clothing, to comfort
+    // the game's (laid by the production tree, as a run lays it): 0.06 of a further shilling
+    // from shelter and 0.14 from clothing, to comfort, and every other need as it was
     let G = isostate_core::tree::content(&game_params(), isostate_core::game_content()).unwrap();
     let need = |name: &str| G.service_name.iter().position(|n| n == name).unwrap();
-    assert!((G.shares_rich[need("shelter")] - G.shares_lean[need("shelter")] - 0.1).abs() < 1e-12);
-    assert!((G.shares_rich[need("clothing")] - G.shares_lean[need("clothing")] - 0.1).abs() < 1e-12);
+    assert!((G.shares_rich[need("shelter")] - G.shares_lean[need("shelter")] - 0.06).abs() < 1e-12);
+    assert!((G.shares_rich[need("clothing")] - G.shares_lean[need("clothing")] - 0.14).abs() < 1e-12);
     assert!((G.shares_lean[need("comfort")] - G.shares_rich[need("comfort")] - 0.2).abs() < 1e-12);
+    for name in ["food", "warmth", "implements", "table", "wares"] {
+        assert_eq!(G.shares_lean[need(name)], G.shares_rich[need(name)], "{name}");
+    }
 }
 
 #[test]
@@ -338,6 +341,9 @@ fn only_the_games_rules_have_the_curve() {
     // switching it on by name, as the sweep does, gives the game's curve
     let set = default_params().with_json_overrides(r#"{"engel": {"enabled": true}}"#).unwrap();
     assert_eq!(set.engel, EngelParams::game());
+    // and the game's rules lean after 1900 as well (game_params sets it, a stage of the run to 2050)
+    assert!(!default_params().engel.lean && !EngelParams::game().lean);
+    assert_eq!(game_params().engel, EngelParams { lean: true, ..EngelParams::game() });
 }
 
 #[test]
