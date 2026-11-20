@@ -202,6 +202,11 @@
 # Taken: 1901-2050: the first city's three rules (docs/rules/city.md), people
 # who follow jobs, work that gathers where work is and room that grows dear,
 # switched on; they act only after 1900
+# Taken: on night/g-batch-measure-a, the three pieces merged on main 3c85e98
+# (20 November 2026): against main all seven moved, by the linked measure
+# (series not nothing before 1901, and the slump clock on what is made), the
+# pay watcher's series and the first city's three rules after 1900; on the
+# merged tree they are the first city's own, which was built on the other two
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0x04b0974e4e77f3f5
 1750-1900 news     0x5d3a55a39961b3e2
