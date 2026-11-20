@@ -316,8 +316,9 @@ of the rule's loop come for it (`use_found_year_models`,
 new facts for every use: `target_CLASS_works_Y`, the towns' target in the
 works, which the standing works move toward, and, for a use that reaches the
 land, `use_auto_land_after10_NAME`, its class on the sectors it reaches ten
-years after the find (none for models in a run to 2050, which reaches only 28
-years past the find). The command that shows it:
+years after the find (0.174 to 0.188 for models on islands 1 to 8; a fact
+read past the run's end, as models' `use_margin_gap_after40_`, is none). The
+command that shows it:
 
 ```bash
 isostate-core sweep --seeds 1-8 --rules game --families 6 --set tasks.computing=false,true --set tasks.models=false,true --end-year 2050 --jobs 8 --standing --out DIR
