@@ -83,6 +83,8 @@ pub const FIXED_AT_START: &[&str] = &[
     "linked",
     // (its series are made with the record; its dials may be turned)
     "pay.watch",
+    // (the people's ages: their series are made with the record, and their rows at the start)
+    "ages.watch",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where
