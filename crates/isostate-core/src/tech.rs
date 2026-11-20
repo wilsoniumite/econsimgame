@@ -25,6 +25,20 @@ pub fn discovery(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i
         if st.tech_year[t] >= 0 {
             continue;
         }
+        // a pin by hand (edits::Pin; not in the Python): held back, or found in
+        // its year with no draw. A run with no edits has no pins, and then
+        // this is the Python's loop, draw for draw
+        if !st.by_hand.pins.is_empty() {
+            match crate::edits::pin_says(st, crate::edits::Idea::Tech(t), year) {
+                crate::edits::Pinned::Hold => continue,
+                crate::edits::Pinned::Find if crate::woods::sought(C, P, t) => {
+                    crate::edits::find_pinned(st, C, t, year, events);
+                    found.push(t);
+                    continue;
+                }
+                _ => {}
+            }
+        }
         // nothing is sought before the year the content says (the overlay's
         // `found_after`; never in the port's content), and managed woodland only
         // with its rule on (woods, docs/rules/woods.md): no number is drawn for it

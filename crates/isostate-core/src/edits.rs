@@ -190,6 +190,119 @@ pub enum Edit {
     /// A works closed, by its slot (the record's list of works, as
     /// `inspect::Thing::Works` takes it). It waits for the year's turn.
     CloseWorks { works: usize },
+    /// An idea pinned (the atlas's third plate, `docs/atlas.md`; `docs/lab.md`):
+    /// an idea of the tree (a method or a technique, by `Content::tech_name`)
+    /// or a use of the tasks rule (by its name in `data/tasks.toml`), found on
+    /// the island in `year` (`when` "in", the default), or held back until
+    /// `year` and found after it as it would have been (`when` "not_before").
+    /// It stands from the month it is given to the end of the run; a second
+    /// pin of the same idea takes the first one's place.
+    Pin {
+        idea: String,
+        year: i64,
+        #[serde(default)]
+        when: PinWhen,
+    },
+}
+
+/// What a pin asks of its idea.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PinWhen {
+    /// Found in the year: held back before it, and found in it with no draw.
+    #[default]
+    In,
+    /// Held back before the year, and after it left to the island.
+    NotBefore,
+}
+
+/// An idea the island can find: one of the tree's (by its place in
+/// `Content::tech_name`), or a use of the tasks rule (by its place in
+/// `Content::tasks.uses`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Idea {
+    Tech(usize),
+    Use(usize),
+}
+
+/// A pin as the island holds it (`Ledger::pins`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pin {
+    pub idea: Idea,
+    pub year: i64,
+    pub when: PinWhen,
+}
+
+/// What the pins say of an idea in a year (`pin_says`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pinned {
+    /// No pin: the island's own rule finds it, or not.
+    Free,
+    /// Held back this year.
+    Hold,
+    /// Found this year, with no draw.
+    Find,
+}
+
+/// What the pins say of `idea` in `year`: the hook `tech::discovery` and the
+/// tasks rule's year's turn ask before they look for an idea. With no pin
+/// given (every run with no edits) it is `Free`, and those rules are the
+/// port's and the game's to the bit.
+pub fn pin_says(st: &State, idea: Idea, year: i64) -> Pinned {
+    match st.by_hand.pins.iter().find(|p| p.idea == idea) {
+        None => Pinned::Free,
+        Some(p) if year < p.year => Pinned::Hold,
+        Some(p) if p.when == PinWhen::In => Pinned::Find,
+        Some(_) => Pinned::Free,
+    }
+}
+
+/// An idea of the tree found by its pin in `year`: what `tech::discovery`
+/// does once it has chosen, in the town it weighs heaviest (the one that
+/// handled most of the idea's goods last year, against their thresholds),
+/// with no draw and no inventor named.
+pub fn find_pinned(st: &mut State, C: &Content, t: usize, year: i64, events: &mut Vec<Event>) {
+    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(t, g)] > 0.0).collect();
+    let mut best: Option<(f64, usize)> = None;
+    for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
+        let score: f64 = req.iter().map(|&g| st.town_prod_year[(i, g)] / st.disc_X0[(t, g)]).sum::<f64>() + 1e-9 * st.pop[i];
+        if best.is_none_or(|(b, _)| score > b) {
+            best = Some((score, i));
+        }
+    }
+    let Some((_, i)) = best else { return };
+    st.know[(i, t)] = st.know[(i, t)].max(0.25);
+    st.tech_year[t] = year;
+    st.tech_town[t] = i as i64;
+    let (label, town) = (C.tech_label[t].clone(), st.town_name[i].clone());
+    let mut ev = Event::new(
+        year as f64 + 0.5,
+        "discovery",
+        0.9,
+        format!("{label} found in {town}, in the year it was pinned to"),
+        format!("{label} was pinned by hand to {year}, and is found in {town}, the town that handled most of what it is found on. A quarter of the town knows it at once, and it spreads from there along the island's trade as any idea does."),
+    );
+    ev.town = Some(i);
+    ev.cell = Some(st.town_node[i]);
+    ev.tech = Some(t);
+    events.push(ev);
+}
+
+/// An idea by its name, with its label: the tree's ideas first, then the
+/// tasks rule's uses.
+pub fn idea_named(C: &Content, name: &str) -> Option<(Idea, String)> {
+    if let Some(t) = C.tech_name.iter().position(|n| n == name) {
+        return Some((Idea::Tech(t), C.tech_label[t].clone()));
+    }
+    let u = C.tasks.uses.iter().position(|u| u.name == name)?;
+    Some((Idea::Use(u), use_label(name)))
+}
+
+/// A use's name as words: "office computing".
+pub fn use_label(name: &str) -> String {
+    let s = name.replace('_', " ");
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
 }
 
 impl Edit {
@@ -237,6 +350,8 @@ pub struct Ledger {
     pub money: f64,
     pub people: f64,
     pub count: usize,
+    /// The pins standing (`Edit::Pin`), which `pin_says` reads.
+    pub pins: Vec<Pin>,
 }
 
 /// A factor the hand may use, or a sentence saying why not.
@@ -302,6 +417,7 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
             firm = Some(*works);
             close_works(sim, *works)?
         }
+        Edit::Pin { idea, year, when } => pin(sim, idea, *year, *when)?,
     };
     let when = sim.year as f64 + (months_played(sim) as f64 + 0.5) / 12.0;
     let mut ev = Event::new(when, "hand", NEWS_WEIGHT, title.clone(), text);
@@ -438,6 +554,49 @@ fn discover(sim: &mut Sim, name: &str, town: usize) -> Result<((String, String, 
         "{label} was found in {place} by hand, with no inventor named. A quarter of the town knows it at once, and it spreads from there along the island's trade as any idea does."
     );
     Ok(((title, text, Some(town)), t))
+}
+
+/// An idea pinned by hand (`Edit::Pin`): kept in the ledger, where the
+/// rules that find ideas ask after it (`pin_says`). Nothing is found now; the
+/// pin acts in its year.
+fn pin(sim: &mut Sim, name: &str, year: i64, when: PinWhen) -> Result<(String, String, Option<usize>), String> {
+    let C = &sim.content;
+    let Some((idea, label)) = idea_named(C, name) else {
+        return Err(format!("there is no idea called {name:?}: neither a method, a technique nor a use of the tasks rule"));
+    };
+    let st = &mut sim.st;
+    let found = match idea {
+        Idea::Tech(t) => {
+            if C.tech_known[t] {
+                return Err(format!("{label} was known before the island's history began"));
+            }
+            st.tech_year[t]
+        }
+        Idea::Use(u) => st.tasks.found.get(u).copied().unwrap_or(-1),
+    };
+    if found >= 0 {
+        return Err(format!("{label} was found already, in {found}"));
+    }
+    // a tree's idea is looked for at the end of each year, a use at the turn
+    // for the year after; a pin to find one must leave its year to come
+    let first = match idea {
+        Idea::Tech(_) => sim.year,
+        Idea::Use(_) => sim.year + 1,
+    };
+    if when == PinWhen::In && year < first {
+        return Err(format!("{label} cannot be found in {year}: the first year it can still be found in is {first}"));
+    }
+    let replaced = st.by_hand.pins.iter().position(|p| p.idea == idea).map(|k| st.by_hand.pins.remove(k));
+    st.by_hand.pins.push(Pin { idea, year, when });
+    let (title, what) = match when {
+        PinWhen::In => (format!("By hand: {label} pinned to {year}"), format!("{label} was pinned by hand to {year}: the island will not find it before then, and finds it in that year whatever it has made.")),
+        PinWhen::NotBefore => (format!("By hand: {label} held back until {year}"), format!("{label} was held back by hand until {year}: the island will not find it before then, and after it finds it as it would have.")),
+    };
+    let text = match replaced {
+        Some(p) => format!("{what} The pin takes the place of the one given before, to {}.", p.year),
+        None => what,
+    };
+    Ok((title, text, None))
 }
 
 /// Whether a name is fixed when the island is made (section 2.7): it is on
