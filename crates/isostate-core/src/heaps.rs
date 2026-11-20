@@ -1,6 +1,5 @@
 //! A heap for each thread, for the commands that play many islands at once in
-//! one process (`sweep`, `ablate`, `lab`, `atlas`) and for the test programs
-//! that do the same.
+//! one process (`sweep`, `ablate`, `lab`, `atlas`).
 //!
 //! Why. A run makes some 1.75 million small allocations a second (a month
 //! builds its tables afresh), and on Windows every thread of a process takes
@@ -33,9 +32,14 @@
 //! static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
 //! ```
 //!
-//! as the core's command does (`main.rs`). The viewer does not: its threads are
-//! few and its simulation is one island. Elsewhere than Windows it is the
-//! system's allocator unchanged.
+//! as the core's command does (`main.rs`), and the two golden tests, the port's
+//! so that its byte-for-byte hold is also a check of this, the game's for its
+//! three runs side by side. The longest other test programs (ground, save,
+//! chronicle, accounts) were tried with it and gained nothing (46.5 against
+//! 46.4 s, 48.8 against 50.4): their islands mostly run one at a time. The
+//! viewer does not install it: its simulation is one island, and its frames
+//! were not measured with it. Elsewhere than Windows it is the system's
+//! allocator unchanged.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 

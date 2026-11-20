@@ -8,10 +8,6 @@ use isostate_core::families::{self, Post};
 use isostate_core::save::{self, Game, Order, Save};
 use isostate_core::*;
 
-/// A heap for each thread: the tests play islands side by side (`heaps.rs`).
-#[global_allocator]
-static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
-
 fn report(g: &Game, k: usize) -> FamilyReport {
     family_report(&g.sim.st, &g.sim.content, &g.sim.params, k).unwrap()
 }

@@ -12,10 +12,6 @@ use isostate_core::ground::GroundParams;
 use isostate_core::sim::{self, Sim};
 use isostate_core::*;
 
-/// A heap for each thread: the tests play islands side by side (`heaps.rs`).
-#[global_allocator]
-static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
-
 #[test]
 fn the_rule_is_off_under_the_port_and_on_in_the_game() {
     assert_eq!(default_params().ground, GroundParams::default());

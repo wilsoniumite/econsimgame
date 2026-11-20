@@ -11,10 +11,6 @@ use std::sync::OnceLock;
 use isostate_core::chronicle::{self, ChronicleParams, Why};
 use isostate_core::*;
 
-/// A heap for each thread: the tests play islands side by side (`heaps.rs`).
-#[global_allocator]
-static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
-
 fn bits(v: &[f64]) -> Vec<u64> {
     v.iter().map(|x| x.to_bits()).collect()
 }
