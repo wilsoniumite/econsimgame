@@ -574,12 +574,18 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // 1901): with them a hand trade founded after their find means to hold its
     // town's clerking target, as every new works means to hold its town's target
     // in every class (it holds none of it, having no clerking), and this case
-    // asks that a hand trade mean none
+    // asks that a hand trade mean none. Played too with the first city's three
+    // rules off (docs/rules/city.md), as it was written: with them island 7's
+    // history after 1900 founds a saw pit in 1960 in a town whose clerking
+    // target office computing has already raised, and it means to hold it
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
         P.tasks.computing = on;
         P.tasks.office_machines = false;
+        P.city.follow_jobs = false;
+        P.city.gather = false;
+        P.city.dear_room = false;
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end
