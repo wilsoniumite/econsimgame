@@ -81,9 +81,9 @@ pub(crate) fn every_form(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
 /// One kind of form close to: a row for each form, built at its fewest
 /// storeys in its first year, between, and at its most in its last; a
 /// cottage of 1840 at the head of the first row for the scale.
-fn of_kind(pal: &Palette, detail: Detail, use_: Use) -> Vec<Vec<Cell>> {
+fn of_kind(pal: &Palette, detail: Detail, use_: Use, which: impl Fn(&Spec) -> bool) -> Vec<Vec<Cell>> {
     let mut rows: Vec<Vec<Cell>> = Vec::new();
-    for (i, s) in FORMS.iter().filter(|s| s.use_ == use_ && s.source != super::Source::Today).enumerate() {
+    for (i, s) in FORMS.iter().filter(|s| s.use_ == use_ && s.source != super::Source::Today && which(s)).enumerate() {
         let first = s.needs.iter().map(|k| k.year()).fold(s.years.0, i32::max).min(s.years.1);
         let mid = (s.storeys.0 + s.storeys.1).div_ceil(2);
         let mut row = Vec::new();
@@ -105,14 +105,25 @@ fn of_kind(pal: &Palette, detail: Detail, use_: Use) -> Vec<Vec<Cell>> {
     rows
 }
 
-pub(crate) fn dwellings(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
-    of_kind(pal, detail, Use::Dwellings)
+/// The houses of the suburbs: dwellings of no more than two storeys.
+pub(crate) fn houses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    of_kind(pal, detail, Use::Dwellings, |s| s.storeys.1 <= 2)
+}
+
+/// Blocks of flats over shops and round courts, in their four ages.
+pub(crate) fn blocks(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    of_kind(pal, detail, Use::Dwellings, |s| s.storeys.1 > 2 && s.source == super::Source::Dense)
+}
+
+/// The other flats: low flats, slab and point blocks, towers of flats, a mill turned.
+pub(crate) fn flats(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    of_kind(pal, detail, Use::Dwellings, |s| s.storeys.1 > 2 && s.source != super::Source::Dense)
 }
 
 pub(crate) fn offices(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
-    of_kind(pal, detail, Use::Offices)
+    of_kind(pal, detail, Use::Offices, |_| true)
 }
 
 pub(crate) fn sheds(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
-    of_kind(pal, detail, Use::Sheds)
+    of_kind(pal, detail, Use::Sheds, |_| true)
 }
