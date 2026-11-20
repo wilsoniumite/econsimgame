@@ -218,10 +218,14 @@
 # leans from shelter and clothing to comfort. The people's ages (ages.watch, a
 # watcher on from 1750) add their series to the books, so books in both eras
 # and run.bin move with them, the economy and the news of the first era held.
+# Taken: night/g-look-follows: a record past 1900 keeps two more layers, dens
+# and value (how densely each square of town is built and its land value), for
+# the picture to build each lot by; only run.bin of 1901-2050 moved, the
+# economy, books and news of both eras held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
 1901-2050 economy  0x75e4cec8abf51342
 1901-2050 books    0xc648c945efd032cc
 1901-2050 news     0x861a66b321ab0332
-1901-2050 run.bin  0xc7d27336dd8522be
+1901-2050 run.bin  0xdb7736e989c7eb0f
