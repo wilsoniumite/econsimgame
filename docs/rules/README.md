@@ -926,3 +926,10 @@ One line each as they arrive: the name, its page, its switch.
   bank, a way goes round the meanders its straight line cuts, and the
   picture draws a bridge, a ford or a ferry only where the simulation has
   one. [crossings.md](crossings.md), `crossings.enabled`.
+- **ground** (a stage of the run to 2050; acts only from 1901): a town's
+  room is counted by what is built, each cell built up as its rent rises,
+  and its house rent clears that room, blended in from 1901 to 1920; a cell
+  joins a town only within five cells of its centre, eight once the tramway
+  is found and the town has 30,000 townsfolk. One kind of household, no car
+  and no belt unless one is set. [ground.md](ground.md), `ground.enabled`,
+  `ground.room`, `ground.reach`.

@@ -99,6 +99,10 @@ pub const SPEED: &str = GROUPS[8];
 pub const METHOD_SHARES: [(&str, i64); 5] =
     [("coke_furnace", 1800), ("textile_mill", 1830), ("bessemer", 1880), ("rolling_mill", 1850), ("steel_rolling", 1890)];
 
+/// Methods of the content after 1900 whose share of their good is a fact at
+/// every mark from 1900 (`NAME_share_GOOD_Y`), with the good they make.
+pub const AFTER_1900_SHARES: [(&str, &str); 2] = [("offices", "services"), ("steel_frame", "building")];
+
 /// Goods whose price swings are measured.
 pub const PRICE_GOODS: [&str; 4] = ["grain", "iron", "rails", "cloth"];
 
@@ -965,6 +969,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::woods::facts(r) {
         b.num(name, kind, v);
     }
+    // ground (docs/rules/ground.md): the rent burden, town ground and its reach,
+    // the wage in goods and in room; dens and the tramway where the rule is on
+    for (name, kind, v) in crate::ground::facts(r) {
+        b.num(name, kind, v);
+    }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();
     for k in 0..n.saturating_sub(10) {
@@ -1021,6 +1030,16 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let k = (y - y0) as usize;
         let tot = good_total(m)[k];
         b.num(format!("share_{name}_{y}"), Kind::Share, if tot > 0.0 { at(&format!("mout_{name}"), y) / tot } else { f64::NAN });
+    }
+    // the content after 1900 (docs/rules/tree.md, "Offices and steel frames"): of all its good
+    // made, the share the offices and the steel-frame builders make, at every mark from 1900
+    for (name, good) in AFTER_1900_SHARES {
+        let Some(m) = C.method_name.iter().position(|x| x == name) else { continue };
+        let tot = good_total(m);
+        for y in crate::facts::marks(y0, y1).into_iter().filter(|&y| y >= DECADES_FROM) {
+            let k = (y - y0) as usize;
+            b.num(format!("{name}_share_{good}_{y}"), Kind::Share, if tot[k] > 0.0 { at(&format!("mout_{name}"), y) / tot[k] } else { f64::NAN });
+        }
     }
 
     // ---- prices and cycles

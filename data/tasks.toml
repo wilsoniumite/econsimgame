@@ -100,6 +100,18 @@ name = "shops and trades"
 tasks = [0.15, 0.25, 0.25, 0.25, 0.10]
 methods = ["services", "emporium"]
 
+# Offices with the telephone and the typewriter: more than half their hours are clerking, and none is
+# presence: an office serves no customer at its counter.
+[[kind]]
+name = "offices"
+tasks = [0.05, 0.10, 0.55, 0.30, 0.0]
+methods = ["offices"]
+
+[[kind]]
+name = "steel-frame builders"
+tasks = [0.40, 0.40, 0.03, 0.17, 0.0]
+methods = ["steel_frame"]
+
 # ----------------------------------------------------------------------------------------------------
 # The land's seven sectors and the carters. Under `tasks.land` a land unit pays its share for work to a
 # mixture of hands and machine units, in these classes, wherever a machine below names its sector in
@@ -148,8 +160,9 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   longer reaches the places this one is `on`
 #   switch          (may be left out) a switch of the rule the use stands behind, by name: while it is
 #                   off the use is never found, and has no cost, no part, no order and no plant, so the
-#                   run is the run without it. Today the names are "computing" (`tasks.computing`) and
-#                   "models" (`tasks.models`); the file refuses any other
+#                   run is the run without it. Today the names are "computing" (`tasks.computing`),
+#                   "models" (`tasks.models`) and "office_machines" (`tasks.office_machines`); the file
+#                   refuses any other
 #
 # A use whose `plant` is empty is rented: its whole cost is its run goods, bought each month. It has
 # nothing to wait for, so a works or a land sector holds what it means to from the first month; it orders
@@ -333,6 +346,57 @@ discover = { oil = 100000.0 }
 scale = 0.96
 
 # ----------------------------------------------------------------------------------------------------
+# Machines for clerks' tasks. Two uses share the class, and each month in each town they are taken
+# cheapest first, each holding what lies above the one before it: the office machines take the easy
+# quarter from 1901, and office computing, found from 1960 at about the cost an office machine has come
+# to by then, goes on from that quarter and soon takes the whole of what is held, as the computer took
+# the typewriter's tasks (docs/rules/tasks.md, "Office machines"; docs/rules/computing.md).
+# ----------------------------------------------------------------------------------------------------
+
+# Office machines: the typewriter, the adding machine and the telephone exchange, taking the easiest
+# quarter of clerking in the works and no more (`reach = 0.25`). Made of electrical goods, and they burn
+# nothing; behind their own switch, `tasks.office_machines`, on under the game's rules.
+#
+# Sized from island 7's prices and wage of 1901 under the game's rules with six families, on the new land,
+# the year it finds them (the year's island means: a wage of 8.82 a month, electrical goods 12.30). When
+# found, a unit costs 0.45 of a month's wage (3.97), of which eight tenths is the return a works must see
+# and the wear on its plant ((0.12 + 1/15) / 12 a month on 23.1 months' wages of plant, 204, which is 16.59
+# electrical goods), and two tenths is its minders (0.09 of a hand). At that cost a hand is worth 2.2
+# units, so they take ln(2.22) / ln(3000) = 0.10 of clerking. Quality grows two per cent a year to a cap of
+# 2, reached in 1936; after that only the wage rising on the price of electrical goods moves them on, to
+# the quarter on most islands by about 1950 (0.243 of the works' clerking on the mean of islands 1 to 8).
+#
+# Found from 1901 (nothing of the content after 1900 before it), on an island that has made at least 0.02
+# electrical goods a head since 1750, read per head as office computing's floor is: the drive's
+# threshold, 15,000 made, over island 7's 634,000 people in 1893, the year it would have found the drive.
+# A floor at half island 7's making a head in 1900 (0.94), office computing's rule, would leave islands 1,
+# 3, 11 and 14, which first made electrical goods in 1903 and 1904, thirty years late: at 0.47 a head they
+# find them in 1932, 1932, 1932 and 1930. At 0.02 a head islands 1, 3, 11 and 14 find them from 1910, the
+# rest in 1901 to 1903.
+[[use]]
+name = "office_machines"
+class = "clerk"
+on = ["works"]
+from = 0.0
+reach = 0.25
+plant = { electricals = 16.59 }
+run = {}
+minders = 0.09
+life = 15.0
+pace = 0.02
+cap = 2.0
+found_after = 1901
+discover = { electricals = 0.02 }
+discover_per_head = true
+switch = "office_machines"
+# Refitted once (20 November 2026): at 1.0 the towns' target in the year found was 0.032 on the mean of
+# islands 1 to 8 (0.000 to 0.094; found 1901 on islands 2, 4, 5, 6 and 7, 1903 on 8, 1910 on 1 and 3).
+# Island 7, which it was sized on, gave 0.094; elsewhere electrical goods were two to ten times dearer in
+# the year found, most islands having one electrical works or none. So the unit was made
+# exp(ln(3000) * (0.032 - 0.10)) = 0.58 times as dear, to bring the mean to 0.10.
+scale = 0.58
+
+# ----------------------------------------------------------------------------------------------------
 # Machines that reckon (docs/rules/computing.md), behind their own switch, `tasks.computing`.
 # ----------------------------------------------------------------------------------------------------
 
@@ -349,8 +413,10 @@ scale = 0.96
 # months' wages of plant, 66.2, which is 6.17 electrical goods), a tenth is its minders (0.0135 of a hand)
 # and the rest, three tenths, is electricity (0.139 a month). At that cost a hand is worth 7.4 units, so
 # it takes ln(7.4) / ln(3000) = 0.25 of clerking. It starts from the easiest task (`from = 0`), not above
-# the office machines of the design, which are not built: when they come, the cheaper unit holds the class
-# from the bottom, as the computer took the typewriter's tasks.
+# the office machines: the cheaper unit holds the class from the bottom, as the computer took the
+# typewriter's tasks. When it is found the office machines hold the quarter and are the cheaper, so its first
+# share starts where they stop; some twelve years on it is the cheaper (docs/rules/tasks.md, "Office
+# machines"). Its numbers were left as they were when the office machines came.
 #
 # Found from 1960, the year the machine is to be had, on an island that has made at least 5.4 electrical
 # goods a head since 1750: the floor is half of what island 7 had made a head when the year came (10.90

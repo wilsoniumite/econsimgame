@@ -119,6 +119,12 @@ pub struct TasksParams {
     /// params' file while off, as `computing` is.
     #[serde(skip_serializing_if = "is_false")]
     pub models: bool,
+    /// Office machines take the easy quarter of clerks' tasks from 1901
+    /// (`docs/rules/tasks.md`, "Office machines"): the uses of the file with
+    /// `switch = "office_machines"` may be found. Left out of the params' file
+    /// while off, as `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub office_machines: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -128,14 +134,14 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false }
     }
 }
 
 impl TasksParams {
     /// The game's.
     pub fn game() -> TasksParams {
-        TasksParams { enabled: true, land: true, computing: true, models: true, ..TasksParams::default() }
+        TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, ..TasksParams::default() }
     }
 
     /// Whether the switch of this name, which a `[[use]]` may name (`switch`),
@@ -144,6 +150,7 @@ impl TasksParams {
         match name {
             "computing" => self.computing,
             "models" => self.models,
+            "office_machines" => self.office_machines,
             _ => false,
         }
     }
@@ -151,7 +158,7 @@ impl TasksParams {
 
 /// The switches of `TasksParams` a `[[use]]` of the file may stand behind
 /// (`switch = "computing"`): a use behind one that is off is never found.
-pub const USE_SWITCHES: [&str; 2] = ["computing", "models"];
+pub const USE_SWITCHES: [&str; 3] = ["computing", "models", "office_machines"];
 
 /// The year from which the ceiling on yield is in force, and before which the
 /// best years it reads are kept.
@@ -784,6 +791,23 @@ pub fn adjust(st: &State, C: &Content, P: &Params, t: usize, m: usize, auto: &[f
     Some(Adjust { factor, run: run.into_iter().collect(), plant: plant.into_iter().collect(), held })
 }
 
+/// The use whose machines hold what a works holds above its town's top of
+/// class `ps` (cheapest first), where it holds `x`: the dearest use, as it
+/// always has been, unless `x` is beyond its reach; then the cheapest whose
+/// reach takes in `x`, or else the one that reaches highest. Some only where
+/// that is not the dearest. (Office machines reach a quarter of clerking: once
+/// office computing is cheaper they are the dearest use, and a works a little
+/// above its town's top would otherwise hold its hardest clerking with them,
+/// at some forty times the plant.) A class with one use is as it was.
+fn above_top(tb: &TaskTable, ps: &[(usize, f64, f64)], x: f64) -> Option<usize> {
+    let &(last, _, top) = ps.last()?;
+    if x <= top || tb.uses[last].reach >= x {
+        return None;
+    }
+    let u = ps.iter().find(|p| tb.uses[p.0].reach >= x).or_else(|| ps.iter().max_by(|a, b| tb.uses[a.0].reach.total_cmp(&tb.uses[b.0].reach)))?.0;
+    (u != last).then_some(u)
+}
+
 /// The machines of each use for an hour of work whose classes are `sh`, and
 /// the part of each class they hold, when `auto` of each class is held and
 /// `ps_of(k)` are the uses that would hold class `k`; None where nothing is
@@ -802,14 +826,20 @@ fn hold<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K],
         }
         let ps = ps_of(k);
         let n = ps.len();
+        let over = above_top(tb, ps, x);
         for (j, &(u, a, b)) in ps.iter().enumerate() {
-            // the dearest use holds whatever the works holds above the town's top
-            let b = if j + 1 == n { b.max(x) } else { b };
+            // the dearest use holds whatever the works holds above the town's top,
+            // unless that is beyond its reach (`above_top`)
+            let b = if j + 1 == n && over.is_none() { b.max(x) } else { b };
             let e = b.min(x);
             if e > a {
                 held[k] += e - a;
                 mach[u] += sh[k] * units(&tb.spread[k], a, e) / qeff(st, C, P, u);
             }
+        }
+        if let (Some(u), Some(&(_, _, top))) = (over, ps.last()) {
+            held[k] += x - top;
+            mach[u] += sh[k] * units(&tb.spread[k], top, x) / qeff(st, C, P, u);
         }
     }
     if held.iter().all(|&h| h == 0.0) {
@@ -848,9 +878,14 @@ fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &
         }
         let ps = ps_of(k);
         let n = ps.len();
-        for (j, &(u, a, b)) in ps.iter().enumerate() {
-            // as `hold`: the dearest use holds whatever is meant above the town's top
-            let b = if j + 1 == n { b.max(x) } else { b };
+        // as `hold`: the dearest use holds whatever is meant above the town's top,
+        // unless that is beyond its reach (`above_top`)
+        let over = above_top(tb, ps, x);
+        let mut spans: Vec<(usize, f64, f64)> = ps.iter().enumerate().map(|(j, &(u, a, b))| (u, a, if j + 1 == n && over.is_none() { b.max(x) } else { b })).collect();
+        if let (Some(u), Some(&(_, _, top))) = (over, ps.last()) {
+            spans.push((u, top, x));
+        }
+        for (u, a, b) in spans {
             let e = b.min(x);
             if e <= a {
                 continue;
@@ -1534,7 +1569,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
                 let x = st.tasks.f_held[f][k];
                 if x > 0.0 {
                     // the use holding the works' last task done by machine
-                    let u = ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map(|p| p.0);
+                    let u = above_top(tb, ps, x).or_else(|| ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map(|p| p.0));
                     if let Some(u) = u {
                         let gap = st.wage[t] / (st.tasks.cost[t][u] * worth(&tb.spread[k], x));
                         if gap.is_finite() {
@@ -1683,7 +1718,11 @@ fn toward(tb: &TaskTable, ps: &[(usize, f64, f64)], k: usize, x: f64, target: f6
     if target > x {
         x + step * (target - x) * fill
     } else if target < x {
-        let (u, a0) = ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map_or((usize::MAX, 0.0), |p| (p.0, p.1));
+        // (above the town's top, the use `above_top` names holds from that top)
+        let (u, a0) = match (above_top(tb, ps, x), ps.last()) {
+            (Some(u), Some(&(_, _, top))) => (u, top),
+            _ => ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map_or((usize::MAX, 0.0), |p| (p.0, p.1)),
+        };
         let floor = if u == usize::MAX {
             target
         } else if tb.uses[u].rented() {
@@ -1889,7 +1928,8 @@ pub fn rank_correlation(x: &[f64], y: &[f64]) -> f64 {
 /// `machine_share_CLASS_Y` (works and land together); `waiting_haul_works_Y`
 /// (hauling meant for machines not yet delivered), the same three for the
 /// pits under `land`, `hours_CLASS_Y` (hands at each class's tasks in works,
-/// and `hours_minders_Y`), `machines_years_Y` (the machines' book over the
+/// and `hours_minders_Y`), `hours_share_CLASS_Y` and `hours_share_minders_Y`
+/// (the same over all the hours worked in works), `machines_years_Y` (the machines' book over the
 /// year's wage bill), at the sweep's marks and in 1890; `CLASS_half_year_works`
 /// and (under `land`) `haul_half_year_pits`, the first year the share held
 /// passes a half;
@@ -1958,6 +1998,16 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     }
     for &y in &marks {
         out.push((format!("hours_minders_{y}"), Kind::Count, at(y).map_or(f64::NAN, |t| t.minders)));
+    }
+    // the same as shares of all the hours worked in works, the minders' among them
+    let all_hours = |t: &TasksYear| t.hands.iter().sum::<f64>() + t.minders;
+    for k in 0..K {
+        for &y in &marks {
+            out.push((format!("hours_share_{}_{y}", CLASSES[k]), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.hands[k], all_hours(t)))));
+        }
+    }
+    for &y in &marks {
+        out.push((format!("hours_share_minders_{y}"), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.minders, all_hours(t)))));
     }
     for &k in &open {
         for &y in &marks {
@@ -2220,4 +2270,33 @@ fn land_century_facts(r: &RunResult, marks: &[i64]) -> Vec<(String, Kind, f64)> 
         out.push((format!("oil_over_coal_heat_{y}"), Kind::Ratio, if n { per_heat } else { f64::NAN }));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two uses on one class (the office machines, reaching a quarter of
+    /// clerking, and office computing, reaching all of it): what a works holds
+    /// above its town's top goes to the dearest use only where that use reaches
+    /// so far; else to the cheapest that does. A class with one use, or a
+    /// dearest use that reaches, is as it always was (None).
+    #[test]
+    fn above_the_top_goes_to_a_use_that_reaches() {
+        let mut tb = TaskTable::default();
+        let quarter = Use { name: "quarter".into(), reach: 0.25, ..Use::default() };
+        let whole = Use { name: "whole".into(), reach: 1.0, ..Use::default() };
+        tb.uses = vec![quarter, whole];
+        // the whole is cheaper: it holds to 0.6, the quarter nothing above it
+        let ps = [(1, 0.0, 0.6), (0, 0.6, 0.6)];
+        assert_eq!(above_top(&tb, &ps, 0.62), Some(1), "above the top, the quarter cannot reach");
+        assert_eq!(above_top(&tb, &ps, 0.6), None, "at the top, nothing is above it");
+        assert_eq!(above_top(&tb, &ps, 0.5), None);
+        // the quarter is cheaper: the whole is the dearest and reaches
+        let ps = [(0, 0.0, 0.25), (1, 0.25, 0.4)];
+        assert_eq!(above_top(&tb, &ps, 0.45), None);
+        // one use alone, even beyond its reach, is as it was
+        assert_eq!(above_top(&tb, &[(0, 0.0, 0.2)], 0.3), None);
+        assert_eq!(above_top(&tb, &[], 0.3), None);
+    }
 }

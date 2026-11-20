@@ -184,6 +184,12 @@ pub struct GaugeYear {
     pub fork_made: f64,
     pub fork_raw: f64,
     pub fork_all: f64,
+    /// ground (docs/rules/ground.md): the wage over the rent of a unit of town
+    /// room (house rent over the room the towns have), first year = 1. Given
+    /// only after `ground.from`: before it rent is a fixed share of the wage a
+    /// head, and the run to 1900's file is left as it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fork_room: Option<f64>,
     // ---- hands
     /// Worker-months in works over what the goods they made would have taken
     /// by each good's hand method, before learning.
@@ -218,6 +224,10 @@ pub struct Gauges {
     last: Option<(Vec<f64>, Vec<f64>)>,
     level: [f64; 3],
     wage0: f64,
+    /// The first year's rent of a unit of town room, and the wage over that
+    /// rent of every year (1750 = 1), kept from the first year.
+    room0: f64,
+    room_forks: Vec<(i64, f64)>,
     /// The methods that hold any presence, and their share (for the run file).
     presence: Vec<(String, f64)>,
 }
@@ -360,6 +370,12 @@ fn headline(y: &GaugeYear) -> [(&'static str, f64); 17] {
 pub fn year_series(st: &State, year: i64) -> Vec<(usize, f64)> {
     let Some(y) = st.gauges.years.iter().rev().find(|g| g.year == year) else { return Vec::new() };
     headline(y).iter().filter_map(|&(name, v)| st.series.index.get(name).map(|&s| (s, v))).collect()
+}
+
+/// The wage over the rent of a unit of town room in `year`, first year = 1
+/// (ground, docs/rules/ground.md); NaN where the gauges did not read that year.
+pub fn fork_room_of(st: &State, year: i64) -> f64 {
+    st.gauges.room_forks.iter().rev().find(|y| y.0 == year).map_or(f64::NAN, |y| y.1)
 }
 
 /// The gauges of the last complete year (None while they are off or empty).
@@ -601,6 +617,15 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
     }
     ga.last = Some((pr.clone(), qty.clone()));
     let wage_index = ratio(wage, ga.wage0);
+    // ground: the rent of a unit of town room, the year's house rent over the
+    // room the towns have built (each cell's room for people, `towns::room`)
+    let room: f64 = (0..st.N.min(st.town_room.len())).filter(|&c| st.urban[c]).map(|c| st.town_room[c]).sum();
+    let room_rent = ratio(house_rent, room);
+    if ga.room_forks.is_empty() {
+        ga.room0 = room_rent;
+    }
+    let fork_room = wage_index / ratio(room_rent, ga.room0);
+    ga.room_forks.push((year, fork_room));
 
     // ---- hands: by hand, and in new methods
     let hand = hand_methods(C);
@@ -692,6 +717,7 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
         fork_made: wage_index / ga.level[0],
         fork_raw: wage_index / ga.level[1],
         fork_all: wage_index / ga.level[2],
+        fork_room: (year > P.ground.from).then_some(fork_room),
         hand_hours: ratio(worked, by_hand),
         new_work: ratio(hands_new, all_hands),
         lost_services: services.map_or(f64::NAN, |g| goods_out[g].lost),

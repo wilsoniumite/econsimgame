@@ -35,8 +35,9 @@ fn every_name_walked_holds_the_value_the_rules_hold_and_comes_in_their_order() {
         for e in &book {
             // a field the serialiser leaves out and the walk could not fill would be null:
             // only a name that is truly "nothing" may be (end_year, the content's; the tasks
-            // stage's ceiling on yield and freeze year, unset unless a sweep sets them)
-            let nothing = ["end_year", "tasks.yield_cap", "tasks.freeze_from"];
+            // stage's ceiling on yield and freeze year, unset unless a sweep sets them; the
+            // ground's belt, unset unless a sweep sets it)
+            let nothing = ["end_year", "tasks.yield_cap", "tasks.freeze_from", "ground.belt"];
             assert!(!e.value.is_null() || nothing.contains(&e.name.as_str()), "{} was not found: add its line to rulebook::skipped", e.name);
             let again = set_field(&P, &e.name, &e.value).unwrap_or_else(|why| panic!("{}: {why}", e.name));
             assert!(again == P, "{} set to its own value {} changes the rules", e.name, e.value);

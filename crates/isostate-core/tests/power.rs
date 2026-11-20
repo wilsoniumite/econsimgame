@@ -25,10 +25,11 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     assert_eq!(game_params().tree.stage, 6);
     let one = tree::game_content_at(1);
     let six = tree::game_content_at(6);
-    // four goods (electricity, electrical goods, oil and fertiliser), four methods and two
+    // four goods (electricity, electrical goods, oil and fertiliser), six methods (the offices and
+    // the steel-frame builders among them: docs/rules/tree.md, "Offices and steel frames") and two
     // inventions (breeding: docs/rules/tree.md, "Oil, nitrogen and the land"; managed woodland:
     // docs/rules/woods.md), nothing else; the tree's stages 2 to 5 have no entries
-    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 4, one.S, one.NS, one.M + 4));
+    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 4, one.S, one.NS, one.M + 6));
     assert_eq!(six.tech_name.len() - six.M, one.tech_name.len() - one.M + 2);
     for k in 2..=5 {
         assert_eq!(format!("{:?}", tree::game_content_at(k).good_name), format!("{:?}", one.good_name), "stage {k}");

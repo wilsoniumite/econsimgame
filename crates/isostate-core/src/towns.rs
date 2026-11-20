@@ -141,9 +141,15 @@ pub fn ceiling(C: &Content, P: &Params, year: i64) -> f64 {
 
 /// The people a clear cell built in `built` has room for in `year`.
 pub fn room(C: &Content, P: &Params, year: i64, built: i64) -> f64 {
+    room_at(C, P, year, built, year)
+}
+
+/// The same with the ceiling read in `ceiling_year`: ground (docs/rules/ground.md)
+/// holds it at its value in 1900 once the room is counted by what is built.
+pub fn room_at(C: &Content, P: &Params, year: i64, built: i64, ceiling_year: i64) -> f64 {
     let tp = &P.towns;
     let age = (year - built).max(0) as f64;
-    tp.d_new + (ceiling(C, P, year) - tp.d_new).max(0.0) * (1.0 - (-age / tp.tau.max(1.0)).exp())
+    tp.d_new + (ceiling(C, P, ceiling_year) - tp.d_new).max(0.0) * (1.0 - (-age / tp.tau.max(1.0)).exp())
 }
 
 /// The share of a cell's room that is left to people when works hold `ks` of it.
@@ -267,6 +273,12 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         st.town_peak = vec![0.0; T];
         st.town_ground_rent = vec![0.0; N];
     }
+    // ground (docs/rules/ground.md): after 1900, the year just run is put away and
+    // what is built up moves toward what the ground's rent asks
+    crate::ground::year_start(st, C, P, year);
+    let cy = crate::ground::ceiling_year(st, P, year);
+    let dens: Option<Vec<f64>> = (cy != year).then(|| (0..N).map(|c| crate::ground::dens_of(st, P, year, c)).collect());
+    let dens_at = |c: usize| dens.as_ref().map_or(1.0, |d| d[c]);
     st.urban_rent = vec![0.0; T];
     st.cell_urban_rent = vec![0.0; N];
     st.town_ground_rent.iter_mut().for_each(|v| *v = 0.0);
@@ -343,8 +355,15 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
                 st.town_built[node] = built_now;
             }
         }
-        let room_of = |built: &[i64], c: usize| room(C, P, year, built[c]) * room_beside_works(P, ks[c]);
+        let room_of = |built: &[i64], c: usize| room_at(C, P, year, built[c], cy) * dens_at(c) * room_beside_works(P, ks[c]);
         let mut total: f64 = list.iter().map(|&c| room_of(&st.town_built, c)).sum();
+        // ground: after 1900 a cell joins only within the town's reach of its
+        // centre, in a straight line, and a belt is the most it adds in a year
+        let reach = crate::ground::reach_of(st, P, year, i);
+        let belt = crate::ground::belt(st, P, year);
+        let (ny, nx) = ((node / W) as f64, (node % W) as f64);
+        let from_centre = |c: usize| ((c / W) as f64 - ny).hypot((c % W) as f64 - nx);
+        let (mut added, mut farthest) = (0usize, 0.0f64);
         // the free cells next to the town's ground, within its market area. A pit
         // is grown round: the ground beyond it counts as next to the town.
         seen.iter_mut().for_each(|v| *v = false);
@@ -365,13 +384,15 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
                         continue;
                     }
                     if !blocked[nc] {
-                        frontier.push(nc);
+                        if reach.is_none_or(|r| from_centre(nc) <= r) {
+                            frontier.push(nc);
+                        }
                     } else if st.world.land[nc] {
                         stack.push(nc);
                     }
                 }
             }
-            if U <= total || frontier.is_empty() {
+            if U <= total || frontier.is_empty() || belt.is_some_and(|b| added >= b) {
                 break;
             }
             // the town's people have outgrown its room: it takes its best free neighbour
@@ -387,7 +408,10 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             list.push(c);
             stack.push(c);
             total += room_of(&st.town_built, c);
+            added += 1;
+            farthest = farthest.max(from_centre(c));
         }
+        crate::ground::joined(st, P, year, i, added, farthest);
         if settling {
             // not yet kept: ground the town's people do not need is let go
             while list.len() > 1 {
@@ -432,7 +456,7 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         }
         // people are shared out by room; rent as the port's rule has it, highest at
         // the centre and falling to nothing a cell past the edge
-        let clear: Vec<f64> = list.iter().map(|&c| room(C, P, year, st.town_built[c])).collect();
+        let clear: Vec<f64> = list.iter().map(|&c| room_at(C, P, year, st.town_built[c], cy) * dens_at(c)).collect();
         let rooms: Vec<f64> = list.iter().zip(&clear).map(|(&c, &r)| r * room_beside_works(P, ks[c])).collect();
         let per_room = U / rooms.iter().sum::<f64>().max(1.0);
         let dmax = list.iter().map(|&c| st.dist[(i, c)]).fold(0.0, f64::max);
@@ -482,6 +506,8 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
     st.urban = urban;
     st.urban_res = res;
     st.urban_density = ceiling(C, P, year);
+    // ground: at the end of 1900 the rule takes over from the rent and room as they stand
+    crate::ground::year_end(st, P, year);
 }
 
 /// The end of `land::update_land_use`: what a cell's worth of ground costs a

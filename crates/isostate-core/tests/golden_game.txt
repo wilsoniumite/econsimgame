@@ -15,14 +15,16 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: 1901-2050: models (tasks.models), rented machines taking judging
-# tasks in the works and on the land from 2022 (found in 2022 on this island);
-# the played century held
-1750-1900 economy  0x7a0154d970baabc5
+# Taken: 1901-2050 all four: the ground (docs/rules/ground.md) takes over at
+# the end of 1900: house rent that clears the room a town has built, blended
+# in over 1901 to 1920, and a town's reach of five cells (eight with the
+# tramway, found 1901 on this island). 1750-1900 held, all four, since nothing
+# of the rule acts before 1901
+1750-1900 economy  0x320cce2de14a1967
 1750-1900 books    0x6eb41e73d1a3bad0
-1750-1900 news     0xdd7f28bb38e5f1c9
-1750-1900 run.bin  0xc0623d56d855884f
-1901-2050 economy  0x52adbf78b645040b
-1901-2050 books    0x6db3bd96fae97f95
-1901-2050 news     0x0a8c4bdfd33d51e0
-1901-2050 run.bin  0xf13bbc62a20afb58
+1750-1900 news     0xe230618b76ca51fb
+1750-1900 run.bin  0x280c4a50f93cbf69
+1901-2050 economy  0xff6c05b80f54940f
+1901-2050 books    0x52feeb90e3d119a9
+1901-2050 news     0x977950db24cfbb20
+1901-2050 run.bin  0xabd1c7c7108c3697

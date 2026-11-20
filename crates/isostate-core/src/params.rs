@@ -355,6 +355,11 @@ pub struct Params {
     /// only (not in the Python; see docs/rules/crossings.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub crossings: crate::crossings::CrossingParams,
+    /// From the end of 1900, house rent that clears the room a town has built,
+    /// and how far a town may reach from its centre (not in the Python; see
+    /// docs/rules/ground.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub ground: crate::ground::GroundParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -571,6 +576,7 @@ pub fn default_params() -> Params {
         tasks: crate::tasks::TasksParams::default(),
         woods: crate::woods::WoodsParams::default(),
         crossings: crate::crossings::CrossingParams::default(),
+        ground: crate::ground::GroundParams::default(),
     }
 }
 
@@ -622,6 +628,8 @@ pub fn game_params() -> Params {
     // crossings (docs/rules/crossings.md): acts on the new land only, and does
     // nothing on the old island, whose rivers the core does not draw
     P.crossings = crate::crossings::CrossingParams::game();
+    // ground (docs/rules/ground.md): acts only from 1901, with no belt
+    P.ground = crate::ground::GroundParams::game();
     P
 }
 

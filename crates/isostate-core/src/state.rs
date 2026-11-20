@@ -564,4 +564,9 @@ pub struct State {
     /// The machines for tasks found, each town's target, and each works'
     /// share of each class its machines hold, their book and their orders.
     pub tasks: crate::tasks::TasksState,
+
+    // ---------------- ground (docs/rules/ground.md; empty while `ground.enabled` is off and until the end of 1900)
+    /// What is built up on each town cell, each town's room and its rent a
+    /// unit of room, the tramway's year, and each year of the rule.
+    pub ground: crate::ground::GroundState,
 }

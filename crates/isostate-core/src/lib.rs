@@ -41,6 +41,7 @@ pub mod facts;
 pub mod families;
 pub mod firms;
 pub mod gauges;
+pub mod ground;
 pub mod hands;
 pub mod harvest;
 pub mod inspect;

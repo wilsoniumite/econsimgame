@@ -400,10 +400,20 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let (share, unit) = service_mix_widths(&st.price, &C.props, &crate::tree::widths(C, P));
     let mut urban_pay = vec![0.0; T];
     let mut pc = vec![0.0; T];
+    let budgets: Vec<f64> = (0..T)
+        .map(|t| {
+            let hh_cash = st.hh_cash[t].max(0.0);
+            hh_cash.min(P.cons_income * st.hh_income_prev[t].max(0.0) + P.cons_wealth * hh_cash)
+        })
+        .collect();
+    // ground (docs/rules/ground.md): from 1901, house rent that clears the room there is
+    let cleared = crate::ground::month(st, C, P, &budgets, &unit);
     for t in 0..T {
-        let hh_cash = st.hh_cash[t].max(0.0);
-        let budget = hh_cash.min(P.cons_income * st.hh_income_prev[t].max(0.0) + P.cons_wealth * hh_cash);
-        urban_pay[t] = st.urban_rent[t].min(0.5 * budget);
+        let budget = budgets[t];
+        urban_pay[t] = match &cleared {
+            Some(pay) => pay[t],
+            None => st.urban_rent[t].min(0.5 * budget),
+        };
         let goods_budget = budget - urban_pay[t];
         pc[t] = if st.pop[t] > 0.0 { goods_budget / st.pop[t].max(1.0) } else { 0.0 };
     }

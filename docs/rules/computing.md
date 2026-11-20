@@ -106,6 +106,20 @@ that shows them:
 isostate-core sweep --seeds 1-8 --rules game --families 6 --set tasks.computing=false,true --end-year 2050 --jobs 8 --out DIR
 ```
 
+**Since the office machines (20 November 2026).** The typewriter and the
+adding machine now take the easy quarter of clerking from 1901, behind
+`tasks.office_machines` ([tasks.md](tasks.md), "Office machines"), and the
+two uses read as one history: by 1950 the works' clerking done by machine
+stands at a quarter (0.243 on the mean of islands 1 to 8), office computing
+is found from 1960 with a first share of a quarter, starting where the office
+machines stop, and some twelve years on it is the cheaper and holds the class
+from the bottom. Its own numbers were not changed: the class's target is the
+higher of the two uses' shares whichever is cheaper, so its path from 1960 is
+its own. Half of clerking is now done by machine in 2009.0 on the mean of
+islands 1 to 8 (2007 to 2013), against 2010.6 (2008 to 2017) before, and 0.763
+of it by 2050 against 0.755. The figures below were measured before the office
+machines came.
+
 ## What it leaves to the full stage
 
 - **A computing good and its makers.** The design runs this machine on
