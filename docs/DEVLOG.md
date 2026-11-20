@@ -2,6 +2,12 @@
 
 Working notes, newest first. The plan lives in PLAN.md; this is what happened and what is in flight.
 
+## 2026-11-21: what landed
+
+**Every building form after 1900 is an asset.** The three designers' directions for the look of 1900 to 2050 are no longer a choice: every form of all three is one catalogue in the generators, `isostate_gen::forms`, 33 in all (today's four houses; semis, council and estate pairs, detached houses, flats over shops and courtyard blocks of four ages, slabs, point blocks, towers of flats, the mill turned to flats, banks, office blocks, stepped towers, stone and glass towers, sheds and a car park). Each says its years, its storeys, its lot and what its builders must know, and `forms::choose` answers which form a lot is built as. Each is in the registry and keeps to the houses' scale; the houses are unchanged to the byte.
+
+**Each lot follows technology, year and land value.** Stella's answer of 20 November, that the look should reflect technology, year and land value with the forms as assets the simulation uses, is built. A record past 1900 keeps two more layers, each square's density of building and its land value (about 3 per cent more of run.bin). After 1900 each lot is built in the form its year, its town's knowledge and its land value give; a square is rebuilt only where it comes to hold more than its buildings do, the roads' frontage first. On island 7 the first city now rises at its middle in flats over shops of 1905 to 1979 among its houses of 1900, and office works stand as office buildings.
+
 ## 2026-11-20: what landed
 
 **Office computing is found from 1960 on a floor of electrical goods made a head.** A use may now carry `discover_per_head`, which reads its find threshold over the island's people. Reckoning per head did not close the spread by itself. The islands are near one size but came to electrical goods 35 years apart, so a threshold on their own making that island 7 just reached in 1960 found the machine from 1960 to 1996. The year is now the gate (from 1960), and the island's making is a floor of 5.4 a head, half of island 7's. On sixteen islands it is found from 1960 to 1967. Half of clerking is taken in 2010.5 on the mean of islands 1 to 8 (2022 before), and 0.75 of it by 2050. The game's golden hashes held.
