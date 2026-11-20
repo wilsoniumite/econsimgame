@@ -656,6 +656,9 @@ pub fn game_params() -> Params {
     P.linked = crate::linked::LinkedParams::game();
     // pay (docs/rules/pay.md): watches only, reckoning each class's pay from 1900
     P.pay = crate::pay::PayParams::game();
+    // city (docs/rules/city.md): after 1900 people follow jobs, work gathers where
+    // work is, and room is wanted less than in proportion as it dears; all three on
+    P.city = crate::city::CityParams::game();
     P
 }
 
