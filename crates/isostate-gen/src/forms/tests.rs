@@ -79,6 +79,38 @@ fn the_answers_follow_technology_year_and_height() {
     let _ = choose(&a);
 }
 
+/// Prints what a town is answered, by year and storeys, for each use and lot, and how
+/// many of all the questions fit a form exactly
+/// (`cargo test -p isostate-gen answers -- --ignored --nocapture`).
+#[test]
+#[ignore]
+fn answers() {
+    let heights = [1u8, 2, 3, 5, 8, 12, 20, 30, 40];
+    for use_ in Use::ALL {
+        for lot in Lot::ALL {
+            let (mut fits, mut all) = (0, 0);
+            for year in 1750..=2050 {
+                for storeys in 1..=40u8 {
+                    fits += choose(&ask(year, storeys, lot, use_, 0.0)).fits as i32;
+                    all += 1;
+                }
+            }
+            println!("\n{} on {}: {fits} of {all} questions fit a form exactly", use_.label(), lot.label());
+            println!("{:>6} {}", "year", heights.iter().map(|h| format!("{h:>18}")).collect::<String>());
+            for year in (1750..=2050).step_by(25) {
+                let row: String = heights
+                    .iter()
+                    .map(|&h| {
+                        let x = choose(&ask(year, h, lot, use_, 0.0));
+                        format!("{:>18}", format!("{}{}", spec(x.shape).short, if x.fits { "" } else { "*" }))
+                    })
+                    .collect();
+                println!("{year:>6} {row}");
+            }
+        }
+    }
+}
+
 #[test]
 fn what_the_content_has_is_asked_of_the_town() {
     // the steel frame is in the content: a town knows it when it knows the method, whatever the year
