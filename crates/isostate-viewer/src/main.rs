@@ -9,6 +9,7 @@
 //! With `--lab SHEET --out DIR` there is no game: the viewer writes contact
 //! sheets of the scenery's generators and stops (lab.rs).
 
+mod ages_chart;
 mod boats;
 mod built;
 mod carts;

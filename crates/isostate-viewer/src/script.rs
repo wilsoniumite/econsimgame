@@ -496,6 +496,12 @@ fn print_state(world: &mut World, note: &str) {
                 println!("script:   {line}");
             }
         }
+        // the island half's people by age, reckoned (docs/rules/ages.md), as its chart draws them
+        if tab == ui::Tab::Markets && world.resource::<UiState>().markets == MarketsShow::Island {
+            if let Some(line) = crate::ages_chart::said(&world.resource::<Data>().r, k) {
+                println!("script:   {line}");
+            }
+        }
     }
     // the note about what was clicked, every text of it, while it shows
     let mut q = world.query_filtered::<Entity, With<crate::InspectPanel>>();

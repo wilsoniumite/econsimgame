@@ -1525,6 +1525,8 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
             crate::chart::spawn(col, f, images, &c, side, side);
         });
     }
+    // ages (docs/rules/ages.md): the people by age in the year on the clock, reckoned
+    crate::ages_chart::spawn(p, f, images, r, k);
 }
 
 /// Five years of months along the bottom of a chart: the four calendar years
