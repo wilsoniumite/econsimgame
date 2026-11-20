@@ -341,8 +341,8 @@ how many run at once (`--jobs 1` and `--jobs 8` write the same files, the
 seconds aside). Each thread takes its memory from a heap of its own
 (`src/heaps.rs`, since 20 November 2026): with the process's one heap the
 threads queued on it, and 24 islands to 2050 at once took 439 seconds a run
-with about six processors busy; now 80 seconds a run with 23 busy, about what
-a run takes alone. A run that panics or fails the monthly money check is reported
+with about six processors busy; now 80 seconds a run with 23 busy, against 58
+alone (what is left is the cores slowing each other, not a queue). A run that panics or fails the monthly money check is reported
 as failed and the rest carry on; the command then ends with an error so a
 script notices.
 

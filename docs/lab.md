@@ -70,7 +70,8 @@ isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
   in them (`gauge_floor_{Y}`), plain names (`hoist_found_year`), and
   `series:NAME` for the year's mean of any observer series
   (`series:acct_share_work`).
-- `--jobs` is how many runs at a time (half the machine's cores);
+- `--jobs` is how many runs at a time (half the machine's cores, each on a
+  heap of its own, so that they do not wait on each other);
   `--quiet` leaves out the line printed as each run finishes.
 
 Whatever can be refused is refused before the first run and before anything
@@ -217,7 +218,12 @@ Played on 19 November 2026 with the code of this page's first commit, eight
 islands to 2050 under the game's rules with six families, sixteen runs at a
 time. The machine was busy with other builds, so each took four to five
 minutes; on a quiet machine one sweep of eight islands to 2050 takes about
-88 s, and an experiment of sixteen runs should take a little over twice that. Read every number after 1950
+88 s, and an experiment of sixteen runs should take a little over twice that.
+(Much of those minutes was the threads of one process queueing on its one
+heap, not the other builds. Since 20 November 2026 each thread has a heap of
+its own, `src/heaps.rs`: twelve runs at a time took 71 s a run to 2050 and
+24 at a time 80 s, against 58 alone, so an experiment of sixteen runs takes
+little more than one run; the lab's timings below are those of the day.) Read every number after 1950
 knowing that the island as it stands grows poorer after 1950: its chained
 wage halves from there to 2050 and its hands go back to the fields, with the
 land's machines not yet built. A change in 2050 is a change on that island.

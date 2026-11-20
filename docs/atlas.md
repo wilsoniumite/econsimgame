@@ -43,7 +43,9 @@ keep what the page needs, so the atlas costs what a sweep of the same islands
 does and a few seconds more to read the books. On 19 November eight islands to
 2050 took 115 s on the clock, eight at a time, against 109 s for
 `sweep --seeds 1-8 --rules game --families 6 --end-year 2050` run straight
-after. The page is 14 MB with every town of the eight islands, of which the
+after. On 20 November, with a heap for each thread (`src/heaps.rs`, so that
+the islands no longer queue on the process's one heap), it took 73 s, eight
+at a time. The page is 14 MB with every town of the eight islands, of which the
 islands' own figures are 1.1 MB; one island with its towns is 1.8 MB.
 
 ## How to read it
@@ -221,7 +223,8 @@ of it first stood above 0.02 (from which a works of it may be built there),
 the year each of its thresholds was met and the year all were, and the year
 the first works of each method stood. It costs what a sweep of the same
 islands does: sixteen islands to 2050 took 178 s on 20 November, eight at a time, on a machine
-shared with other builds.
+shared with other builds, and 77 s later that day, all sixteen at once (the
+default, half the machine's processors) with a heap for each thread.
 
 **Which ideas.** Every idea in the data the runs were played on, read when
 the command runs: the tree's methods and techniques (`data/content.toml` with

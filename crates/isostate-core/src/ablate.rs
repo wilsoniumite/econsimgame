@@ -60,7 +60,17 @@
 //!
 //! `--again DIR` reads a finished table back from the files it wrote and
 //! writes its page anew with this code's reading, playing nothing (a table to
-//! 2050 takes hours on a shared machine); the second pass stays the one played.
+//! 2050 took 23 minutes on 20 November 2026, 392 runs at the default of half
+//! the machine's processors, 24 at a time; 4 h 05 the day before, when the
+//! threads still queued on one heap, `heaps.rs`); the second pass stays the
+//! one played.
+//!
+//! `--jobs` is how many runs at a time: half the machine's processors unless
+//! it says otherwise, which on a machine of 24 cores is one run a core. Each
+//! run's thread has a heap of its own, so none waits on another: at 24 at a
+//! time a run to 2050 took 80 s of processor and 81 on the clock, against 58
+//! alone, the cores slowing each other through the clock, the caches and the
+//! memory they share, not a queue.
 //!
 //! What it writes in `DIR`: `ablate.txt` (the table it prints), `core.md` and
 //! `core.svg` (the page and its chart), `ablate.json` (every arm's numbers),
