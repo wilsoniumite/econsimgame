@@ -46,6 +46,7 @@ mod scatter;
 mod script;
 mod shots;
 mod terrain;
+mod town_ideas;
 mod trains;
 mod ui;
 mod work_charts;
@@ -1078,6 +1079,7 @@ fn main() {
         .add_plugins(sandbox::plugin)
         .add_plugins(hand_tab::plugin)
         .add_plugins(inspector::plugin)
+        .add_plugins(town_ideas::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
@@ -1879,6 +1881,8 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
                     // in a sandbox, what the simulation knows of the thing (inspector.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
+                    // and a town's ideas, in a section of their own (town_ideas.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, town_ideas::IdeasBlock));
                 });
             });
         });

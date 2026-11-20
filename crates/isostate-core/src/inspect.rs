@@ -24,6 +24,7 @@
 
 use crate::accounts;
 use crate::econ;
+use crate::edits;
 use crate::families;
 use crate::sim::Sim;
 use crate::util::{fmt_g6, fmt_pct, fmt_thousands_f0};
@@ -49,6 +50,9 @@ pub struct Told {
     /// The month about to be played, as "March 1821".
     pub as_of: String,
     pub groups: Vec<Group>,
+    /// A town's ideas, every one of the data's in one of three states
+    /// (`town_ideas`); None for anything that is not a town.
+    pub ideas: Option<Ideas>,
 }
 
 /// A group of rows under a heading: each row a name and a figure in words.
@@ -74,13 +78,25 @@ pub const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", 
 /// with no town, a works that has closed, a square off the map or at sea) is
 /// refused in a sentence.
 pub fn tell(sim: &Sim, thing: Thing) -> Result<Told, String> {
+    tell_with(sim, thing, None)
+}
+
+/// `tell`, with what has been watched of the towns' knowledge year by year
+/// (`Learnt`), from which a town's card dates each idea it came to know. The
+/// viewer's thread keeps one and asks with it; without one the card dates
+/// only what the state itself holds (where and when each idea was found).
+pub fn tell_with(sim: &Sim, thing: Thing, learnt: Option<&Learnt>) -> Result<Told, String> {
     let (title, groups) = match thing {
         Thing::Town(t) => town(sim, t)?,
         Thing::Works(f) => works(sim, f)?,
         Thing::Cell(c) => cell(sim, c)?,
         Thing::Island => island(sim),
     };
-    Ok(Told { title, as_of: as_of(sim), groups })
+    let ideas = match thing {
+        Thing::Town(t) => Some(town_ideas(sim, t, learnt)?),
+        _ => None,
+    };
+    Ok(Told { title, as_of: as_of(sim), groups, ideas })
 }
 
 /// The month about to be played, from the months played so far.
@@ -552,4 +568,386 @@ fn signed(x: f64) -> String {
     } else {
         format!("-{w}")
     }
+}
+
+// ---------------------------------------------------------------- a town's ideas
+
+/// What has been watched of the towns' knowledge: the year each town came to
+/// know each idea of the tree (its knowledge above a fiftieth, `KNOWS`, from
+/// which a works of it may be built there), as the atlas's third plate
+/// watches it. The state keeps only the knowledge as it stands, so a card
+/// that dates each idea needs this kept beside the game, and the viewer's
+/// thread keeps one (`year_end` after every year, the years played again when
+/// a game is gone on with among them). It only reads the state.
+#[derive(Clone, Debug, Default)]
+pub struct Learnt {
+    towns: usize,
+    ideas: usize,
+    /// `[town * ideas + idea]`: the year, or -1 while not yet known
+    knew: Vec<i64>,
+}
+
+impl Learnt {
+    /// Watch the year just played (`sim.year - 1`).
+    pub fn year_end(&mut self, sim: &Sim) {
+        let (st, C) = (&sim.st, &sim.content);
+        let year = sim.year - 1;
+        if self.towns != st.T_max || self.ideas != C.NT || self.knew.len() != st.T_max * C.NT {
+            (self.towns, self.ideas) = (st.T_max, C.NT);
+            self.knew = vec![-1; st.T_max * C.NT];
+        }
+        for t in 0..st.T_max.min(st.town_founded.len()) {
+            if !st.town_active[t] {
+                continue;
+            }
+            for k in 0..C.NT {
+                let i = t * C.NT + k;
+                // (a slot taken by a town founded later starts again)
+                if self.knew[i] >= 0 && self.knew[i] < st.town_founded[t] {
+                    self.knew[i] = -1;
+                }
+                if self.knew[i] < 0 && st.know[(t, k)] > KNOWS {
+                    self.knew[i] = year;
+                }
+            }
+        }
+    }
+
+    /// The year town `t` came to know idea `k` of the tree, if it was watched.
+    pub fn year(&self, t: usize, k: usize) -> Option<i64> {
+        (t < self.towns && k < self.ideas).then(|| self.knew[t * self.ideas + k]).filter(|&y| y >= 0)
+    }
+}
+
+/// A town knows an idea once its knowledge of it is above this (`firms`,
+/// `families`, `edits`: from here a works of it may be built in the town).
+pub const KNOWS: f64 = crate::atlas_ideas::KNOWS;
+
+/// Where an idea stands for one town.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Stands {
+    /// The town knows it (for a use of the tasks rule: the island has found it).
+    Here,
+    /// Found on the island, or known before its history began, but not known here yet.
+    Elsewhere,
+    /// Found nowhere yet.
+    Nowhere,
+}
+
+/// A town's ideas: every idea of the data the run plays (the tree's methods
+/// and techniques, and the uses of the tasks rule), each in one of three
+/// states, in groups as the tree groups them (the trades of the works, then
+/// the techniques, then the uses).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ideas {
+    /// The town, by its slot.
+    pub town: usize,
+    /// The timeline's two ends: the run's first year and the year in progress.
+    pub from: i64,
+    pub to: i64,
+    pub groups: Vec<IdeaGroup>,
+}
+
+impl Ideas {
+    /// Every idea, group by group.
+    pub fn all(&self) -> impl Iterator<Item = &TownIdea> {
+        self.groups.iter().flat_map(|g| g.ideas.iter())
+    }
+
+    /// How many ideas stand so.
+    pub fn count(&self, stands: Stands) -> usize {
+        self.all().filter(|i| i.stands == stands).count()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct IdeaGroup {
+    pub name: String,
+    pub ideas: Vec<TownIdea>,
+}
+
+/// One idea as a town's card tells it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TownIdea {
+    /// As the data names it (`Content::tech_name`, or a use's name).
+    pub name: String,
+    pub label: String,
+    /// "method", "technique" or "use".
+    pub kind: &'static str,
+    pub stands: Stands,
+    /// Here: the year the town came to know it, where that is known.
+    /// Elsewhere: the year it was found on the island. Nowhere: none.
+    pub year: Option<i64>,
+    /// In a few words, how the town came to know it, or where it stands.
+    pub how: String,
+    /// The share of the town that knows it, 0 to 1 (for a use, 1 once found).
+    pub share: f64,
+    /// How many of the island's towns know it.
+    pub towns: usize,
+    /// What a click on it tells: for one known here what it opened and how
+    /// many works use it now; for one known elsewhere where it is known; for
+    /// one found nowhere what it waits on.
+    pub said: String,
+    /// The hand's edit for an idea (`edits::Edit::Discover`) would find it in
+    /// this town now: a method or technique found nowhere yet, which leaves
+    /// out exactly that edit's two refusals of an idea (known before the
+    /// history began, found already).
+    pub discover: bool,
+}
+
+/// What a technique of the tree changes, since it adds no works of its own
+/// (the data says it only in its news). One not named here is said plainly.
+fn technique_words(name: &str) -> &'static str {
+    match name {
+        "steam_pumping" => "steam engines draining the pits, so that the mines can go deeper",
+        "wagonway" => "iron wagonways at the pits, so that one horse hauls what four did",
+        "railway" => "the railway: lines may be laid between the towns, and goods go by rail",
+        "improved_husbandry" => "new rotations on the farms, turnips and clover in place of fallow and more stock kept through the winter, so that yields climb",
+        "farm_machinery" => "machines on the farms, so that fewer hands bring in the same harvest",
+        "breeding" => "bred seed and stock and sprays against blight, so that the same field gives more",
+        "managed_woodland" => "woods planted and felled in rotation, so that the woods of the town's market area grow back faster",
+        _ => "a way of working that changes how existing work is done rather than adding works",
+    }
+}
+
+/// A sentence's first letter in capitals.
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// A town's ideas (`Ideas`), from the state as it stands and, for the year
+/// each was learnt, from `learnt` where the caller keeps one. It only reads.
+pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas, String> {
+    let (st, C, P) = (&sim.st, &sim.content, &sim.params);
+    if t >= st.town_name.len() || t >= st.T_max {
+        return Err(format!("There is no town numbered {t}: the island has had {}.", st.town_name.len()));
+    }
+    if !st.town_active[t] {
+        return Err(format!("{} is no longer a market town.", st.town_name[t]));
+    }
+    let (start, now) = (C.start_year, sim.year);
+    let active: Vec<usize> = (0..st.T_max.min(st.town_name.len())).filter(|&i| st.town_active[i]).collect();
+    let founded = st.town_founded[t];
+    // how each idea of the tree was found, from the island's news: by hand, by a pin or by a draw
+    let mut found_by: Vec<Option<&str>> = vec![None; C.NT];
+    for ev in &sim.events {
+        if let Some(k) = ev.tech.filter(|&k| k < C.NT) {
+            if found_by[k].is_none() && (ev.kind == "hand" || ev.kind == "discovery") {
+                found_by[k] = Some(if ev.kind == "hand" {
+                    "by hand"
+                } else if ev.title.ends_with("pinned to") {
+                    "by a pin, in the year it was pinned to"
+                } else {
+                    "by a draw, on what the island had made"
+                });
+            }
+        }
+    }
+    let mut tree: Vec<(Option<families::Group>, usize, TownIdea)> = Vec::new();
+    for k in 0..C.NT {
+        let method = k < C.M;
+        let kind = if method { "method" } else { "technique" };
+        let share = st.know[(t, k)];
+        // the towns that know it, the most knowing first
+        let mut who: Vec<(f64, usize)> = active.iter().map(|&i| (st.know[(i, k)], i)).filter(|&(v, _)| v > KNOWS).collect();
+        who.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        let opens = |here: bool| -> String {
+            if !method {
+                return format!("It is {}.", technique_words(&C.tech_name[k]));
+            }
+            let good = lower(&C.good_label[C.method_out[k]]);
+            let trade = families::Group::of_method(C, k).map_or(String::new(), |g| format!(", in {}", lower(g.label())));
+            let what = format!("works of the kind {}, which make {good}{trade}", lower(&C.method_label[k]));
+            if !here {
+                return format!("Known here, it would open {what}.");
+            }
+            let (here_n, all_n) = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_method[f] == k).fold((0, 0), |(h, a), f| (h + (st.f_town[f] == t) as usize, a + 1));
+            let stand = if here_n == 1 { "1 stands".to_string() } else { format!("{here_n} stand") };
+            format!("It opens {what}: {stand} here now, of {all_n} on the island.")
+        };
+        let found_here = st.tech_town[k] == t as i64 && st.tech_year[k] >= 0;
+        let idea = if share > KNOWS {
+            let year = learnt
+                .and_then(|l| l.year(t, k))
+                .or(found_here.then_some(st.tech_year[k]))
+                .or((C.tech_known[k] && founded <= start).then_some(start))
+                // (watched, and not known at the last year's end: it came in the year in progress)
+                .or(learnt.map(|_| now));
+            let how = if C.tech_known[k] && founded <= start {
+                format!("known before {start}")
+            } else if found_here {
+                format!("found here in {}, {}", st.tech_year[k], found_by[k].unwrap_or("by a draw, on what the island had made"))
+            } else if founded >= start && year.is_some_and(|y| y <= founded) {
+                format!("brought by those who founded the town in {founded}, from the town it grew out of")
+            } else {
+                "learnt from the other towns along the island's trade".to_string()
+            };
+            let when = year.filter(|&y| y > start || !C.tech_known[k]).map_or(String::new(), |y| format!(" since {y}"));
+            let arriving = if share < 0.5 { ", and more is still arriving" } else { "" };
+            let said = format!("{}: known here{when}, {how}. {} of the town knows it{arriving}. {}", C.tech_label[k], capital(&pct(share)), opens(true));
+            TownIdea { name: C.tech_name[k].clone(), label: C.tech_label[k].clone(), kind, stands: Stands::Here, year, how, share, towns: who.len(), said, discover: false }
+        } else if C.tech_known[k] || st.tech_year[k] >= 0 {
+            let year = Some(if C.tech_known[k] { start } else { st.tech_year[k] });
+            let found = if C.tech_known[k] {
+                format!("it was known before {start}")
+            } else {
+                let place = st.town_name.get(st.tech_town[k].max(0) as usize).cloned().unwrap_or_default();
+                format!("it was found in {place} in {}", st.tech_year[k])
+            };
+            let mut most: Vec<String> = who.iter().take(3).map(|&(_, i)| st.town_name[i].clone()).collect();
+            let more = who.len().saturating_sub(3);
+            if more > 0 {
+                most.push(if more == 1 { "1 more".to_string() } else { format!("{more} more") });
+            }
+            let where_ = if who.is_empty() { "no town holds a fiftieth of it now".to_string() } else { format!("{} of the island's {} towns know it: {}", who.len(), active.len(), and_list(&most)) };
+            let reached = if share >= 0.0005 { format!(" ({} of the town knows it so far)", pct(share)) } else { String::new() };
+            let said = format!(
+                "{}: {found}, and {where_}. It has not reached here yet{reached}: it comes along the island's trade as any idea does, and cannot be found here by hand, since it has been found already. {}",
+                C.tech_label[k],
+                opens(false)
+            );
+            let how = if who.len() == 1 { "known in 1 town".to_string() } else { format!("known in {} towns", who.len()) };
+            TownIdea { name: C.tech_name[k].clone(), label: C.tech_label[k].clone(), kind, stands: Stands::Elsewhere, year, how, share, towns: who.len(), said, discover: false }
+        } else {
+            let said = format!("{}: found nowhere yet. {} {} Discover it here finds it in {} now, by hand.", C.tech_label[k], tree_waits(sim, k), opens(false), st.town_name[t]);
+            TownIdea { name: C.tech_name[k].clone(), label: C.tech_label[k].clone(), kind, stands: Stands::Nowhere, year: None, how: "not yet found".to_string(), share, towns: 0, said, discover: true }
+        };
+        tree.push((if method { families::Group::of_method(C, k) } else { None }, k, idea));
+    }
+
+    // known here first, by the year; then known elsewhere, by the year found; then found
+    // nowhere, by history's year in the data and then the data's order
+    let order = |mut ideas: Vec<(usize, TownIdea)>, target: &dyn Fn(usize) -> i64| -> Vec<TownIdea> {
+        let rank = |s: Stands| match s {
+            Stands::Here => 0,
+            Stands::Elsewhere => 1,
+            Stands::Nowhere => 2,
+        };
+        ideas.sort_by_key(|(k, i)| (rank(i.stands), i.year.unwrap_or_else(|| target(*k)), *k));
+        ideas.into_iter().map(|(_, i)| i).collect()
+    };
+    let target = |k: usize| C.tech_target.get(k).copied().filter(|&y| y > 0).unwrap_or(i64::MAX);
+    let mut groups = Vec::new();
+    let mut push = |name: &str, ideas: Vec<TownIdea>| {
+        if !ideas.is_empty() {
+            groups.push(IdeaGroup { name: name.to_string(), ideas });
+        }
+    };
+    let take = |keep: &dyn Fn(Option<families::Group>, usize) -> bool| tree.iter().filter(|x| keep(x.0, x.1)).map(|x| (x.1, x.2.clone())).collect::<Vec<_>>();
+    for g in families::Group::ALL {
+        push(g.label(), order(take(&|grp, k| k < C.M && grp == Some(g)), &target));
+    }
+    push("Other works", order(take(&|grp, k| k < C.M && grp.is_none()), &target));
+    push("Ways of working", order(take(&|_, k| k >= C.M), &target));
+
+    // the uses of the tasks rule, found by the island as a whole
+    let people: f64 = st.pop.iter().sum::<f64>().max(1.0);
+    let mut uses = Vec::new();
+    for (u, us) in C.tasks.uses.iter().enumerate() {
+        let found = st.tasks.found.get(u).copied().unwrap_or(-1);
+        let label = edits::use_label(&us.name);
+        let class = crate::tasks::CLASSES.get(us.class).copied().unwrap_or("some");
+        let mut on: Vec<String> = Vec::new();
+        if us.on_works {
+            on.push("the works".to_string());
+        }
+        let land: Vec<String> = us.on_sector.iter().enumerate().filter(|&(_, &b)| b).filter_map(|(s, _)| C.sector_label.get(s).map(|l| lower(l))).collect();
+        if !land.is_empty() {
+            on.push(format!("on the land, {}", and_list(&land)));
+        }
+        let what = format!("Machines that take over tasks of the {class} kind, in {}.", and_list(&on));
+        let idea = if found >= 0 {
+            let said = format!("{label}: found on the island in {found}, by the island as a whole, since a use of the tasks rule is not known town by town. {what} How much of the work machines do is on the Markets panel's Work half.");
+            TownIdea { name: us.name.clone(), label, kind: "use", stands: Stands::Here, year: Some(found), how: "found by the island as a whole".to_string(), share: 1.0, towns: active.len(), said, discover: false }
+        } else {
+            let goods: Vec<String> = us
+                .discover
+                .iter()
+                .map(|&(g, x)| {
+                    let made = if us.discover_per_head { st.cumprod[g] / people } else { st.cumprod[g] };
+                    let each = if us.discover_per_head { " a head" } else { "" };
+                    format!("{} made since {start}, {}{each} of the {}{each} it needs", lower(&C.good_label[g]), qty(made), qty(x))
+                })
+                .collect();
+            let mut waits = Vec::new();
+            if !goods.is_empty() {
+                waits.push(and_list(&goods));
+            }
+            if now < us.found_after {
+                waits.push(format!("the year {}, before which it is not found", us.found_after));
+            }
+            if !P.tasks.enabled {
+                waits.push("the tasks rule, which is off, so that it is never found".to_string());
+            } else if let Some(s) = us.switch.as_ref().filter(|s| !P.tasks.switch_on(s)) {
+                waits.push(format!("the switch tasks.{s}, which is off, so that it is never found"));
+            }
+            let said = format!(
+                "{label}: found nowhere yet. It waits on {}; then it is found at the next year's turn, with no draw. {what} A use of the tasks rule is found by the island as a whole, so it cannot be found by hand in one town.",
+                if waits.is_empty() { "nothing more".to_string() } else { waits.join("; ") }
+            );
+            TownIdea { name: us.name.clone(), label, kind: "use", stands: Stands::Nowhere, year: None, how: "not yet found".to_string(), share: 0.0, towns: 0, said, discover: false }
+        };
+        uses.push((u, idea));
+    }
+    push("Machines for tasks", order(uses, &|u: usize| C.tasks.uses.get(u).and_then(|us| us.target).unwrap_or(i64::MAX)));
+    Ok(Ideas { town: t, from: start, to: now, groups })
+}
+
+/// What an idea of the tree found nowhere waits on, in words: the goods it is
+/// found on, each with what has been made of it since the start against what
+/// it needs, and the idea before it where nobody can yet make one of them;
+/// the year it is first sought; a pin; the woods' rule; and the chance a
+/// draw finds it as things stand, reckoned as `tech::discovery` reckons it.
+fn tree_waits(sim: &Sim, k: usize) -> String {
+    let (st, C, P) = (&sim.st, &sim.content, &sim.params);
+    let (start, now) = (C.start_year, sim.year);
+    let mut waits: Vec<String> = Vec::new();
+    let sought = crate::woods::sought(C, P, k);
+    if !sought {
+        waits.push("the woods' rule, which is off: it is sought only with that rule on".to_string());
+    }
+    if let Some(p) = st.by_hand.pins.iter().find(|p| p.idea == edits::Idea::Tech(k)) {
+        waits.push(match p.when {
+            edits::PinWhen::In => format!("a pin by hand, which finds it in {}", p.year),
+            edits::PinWhen::NotBefore => format!("a pin by hand, which holds it back until {}", p.year),
+        });
+    }
+    let after = C.tech_after.get(k).copied().unwrap_or(0);
+    if now < after {
+        waits.push(format!("the year {after}, before which it is not sought"));
+    }
+    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(k, g)] > 0.0).collect();
+    let mut goods = Vec::new();
+    for &g in &req {
+        let (made, need) = (st.cumprod[g], st.disc_X0[(k, g)]);
+        let mut words = format!("{} made since {start}, {} of the {} it needs", lower(&C.good_label[g]), whole(made), whole(need));
+        if made >= need {
+            words.push_str(", met");
+        } else if !C.sector_good.contains(&g) {
+            // the idea before it: no land makes the good, and no works that makes it is known anywhere
+            let makers: Vec<usize> = (0..C.M).filter(|&m| C.method_out[m] == g).collect();
+            if !makers.is_empty() && !makers.iter().any(|&m| C.tech_known[m] || st.tech_year[m] >= 0) {
+                let names: Vec<String> = makers.iter().map(|&m| lower(&C.method_label[m])).collect();
+                let which = if makers.len() == 1 { "itself not found yet".to_string() } else { "none of them found yet".to_string() };
+                words.push_str(&format!(" (made only by {}, {which})", names.join(" or ")));
+            }
+        }
+        goods.push(words);
+    }
+    if !goods.is_empty() {
+        waits.push(and_list(&goods));
+    }
+    let mut out = if waits.is_empty() { "Nothing is asked of the island for it: the island never finds it by itself.".to_string() } else { format!("It waits on {}.", waits.join("; ")) };
+    if !req.is_empty() && sought && now >= after {
+        let p = req.iter().map(|&g| st.cumprod[g] / st.disc_X0[(k, g)]).fold(f64::INFINITY, f64::min).max(0.0);
+        let p4 = p.powf(4.0);
+        let hz = P.discovery_rate * p4 / (1.0 + p4);
+        let met = if p >= 1.0 { ", every amount being met" } else { "" };
+        out.push_str(&format!(" As things stand a draw at the year's end finds it with a chance of {} a year{met}.", fmt_pct(hz, 1)));
+    }
+    out
 }
