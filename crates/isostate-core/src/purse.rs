@@ -743,7 +743,8 @@ pub const MARKS: [i64; 5] = [1925, 1950, 1975, 2000, 2025];
 
 /// The facts (docs/rules/state.md), under "Work and wages": at `MARKS` inside
 /// the run and its last year, the treasury in months of its spending, the rate
-/// on pay, tax, schools and pensions over income, teachers' share of all
+/// on pay, tax, schools and pensions over income, teachers' and (beside them)
+/// the services' share of all
 /// hands, pensioners, the working ages' years of school, and the state's net
 /// flow in the older and younger towns and those with more and fewer pupils;
 /// over the run the year of each act, the least and most months held from the

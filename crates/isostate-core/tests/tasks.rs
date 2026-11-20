@@ -577,7 +577,9 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // asks that a hand trade mean none. Played too with the first city's three
     // rules off (docs/rules/city.md), as it was written: with them island 7's
     // history after 1900 founds a saw pit in 1960 in a town whose clerking
-    // target office computing has already raised, and it means to hold it
+    // target office computing has already raised, and it means to hold it. And
+    // with the state's purse off (docs/rules/state.md), which came after: its
+    // history after 1900 founds such a saw pit too (in 1971)
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
@@ -586,6 +588,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
         P.city.follow_jobs = false;
         P.city.gather = false;
         P.city.dear_room = false;
+        P.state = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end
