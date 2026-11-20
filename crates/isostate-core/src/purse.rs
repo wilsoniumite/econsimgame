@@ -220,6 +220,9 @@ pub struct PurseYear {
     pub net_old_few: f64,
     pub net_pupils_many: f64,
     pub net_pupils_few: f64,
+    /// hands making services (shops, trades and offices) over all hands at
+    /// work, in December: beside the teachers, the other services
+    pub services_share: f64,
 }
 
 /// What the purse keeps (`st.purse`). Empty while it is off.
@@ -253,6 +256,9 @@ pub struct PurseState {
     /// growth the budget reckons on
     pub base_last: f64,
     pub base_hist: Vec<f64>,
+    /// what the news will say of the year's acts and cuts, as they come into
+    /// force the next January (`announce`): weight, title and text
+    pub news: Vec<(f64, String, String)>,
     pub years: Vec<PurseYear>,
 }
 
@@ -487,7 +493,7 @@ fn island_now(st: &State) -> (f64, f64, f64) {
 /// At a year's end (`sim::end_year`, after the ages close): the year put away,
 /// the book read, next year's laws and their reach, each town's pupils,
 /// teachers and pensioners, and the rate that balances next year's budget.
-pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Event>) {
+pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     if !on(P) {
         return;
     }
@@ -527,6 +533,15 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &m
     };
     let (old_many, old_few) = halves(&|t| share_of(t, &|r| over(r, 65.0)));
     let (pupils_many, pupils_few) = halves(&|t| share_of(t, &|r| r[1] + r[2]));
+    // the hands of the works that make services, against all at work, in December
+    let services_share = match C.good_index.get("services") {
+        Some(&g) => {
+            let hands: f64 = (0..st.F_count).filter(|&f| st.f_alive[f] && C.method_out[st.f_method[f]] == g).map(|f| st.f_labor[f]).sum();
+            let all: f64 = st.month_stats.employment.iter().sum();
+            if all > 0.0 { hands / all } else { f64::NAN }
+        }
+        None => f64::NAN,
+    };
     let p = &st.purse;
     let row = PurseYear {
         year,
@@ -553,6 +568,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &m
         net_old_few: old_few,
         net_pupils_many: pupils_many,
         net_pupils_few: pupils_few,
+        services_share,
     };
     st.purse.years.push(row);
     let base_now = sums.base - sums.base_schools;
@@ -616,7 +632,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &m
             ));
         }
         for (title, text) in said {
-            events.push(Event::new(year as f64 + 0.95, "state", 0.7, title, text));
+            p.news.push((0.7, title, text));
         }
     }
     // the laws: the book's, or a chip's from the year it is set
@@ -679,9 +695,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &m
             // the programmes cut in proportion, so that the cap covers them and the reserve
             cut = ((sp.rate_cap * base_next + p.treasury) / (spend_next * (1.0 + keep))).clamp(0.0, 1.0);
             rate = sp.rate_cap;
-            events.push(Event::new(
-                year as f64 + 0.96,
-                "state",
+            p.news.push((
                 0.8,
                 "The programmes are cut".to_string(),
                 format!(
@@ -708,6 +722,19 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, events: &m
     }
     if !acting(st) {
         st.purse.teachers_want.clear();
+    }
+}
+
+/// The news of last year's acts and cuts, in January as they come into force
+/// (`sim::run_month`, in a year's first month), so that a year's news is what
+/// was done in it whether or not the run goes on: an act met at the end of 1900
+/// is news in January 1901, and a run that ends in 1900 has none of it.
+pub fn announce(st: &mut State, P: &Params, year: i64, events: &mut Vec<Event>) {
+    if !on(P) || st.purse.news.is_empty() {
+        return;
+    }
+    for (weight, title, text) in std::mem::take(&mut st.purse.news) {
+        events.push(Event::new(year as f64 + 0.02, "state", weight, title, text));
     }
 }
 
@@ -743,6 +770,7 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         out.push((format!("state_schools_share_{y}"), Kind::Share, f(&|v| over_income(v, v.schools))));
         out.push((format!("state_pensions_share_{y}"), Kind::Share, f(&|v| over_income(v, v.pensions))));
         out.push((format!("state_teachers_share_{y}"), Kind::Share, f(&|v| if v.hands > 0.0 { v.teachers / v.hands } else { f64::NAN })));
+        out.push((format!("state_services_share_{y}"), Kind::Share, f(&|v| v.services_share)));
         out.push((format!("state_pensioners_{y}"), Kind::Count, f(&|v| v.pensioners)));
         let school = st.ages.years.iter().find(|a| a.year == y).map_or(f64::NAN, |a| a.school);
         out.push((format!("state_school_{y}"), Kind::Real, school));
