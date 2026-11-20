@@ -29,8 +29,29 @@ pub const LAYERS: [&str; 9] = ["use", "inten", "rent", "trans", "catch", "dist",
 /// - `works`: the share of the cell under works, 0 to 255, on every cell, town
 ///   ground included.
 pub const TOWN_LAYERS: [&str; 3] = ["built", "res", "works"];
+/// ground (docs/rules/ground.md): two more layers, kept only by a record past
+/// 1900 (the second layout of `TownBytes`) whose run counts room by what is
+/// built (`ground.room`), so that the picture can build each lot of a town by
+/// what the simulation says of its square. One byte a cell and year:
+///
+/// - `dens`: how densely the square is built (`GroundState::dens`), 1 plus
+///   hundredths above 1 (`dens_byte`); 0 where the cell is not town ground;
+/// - `value`: its land value (`ground::land_value`), on a scale of twentieths
+///   of a doubling from a sixteenth (`value_byte`); 0 where it is not known
+///   (not town ground, or a year before the rule took over).
+pub const GROUND_LAYERS: [&str; 2] = ["dens", "value"];
 /// `built` counts years from here.
 pub const BUILT_YEAR0: i64 = 1645;
+
+/// The `dens` byte of a town cell built up `d` times its room of 1900.
+pub fn dens_byte(d: f64) -> u8 {
+    to_u8((1.0 + (d - 1.0).max(0.0) * 100.0).round_ties_even().clamp(1.0, 255.0))
+}
+
+/// The `value` byte of a land value `v` (0 for none).
+pub fn value_byte(v: f64) -> u8 {
+    if v.is_finite() && v > 0.0 { to_u8((1.0 + ((v.log2() + 4.0) * 20.0).round_ties_even()).clamp(1.0, 255.0)) } else { 0 }
+}
 /// People to one step of `res` in a record of the first layout (to 1900).
 pub const RES_UNIT: f64 = 8.0;
 
@@ -229,6 +250,15 @@ pub struct Record {
     /// Under the second layout: each year's anchor, which that year's rent
     /// byte was taken over (empty under the first).
     pub rent_scale: Vec<f32>,
+    /// ground: the `GROUND_LAYERS`, laid out as `layers` is (empty unless
+    /// `ground_kept`).
+    pub ground_layers: Vec<Vec<u8>>,
+}
+
+/// Whether a record keeps the `GROUND_LAYERS`: one past 1900 of a run whose
+/// towns keep their ground and count their room by what is built.
+pub fn ground_kept(P: &Params, tb: TownBytes) -> bool {
+    tb.second() && P.towns.enabled && P.ground.enabled && P.ground.room
 }
 
 impl Record {
@@ -265,6 +295,7 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         workings: Vec::new(),
         town_bytes: TownBytes::of(C.end_year),
         rent_scale: if TownBytes::of(C.end_year).second() { vec![1.0; n_years] } else { Vec::new() },
+        ground_layers: if ground_kept(P, TownBytes::of(C.end_year)) { (0..GROUND_LAYERS.len()).map(|_| vec![0u8; n_years * N]).collect() } else { Vec::new() },
     }
 }
 
@@ -346,6 +377,19 @@ pub fn town_layers(st: &State, tb: TownBytes) -> Option<Vec<Vec<u8>>> {
     Some(vec![built, res, works])
 }
 
+/// ground: the two `GROUND_LAYERS` of the current year, or None where the
+/// record does not keep them (`ground_kept`).
+pub fn ground_layers(st: &State, P: &Params, tb: TownBytes) -> Option<Vec<Vec<u8>>> {
+    if !ground_kept(P, tb) || !crate::towns::kept(st) {
+        return None;
+    }
+    let N = st.N;
+    let value = crate::ground::land_value(st, P);
+    let dens = (0..N).map(|c| if st.urban[c] { dens_byte(st.ground.dens.get(c).copied().unwrap_or(1.0)) } else { 0 }).collect();
+    let value = (0..N).map(|c| if st.urban[c] { value_byte(value[c]) } else { 0 }).collect();
+    Some(vec![dens, value])
+}
+
 /// Knowledge as recorded: 0 to 255.
 pub fn know_byte(x: f64) -> u8 {
     to_u8((x.clamp(0.0, 1.0) * 255.0).round_ties_even())
@@ -365,6 +409,12 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
     // towns: when each cell joined its town, its residents, and the works' share of it
     if !rec.town_layers.is_empty() {
         for (dst, src) in rec.town_layers.iter_mut().zip(town_layers(st, rec.town_bytes).unwrap_or_default()) {
+            dst[base..base + N].copy_from_slice(&src);
+        }
+    }
+    // ground: how densely each square is built, and its land value
+    if !rec.ground_layers.is_empty() {
+        for (dst, src) in rec.ground_layers.iter_mut().zip(ground_layers(st, P, rec.town_bytes).unwrap_or_default()) {
             dst[base..base + N].copy_from_slice(&src);
         }
     }
@@ -527,6 +577,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         }
         // towns: three more, only in a run that kept them
         for (name, layer) in TOWN_LAYERS.iter().zip(&rec.town_layers) {
+            arrays.push(u8_array(name, vec![n_years, N], layer.clone()));
+        }
+        // ground: two more, only in a record past 1900 of a run that builds by them
+        for (name, layer) in GROUND_LAYERS.iter().zip(&rec.ground_layers) {
             arrays.push(u8_array(name, vec![n_years, N], layer.clone()));
         }
         // longrun: what each year's rent byte was taken over, in a record past 1900

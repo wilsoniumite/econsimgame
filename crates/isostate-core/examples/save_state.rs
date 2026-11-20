@@ -314,7 +314,7 @@ bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
