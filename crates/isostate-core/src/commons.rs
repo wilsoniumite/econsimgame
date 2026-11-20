@@ -38,8 +38,12 @@ pub struct CommonsParams {
 }
 
 impl CommonsParams {
-    /// The game's fund, which carries its debt.
-    pub fn game() -> CommonsParams {
+    /// The fund that carries its debt. The game's rules had it from the mines
+    /// until 20 November 2026, and no longer call it: a town can no longer
+    /// hire hands it does not have (`docs/rules/hands.md`), which was what put
+    /// a fund deep in debt, and the core's table found the rule idle
+    /// (`docs/rules/commons.md`). `--set commons.carry_debt=true` plays it.
+    pub fn carrying() -> CommonsParams {
         CommonsParams { carry_debt: true }
     }
 }

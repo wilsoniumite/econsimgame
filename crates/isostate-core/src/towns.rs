@@ -22,8 +22,10 @@
 //!   with under `empty` of the most people it has had;
 //! - the towns of the first year stand on old ground: their cells are dated
 //!   `back_years` and more before the start, the centre oldest;
-//! - the town's people are a smoothed count (`smooth`), taken from the year's
-//!   mean of works' hands and not December's (`mean_hands`).
+//! - the town's people are a smoothed count (`smooth`) of December's works'
+//!   hands, as the port takes them; the year's mean of the twelve months
+//!   (`mean_hands`) is kept in the code and off under the game's rules since
+//!   20 November 2026, when the core's table found it idle (`docs/core.md`).
 //!
 //! Two repairs ride with it. A town founded at the end of a year is reckoned for
 //! that year at its donor's mean wage and prices (`donor_wage`): the port leaves
@@ -73,7 +75,9 @@ pub struct TownsParams {
     /// start, and its centre `BACK_SPAN` years before that.
     pub back_years: i64,
     /// The year's mean of works' hands, not December's, says how many of a town's
-    /// people are town people.
+    /// people are town people. Off under the game's rules since 20 November
+    /// 2026: kept ground holds its cells through December's wobble, and the
+    /// core's table found nothing it moved (`docs/rules/towns.md`).
     pub mean_hands: bool,
     /// A town founded at the year's end is reckoned for that year at its donor's
     /// mean wage and prices (the port leaves the wage at nothing).
@@ -105,7 +109,8 @@ impl Default for TownsParams {
             smooth: 0.5,
             empty: 0.6,
             back_years: 60,
-            mean_hands: true,
+            // off since 20 November 2026 (above); `--set towns.mean_hands=true` brings it back
+            mean_hands: false,
             donor_wage: true,
             rent_floor: true,
         }

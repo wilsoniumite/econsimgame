@@ -395,7 +395,10 @@ fn a_new_town_is_reckoned_at_its_donors_wage() {
 
 #[test]
 fn town_people_follow_the_years_mean_of_hands() {
-    let P = params(3, 0, 1751);
+    // the rule's own case, played with `towns.mean_hands` on by name: it is off
+    // under the game's rules since 20 November 2026 (docs/rules/towns.md)
+    let mut P = params(3, 0, 1751);
+    P.towns.mean_hands = true;
     let mut s = sim::start(&P, default_content());
     let T = s.st.T_max;
     let mut sum = vec![0.0; T];

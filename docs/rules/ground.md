@@ -99,6 +99,12 @@ on the same bank at the same distance. Ground a town held beyond its reach in
 year; unset (the game's), there is none. When no cell can join, the town
 stops growing outward and its rent and its `dens` rise instead.
 
+The core's table of 20 November 2026 (`docs/core.md`, islands 1 to 8 to
+2050) found reach idle: with it off 2,620 of 3,678 facts differ and none
+stands apart, and the growth after 1900 is 1.51 per cent a year, 1.21 and
+-0.085, all met. It stays on: it is a day old, and the picture of 2050 is to
+read where a town may grow.
+
 Room without reach changes the level of rent and nothing else: under the
 towns' rule a town takes a cell whenever its people outgrow its room, so its
 room follows its townsfolk, and with room near the townsfolk the rent's

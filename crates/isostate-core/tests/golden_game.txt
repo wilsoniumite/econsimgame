@@ -184,10 +184,15 @@
 # first-era hashes. Taken on night/g-speed-heap-golden (20 November 2026),
 # which also gives each thread of the core's command and of this test a heap
 # of its own; that moves nothing.
-1750-1900 economy  0x774ab436e64ce294
-1750-1900 books    0x6eb41e73d1a3bad0
-1750-1900 news     0x7cce4d40439547f4
-1901-2050 economy  0xff6c05b80f54940f
-1901-2050 books    0x52feeb90e3d119a9
-1901-2050 news     0x977950db24cfbb20
-1901-2050 run.bin  0xabd1c7c7108c3697
+# Taken: 1750-1900 and 1901-2050: towns.mean_hands switched off under the
+# game's rules (the core's table found it idle), so a town's people follow
+# December's works' hands and every island goes down another path;
+# commons.carry_debt switched off too, which under the landlords changes
+# nothing
+1750-1900 economy  0x1192046c9b987ba3
+1750-1900 books    0x6c0cc4ef99e35938
+1750-1900 news     0x06b48ad5fcce2608
+1901-2050 economy  0x648e43988f2861da
+1901-2050 books    0xcc7a0b23e48bf4a5
+1901-2050 news     0x97b0a3336aba5a08
+1901-2050 run.bin  0x6da085f2c642d8c7

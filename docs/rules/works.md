@@ -177,6 +177,14 @@ not the life cycle is on, and `--set works.enabled=true` alone leaves them
 off. Their measure is `examples/works_mends.rs` (below, under "Measuring it"),
 on sixteen islands under the game's rules with six families, 13 November 2026.
 
+The core's table of 20 November 2026 (`docs/core.md`) found both idle: no
+fact of the island stands apart with either off. Both stay on, for what a
+player sees and no fact counts. Without G the works of 1749 stand as twins on
+one cell, drawn as one yard and told closing twice in the news, and the trade
+a new game offers first can change. Without H a family that pays for an
+extension can see its money paid back out as dividends and the works closed
+for the plant's debt; the sweep has no fact of the families' orders.
+
 **G. The works of 1749 stand on cells of their own** (`spread_first`). The
 artisans a game starts with are the port's (`sim::seed_firms`): each town's
 need for a trade is split into up to six works, and each is sited in turn at

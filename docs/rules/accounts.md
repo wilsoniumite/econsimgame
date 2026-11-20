@@ -507,6 +507,11 @@ for runs that kept books.
 | `enabled` | false | keep the books |
 | `works` | true | keep every works' books too; off, only the towns' and the island's |
 
+The core's table of 20 November 2026 (`docs/core.md`) found `works` idle, as
+a watcher is: no fact differs on any island without it. It stays on, because
+the sandbox's inspector reads a works' last year from its books
+(`inspect.rs`).
+
 ## The checks
 
 The books check themselves every month and every year, and keep what is left

@@ -1,10 +1,34 @@
 # The common fund that carries its debt
 
 Not in the Python. `crates/isostate-core/src/commons.rs`, switched by
-`commons.carry_debt`: off under the port's rules, on under the game's. The
+`commons.carry_debt`: off under the port's rules, and under the game's since
+20 November 2026 (it was on from the mines until then); kept in the code. The
 whole story, with the island that showed the fault and every sweep behind
 the rule, is in [mines.md](mines.md), "Under the commons"; this page is the
 short account the convention asks for.
+
+**Off under the game's rules since 20 November 2026.** The core's table of
+that day (`docs/core.md`) found it idle, as it must be: the table plays the
+landlords, under whom the switch does nothing. So it was asked under the
+commons too, on sixteen islands to 2050 with six families, switch off
+against on:
+
+```bash
+isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --set rent_regime=commons --set commons.carry_debt=false,true --out DIR
+```
+
+No run failed with it off (32 runs, the money checked every month), and of
+the 3,301 facts that differ none stands apart: every island of one arm above
+or below every island of the other, on no fact. What the rule guarded
+against no longer happens. The debt that stopped island 3 came of a town
+hiring more hands than it had, and since the hands' rule (`hands.ration`,
+[hands.md](hands.md)) a town cannot; with the production tree laid no
+common fund on islands 1 to 10 is in debt for a single month to 1770
+(`tests/mines.rs`). The two cover the same fault, and the hands' rule, which
+mends its cause, stays on. `--set commons.carry_debt=true` plays the fund
+that carries its debt again (`commons = { carry_debt = true }` in a
+parameters file, `CommonsParams::carrying()` in code); the tests of the rule
+in `tests/mines.rs` play it so.
 
 ## What it does
 
