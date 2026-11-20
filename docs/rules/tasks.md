@@ -21,9 +21,12 @@ Nothing can be found before 1901, so
 the played century is untouched: every fact of the standing check is the
 same to the digit with either switch on and off. Two more settings are for
 sweeps and are unset under both rules: a ceiling on what the ground may
-yield, and a control that holds the machine still. The first machine for
-clerks' tasks, office computing, stands behind a switch of its own,
-`tasks.computing`, and has a page of its own, [computing.md](computing.md).
+yield, and a control that holds the machine still. The first machines for
+clerks' tasks, **the office machines** (the typewriter and the adding
+machine, from 1901, a quarter of clerking and no more), stand behind a switch
+of their own, `tasks.office_machines` ("Office machines", below); office
+computing, which goes on from their quarter from 1960, stands behind
+`tasks.computing` and has a page of its own, [computing.md](computing.md).
 
 ## The standing check
 
@@ -135,8 +138,12 @@ machine does.
 `c` falls on the schedule, kept between the machine's `from` and `reach`:
 every task at which a hand is worth fewer units than the wage buys is
 cheaper done by machine. Where a class has more than one machine they are
-taken cheapest first, each holding what lies above the one before it (so
-far each place has one: the drive in the works, the hoist at the pits).
+taken cheapest first, each holding what lies above the one before it: the
+works' clerking has two, the office machines and office computing ("Office
+machines", below); every other class in each place has one. What a works
+holds above its town's target (it falls no faster than its machines wear)
+is held by the dearest of them, unless that one cannot reach so far; then by
+the cheapest that can.
 
 **The works.** A new works means to hold its town's target: new plant is
 today's technique. A standing works moves the share it means to hold toward
@@ -788,6 +795,126 @@ the growth to 1970: the century's gain does not come from the tasks the
 land's machines take but from what the ground yields, which is the land
 machines' ceiling ([machines.md](machines.md), "The ceiling's ramp").
 
+## Office machines
+
+The typewriter, the adding machine and the office's telephone exchange: the
+first machines for clerks' tasks, behind a switch of their own,
+`tasks.office_machines` (off under the port's rules and left out of their
+`params.json`, on under the game's), laid with the content after 1900 (they
+are made of electrical goods), and found from 1901, so the played century
+cannot move.
+
+| | office machines |
+|---|---|
+| class | clerk, from 0 to 0.25: the easy quarter of clerking and no more |
+| on | the works |
+| plant | 16.59 electrical goods a machine; life 15 years |
+| run | nothing: they burn nothing |
+| minders | 0.09 of a hand (two tenths of a unit's cost when found) |
+| quality | 2 per cent a year from the year found, to a cap of 2 (reached in 1936 on an island that finds them in 1901) |
+| found | at the first year's turn from 1901 at which the island has made 0.02 electrical goods a head since 1750 (`discover_per_head`) |
+| scale | 0.58 |
+
+**Sizing.** From island 7 in 1901, the year it finds them, under the game's
+rules with six families (the year's island means: a wage of 8.82 a month,
+electrical goods 12.30). When found a unit costs 0.45 of a month's wage
+(3.97): eight tenths of it the return a works must see and the wear on its
+plant, `(0.12 + 1/15) / 12` a month on 23.1 months' wages of plant (204, which
+is 16.59 electrical goods), and two tenths its minders. At that cost a hand
+is worth 2.2 units, which takes `ln(2.22) / ln(3000)` = 0.10 of clerking.
+
+**The find.** As office computing's and models' are: a year, and a floor of
+electrical goods made a head. The floor is the scale of an island's first
+electrical trade: the drive's threshold (15,000 made) over island 7's people
+in 1893, 0.02 a head. Office computing's rule, half of island 7's making a
+head in the year, would be 0.47 here, and would leave islands 1, 3, 11 and
+14, which first made electrical goods in 1903 and 1904, until 1930 to 1932.
+At 0.02 a head they are found in 1901 to 1903 on twelve islands of sixteen,
+in 1909 and 1910 on islands 1, 3 and 14, and in 1924 on island 11, whose
+electrical works this history finds only in 1916 (on main, where the draws
+fall otherwise, in 1902). So the islands do not all find them within fifteen
+years: anything found on a running total of electrical goods inherits the
+spread of the electrical works' find, and only a date with no floor would
+close it.
+
+**The refit.** At a `scale` of 1 the towns' target in the year found was
+0.032 on the mean of islands 1 to 8 (0.000 to 0.094): island 7, which they
+were sized on, gave 0.094, and elsewhere electrical goods were two to ten
+times as dear in the year found, most islands having one electrical works or
+none. So the unit was made `exp(ln(3000) * (0.032 - 0.10))` = 0.58 times as
+dear. It now reads 0.091 (0.032 to 0.162) on islands 1 to 8 and 0.092 on 9 to
+16.
+
+**Two uses on one class.** The office machines and office computing both
+clerk, and each month in each town they are taken cheapest first, each
+holding what lies above the one before it. Computing is found from 1960 at
+0.135 of a month's wage. An office machine has come by then to about the
+same at a scale of 1 (0.129 on island 7), and with the refit's 0.58 to about
+half that (0.075): the quarter is held by the office machines, and
+computing's first share, a quarter, starts where they stop. Some twelve
+years on its pace (five per cent a year, against their none after 1936) has
+made it the cheaper, and it holds the class from the bottom, as the computer
+took the typewriter's tasks; a works' electrical goods in place serve
+whichever use is cheaper. Whichever is cheaper, the class's target is the
+higher of the two shares, so computing's path from 1960 is its own, and its
+numbers are as they were.
+
+One rule had to change for two uses to stand together. What a works holds
+above its town's target (it falls no faster than its machines wear) was
+held by the dearest use. With one use to a class that is the only use; with
+the office machines in clerking, once computing is cheaper the office
+machines are the dearest, and a works a little above its town's target held
+its hardest clerking with them, at some forty times the plant computing
+takes (a hand is worth 131 units at six tenths of the class, and an office
+machine is two units of 16.59 electrical goods). The first build did that:
+from 2023 electrical goods rose fifty-fold on every island, the targets fell,
+more works stood above them and ordered more, and what a wage buys fell from
+16 to 4 by 2030. Now the part above the target is held by the dearest use
+only where it reaches so far, and otherwise by the cheapest use that does
+(`tasks::above_top`); a class with one use, or a dearest use that reaches, is
+as it was.
+
+**What the eight islands showed**, islands 1 to 8 to 2050, means (this
+build against main as it was cut, which had office computing alone;
+`isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year
+2050`, both binaries):
+
+| | main | with the office machines |
+|---|---|---|
+| clerking done by machine in the works, 1910, 1930, 1950, 1960 | 0, 0, 0, 0.006 | 0.072, 0.194, 0.243, 0.247 |
+| the same, 1970, 1990, 2010, 2030, 2050 | 0.191, 0.375, 0.500, 0.625, 0.755 | 0.277, 0.387, 0.510, 0.633, 0.763 |
+| the year half of clerking is done by machine | 2010.6 (2008 to 2017) | 2009.0 (2007 to 2013) |
+
+The office machines reach their quarter by about 1950 on most islands and
+stand there until 1960; computing goes on from it. Half of clerking comes a
+year and a half sooner, chiefly on islands 1 and 3, whose works already held
+their quarter when computing came; by 2050 the two histories are within a
+hundredth. Islands 9 to 16: half in 2010 (main 2010), 0.757 by 2050 (0.758).
+
+**Where the hands go.** The lab sets the island with the office machines
+against the same island with them thrown off before January 1901, the
+offices and the steel frames standing in both, so that the machines' own
+doing is seen:
+
+```bash
+isostate-core lab --out DIR --rule tasks.office_machines=false@1901 --seeds 1-8 --years 1910,1930,1950,1970,1990,2010,2030,2050 --facts ...
+```
+
+On islands 1 to 8 the arms part in 1901 on five islands, 1903 on one and
+1910 on two. With the machines, the works' clerks' hours are 6.7 per cent
+fewer in 1910, 4.0 in 1930 and 2.0 in 1950, though machines do a quarter of
+clerking by then: the clerking they make cheaper is mostly the offices', and
+the offices sell more. The hours go to judging, the offices' other class:
+5.1 per cent more in 1930 and 9.3 per cent more in 1950, higher on every
+island of eight; the minders' hours are twice as many, and tending moves by
+under two per cent. No hands leave the works: their share and the land's
+are within a hundredth and a half in every year read. The chained wage is
+0.87 higher in 1950 on every island (13.88 against 13.01), and the two arms
+are within chance of each other from 1970, when computing has taken the
+class. Islands 9 to 16 say the same (judging 4.9 and 8.9 per cent more in 1930
+and 1950, on every island; the wage 0.47 higher in 1950, six islands of
+eight).
+
 ## What a sweep showed, with the hoist in the works
 
 What the hoist did in the works, before the drive; with the tree laid to
@@ -1042,7 +1169,8 @@ fall; so it was investment, and the island going on, not the margin.
 ## The numbers
 
 `TasksParams`, in `tasks.rs`: `enabled`, false by default and true under
-`game()`; `land`, likewise; `adopt_years`, 8; `dial`, 1, which multiplies
+`game()`; `land`, likewise; `computing`, `models` and `office_machines`,
+likewise, each the switch of the uses that name it (`switch`); `adopt_years`, 8; `dial`, 1, which multiplies
 every machine's quality; `yield_cap` and `freeze_from`, unset under both
 (for sweeps). A sandbox's Rules tab offers the dial among its most asked, in
 multiples from a tenth to a hundredfold (`rulebook::WIDE_OFFERS`), and the
@@ -1059,7 +1187,9 @@ The facts, at the sweep's marks and in 1890: `auto_haul_works_Y` (the share of t
 works' hauling done by machines in place, each class weighted by its work
 in each works), `aim_haul_works_Y` (the share meant) and
 `waiting_haul_works_Y` (meant less done), `hours_CLASS_Y` for the five classes (hands at their tasks in works,
-worker-months a month) and `hours_minders_Y`, `waterline_haul_Y` (the wage
+worker-months a month) and `hours_minders_Y`, `hours_share_CLASS_Y` and
+`hours_share_minders_Y` (the same as shares of all the hours worked in
+works), `waterline_haul_Y` (the wage
 over the cheapest unit's cost, work-weighted), `margin_gap_haul_Y`,
 `machines_years_Y` (their book over the year's wage bill);
 `haul_half_year_works` (the first year the works' hauling done by machines

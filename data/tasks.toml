@@ -358,7 +358,7 @@ scale = 0.96
 # electrical goods), and two tenths is its minders (0.09 of a hand). At that cost a hand is worth 2.2
 # units, so they take ln(2.22) / ln(3000) = 0.10 of clerking. Quality grows two per cent a year to a cap of
 # 2, reached in 1936; after that only the wage rising on the price of electrical goods moves them on, to
-# the quarter on most islands by about 1960.
+# the quarter on most islands by about 1950 (0.243 of the works' clerking on the mean of islands 1 to 8).
 #
 # Found from 1901 (nothing of the content after 1900 before it), on an island that has made at least 0.02
 # electrical goods a head since 1750, read per head as office computing's floor is: the drive's
@@ -407,8 +407,10 @@ scale = 0.58
 # months' wages of plant, 66.2, which is 6.17 electrical goods), a tenth is its minders (0.0135 of a hand)
 # and the rest, three tenths, is electricity (0.139 a month). At that cost a hand is worth 7.4 units, so
 # it takes ln(7.4) / ln(3000) = 0.25 of clerking. It starts from the easiest task (`from = 0`), not above
-# the office machines of the design, which are not built: when they come, the cheaper unit holds the class
-# from the bottom, as the computer took the typewriter's tasks.
+# the office machines: the cheaper unit holds the class from the bottom, as the computer took the
+# typewriter's tasks. When it is found the office machines hold the quarter and are the cheaper, so its first
+# share starts where they stop; some twelve years on it is the cheaper (docs/rules/tasks.md, "Office
+# machines"). Its numbers were left as they were when the office machines came.
 #
 # Found from 1960, the year the machine is to be had, on an island that has made at least 5.4 electrical
 # goods a head since 1750: the floor is half of what island 7 had made a head when the year came (10.90

@@ -921,6 +921,141 @@ its fields late.
 to 120) with 28 goods, against 93 (89 to 97) for the base's 27, eight at a
 time on a machine shared with other builds.
 
+## Offices and steel frames
+
+The third part of stage 6: the office as a way of making services, and
+building on a steel frame, two methods in `data/game.toml` with `stage = 6`;
+and the office machines, the first machines for clerks' tasks, in
+`data/tasks.toml` ([tasks.md](tasks.md), "Office machines"). The switch of
+the methods is the overlay's stage, as for the rest of stage 6: `--set
+tree.stage=1` is the island before them to the byte (islands 1 to 4 against
+main as this part was cut from it: "of the 962 facts both have, the seconds
+aside, 0 differ").
+
+| | |
+|---|---|
+| `offices`, Offices | services from paper 0.04 and electricity 0.02 a unit, labour 0.33, no heat; plant 0.6 years of its output, kind B; usual size 1,000 (the emporium's); no family trade; classes of task .05 .10 .55 .30 0; found from 1901, aimed at 1906 |
+| `steel_frame`, Steel-frame builders | building work from steel 0.06, lime 0.4 and glass 0.035 a unit, labour 0.045, no heat; plant 0.3 years of its output, kind M; usual size 800 (the contract builders'); the contract builders' curve (`Q0` 2 million, `b` 0.2); the building trade; classes .40 .40 .03 .17 0; found from 1901, aimed at 1906 |
+
+Plant of kind B is six tenths building work, two tenths steel and two tenths
+machinery by value at base prices: the offices' 21.6 a unit of monthly
+capacity is building work 5.9, steel 0.14 and machinery 0.062. Each method
+has names of its own ("Melbourne Exchange Buildings", "Glenbrook Steel Frame
+Co.").
+
+**Nothing is found before 1901.** Both carry `found_after = 1901` (the
+design dates them 1895 and 1900), so the played century cannot move, and the
+standing check to 1900 holds by construction: twelve of twelve inside
+(`--seeds 1-8 --set tree.stage=1,6 --standing`). The thresholds are on
+clocks every island runs at much the same pace, services and paper for the
+offices, building work and steel for the frames, so that the islands find
+them within a few years of each other, and they were fitted in two passes
+with `parity/tree_fit.py`, which now draws no number before an entry's
+`found_after`, as the engine does. By 1901 the clocks have run out on every
+island and the hazard is near its most, 0.18 a year, so a find comes some
+five years after 1901 on the mean island: the aim, 1906, is the soonest a
+find from 1901 can be had. On islands 1 to 16, to 2050:
+
+| | found, mean of 1 to 8 | of 9 to 16 | least .. greatest of sixteen |
+|---|---|---|---|
+| offices | 1905 | 1908 | 1901 .. 1913 |
+| steel-frame builders | 1904 | 1904 | 1901 .. 1914 |
+
+**Labour, and why the two are read differently.** The design writes the
+offices' labour as 0.6 a unit, against the port's services at 1.0: a third
+fewer hands than the old way. The tree's emporium already takes 0.5, so the
+design's units are the port's: the offices take two thirds of the emporium's,
+0.33. The emporium learns slowly (`b` 0.1): its 0.5 is 0.39 to 0.41 by 1900
+and 0.34 by 1960, so the offices, which learn nothing (the tree's rule after
+1900), lead it from 1901 and are level with it before machines by 1960;
+from then their lead is that machines take more of their hours. The
+contract builders learn fast (`b` 0.2): their 0.1 a unit is 0.060 by 1900 on
+the mean of islands 1 to 8 (0.044 to 0.097) and some 0.029 by 1960. At three
+quarters of their written hands (0.075) and no curve the frames were 1.24
+times their hands in 1900 and 2.6 times by 1960, and on sixteen islands made
+at most a twentieth of building (1910 to 1920) and none from 1950. So the
+frames take three quarters of the contract builders' hands as they work in
+1900, 0.045, and the contract builders' own curve.
+
+**Materials.** The brief was to set the frames' steel, lime and glass so
+that they cost at base prices what the contract builders' bricks, lime,
+sawn timber and glass do. That cannot be done: steel's base price is the
+crucible's of 1750 (30), where the island sells it at 4.3 in 1900, so a
+recipe level at base prices would cost a quarter less than the contract
+builders' on the island it is found in. So they are set level at the
+island's prices of 1900 (means of islands 1 to 8), as the electrical works'
+heat and labour were set at the island's prices of its year: steel 0.06,
+lime 0.4 and glass 0.035 cost 0.806 a unit, against the contract builders'
+0.810. At base prices they cost 2.92 against 1.59. The file gives both sums.
+
+**What the islands showed**, islands 1 to 8 to 2050, means, against main as
+cut. Three builds, so that each part's own effect is seen: main (neither),
+the offices with the office machines and no frames, and everything
+(`isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year
+2050` with each; the build without the frames had the entry taken out and
+was not kept):
+
+| | main | offices and office machines | and steel frames |
+|---|---|---|---|
+| offices' share of services made, 1930, 1950, 1970, 2050 | | 0.49, 0.83, 0.92, 1.00 | 0.46, 0.89, 0.94, 1.00 |
+| frames' share of building work made, 1920, 1930, 1950 | | | 0.25, 0.60, 0.98, and all of it from 1960 |
+| services made a head, 1970, 2050 | 0.415, 0.640 | 0.445, 0.787 | 0.457, 0.812 |
+| services' price over the wage, 1970, 2050 | 0.462, 0.308 | 0.436, 0.252 | 0.429, 0.237 |
+| building work made a head, 1970, 2050 | 2.53, 3.22 | 2.57, 3.24 | 4.53, 5.57 |
+| building work's price over the wage, 1970, 2050 | 0.071, 0.053 | 0.070, 0.057 | 0.034, 0.029 |
+| timber's price over the wage, 1970, 2050 | 0.178, 0.241 | 0.193, 0.274 | 0.162, 0.172 |
+| sawn timber made a head, 1970, 2050 | 0.050, 0.063 | 0.048, 0.062 | 0.022, 0.026 |
+| the woods' cover, 1950, 1970, 2050 | 0.816, 0.763, 0.654 | 0.806, 0.773, 0.660 | 0.871, 0.869, 0.800 |
+| what a wage buys, chained, 1970, 2050 | 12.46, 15.37 | 13.22, 15.96 | 15.53, 18.83 |
+
+Each takes its good whole, as the emporium took services in the century
+before: the engine builds the method with the best return, and a successor
+that is cheaper everywhere is in the end the only one. The frames take no
+timber at all, in their recipe or their plant, and they are the first way
+for timber to leave building after 1900: with them the island saws less
+than half the timber a head and its woods stand at 0.80 of their cover in
+2050 against 0.66 (0.82 against 0.67 on islands 9 to 16), timber's price
+over the wage is 0.17 against 0.27 (0.15 against 0.26 on 9 to 16), and the
+woods are higher than without the frames on every island of eight from 1970
+(seven of eight in 1950). In their place the island makes four times the
+lime a head (1.38 against 0.34 in 2050) and twice the steel, and brick falls
+to a third (0.63 against 1.73). Building work is half as dear and the island
+builds seven tenths more of it. The offices sell a fifth more services a head
+at nearly a fifth lower price over the wage.
+
+**The offices take the shops' presence with them.** The offices' hours have
+no presence (the design's row), where the shops' and the emporium's have a
+tenth. As the offices take services, presence in the works falls from 19,000
+hours a month in 1970 to 1,400 (0.004 of the works' hours), and the gauges'
+floor under work's share with it, from 0.079 to 0.006 in 1970 and to nothing
+by 2050. The design's floor comes from care and comfort, which are later
+stages; until they come the island has no floor.
+
+**Work's share.** Gross, 0.653 in 1900 and 0.652 in 1970 with all three in,
+where main rises to 0.676; net of wear 0.670 and 0.682 (main 0.697). It holds,
+and the two halves of the design's question pull against each other. The
+hours in the works move toward clerking and judging, as the design hoped:
+their share of the works' hours is 0.36 in 1900, 0.48 by 1950 and 0.50 to
+0.51 from 1970 to 2010, where main's stays between 0.35 and 0.38 and falls to
+0.25 by 2050. But the frames and the offices are dearer in plant than what
+they replace, so investment takes more of spending (0.056 in 1970 against
+0.034) and the works stand at 1.12 years of income against 0.76, and
+measured against main work's share is lower by 0.02 in 1970 and 0.03 in
+2050. That goes with investment, not with hands pushed out: the hands in the
+works, on the land and in the pits are within a hundredth and a half of
+main's at every mark.
+
+**What stage 8 reads.** Whether a town knows the frames is read where every
+method's knowledge is: `st.know[(town, method)]`, from 0 to 1, raised to a
+quarter in the town that finds it (`tech::discovery`) and spread between
+towns along trade (`tech::diffusion`); a town's investors weigh a works of a
+method only where they know more than 0.02 of it (`firms::entry`). The
+method's name, `steel_frame`, is kept for that.
+
+**Drawn as plain works.** The viewer draws an office and a steel-frame
+builder as it draws any works it has no generator for; a later drawing piece
+gives them their own.
+
 ## What worries me
 
 - **Timber still rings.** The cycle above is the base game's and is not
