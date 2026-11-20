@@ -223,10 +223,13 @@
 # pensions it pays from 1901 under the default book, whose acts, met at the
 # end of 1900, are news in January 1901; 1750-1900 held (its series are
 # nothing before 1901)
+# Taken: the university (state.university): the seat chosen at the end of
+# 1900, a university founded there in 1905 and a second in 1955, its students
+# moved to it, its staff and rooms on the rate on pay
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0xd9cce1940a5421e9
-1901-2050 books    0x0cbed0933fd7079c
-1901-2050 news     0xb0a93de23bc9d1bb
-1901-2050 run.bin  0x1c50d9d0baa96dcb
+1901-2050 economy  0x1d7f92f3ce7ef952
+1901-2050 books    0xb5c2235b161e5b20
+1901-2050 news     0x724069abf43d4eee
+1901-2050 run.bin  0xfa688082decc57d6
