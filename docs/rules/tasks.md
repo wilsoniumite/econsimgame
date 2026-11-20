@@ -1189,7 +1189,10 @@ in each works), `aim_haul_works_Y` (the share meant) and
 `waiting_haul_works_Y` (meant less done), `hours_CLASS_Y` for the five classes (hands at their tasks in works,
 worker-months a month) and `hours_minders_Y`, `hours_share_CLASS_Y` and
 `hours_share_minders_Y` (the same as shares of all the hours worked in
-works), `waterline_haul_Y` (the wage
+works), `hours_land_CLASS_Y`, `hours_land_minders_Y` and `hours_carters_Y`
+(the land's hands at each class, what else its units hired, and the
+carters, counted from 1750 since 20 November 2026 for the reckoning of pay
+by class, [pay.md](pay.md), "The hands by class"), `waterline_haul_Y` (the wage
 over the cheapest unit's cost, work-weighted), `margin_gap_haul_Y`,
 `machines_years_Y` (their book over the year's wage bill);
 `haul_half_year_works` (the first year the works' hauling done by machines
