@@ -8,6 +8,10 @@ use isostate_core::accounts::{self, GOODS_FIELDS, KG, KL, KM, KT, KW, METHOD_FIE
 use isostate_core::observer::annual;
 use isostate_core::*;
 
+/// A heap for each thread: the tests play islands side by side (`heaps.rs`).
+#[global_allocator]
+static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
+
 fn params(rules: Rules, seed: u64, families: usize, end_year: i64, books: bool) -> Params {
     let mut P = rules.params();
     P.seed = seed;
