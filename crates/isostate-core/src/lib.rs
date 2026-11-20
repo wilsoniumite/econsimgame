@@ -88,6 +88,7 @@ pub mod towns;
 pub mod transition;
 pub mod transport;
 pub mod tree;
+pub mod university;
 pub mod util;
 pub mod ways;
 pub mod woods;

@@ -179,6 +179,18 @@ fn town(sim: &Sim, t: usize) -> Result<(String, Vec<Group>), String> {
     g.row("people in the town", whole(st.urban_pop[t]));
     g.row("hands on the land", whole(st.ag_labor[t]));
     g.row("hands in works", whole(st.ind_labor[t]));
+    // state (docs/rules/state.md, "The university"): the island's seat, and its university
+    let u = &st.purse.uni;
+    if u.seat == Some(t) {
+        g.row("the island's seat", format!("since {}", u.seat_year));
+    }
+    if let Some(v) = u.unis.iter().rev().find(|v| v.town == t) {
+        let said = match v.closed {
+            None => format!("founded {}, {} students", v.founded, whole(v.students())),
+            Some(y) => format!("founded {}, closed {y}", v.founded),
+        };
+        g.row(format!("the University of {}", st.town_name[t]), said);
+    }
     groups.push(g);
 
     let mut g = Group::new("Money and prices");

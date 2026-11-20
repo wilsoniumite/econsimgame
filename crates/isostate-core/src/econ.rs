@@ -569,6 +569,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::roads::take_menders(st, P, &mut supply);
     // state (docs/rules/state.md): nor are the teachers the treasury hires
     crate::purse::take_teachers(st, P, &mut supply);
+    // nor are the university's students and staff (docs/rules/state.md, "The university")
+    crate::university::take_hands(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.
@@ -913,6 +915,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         proj_req.push(rq);
     }
+    // state (docs/rules/state.md, "The university"): the university's rooms,
+    // ordered of its town's builders as a railway orders its materials
+    let uni_rooms = crate::university::rooms_order(st, C, P);
+    for &(t, g, n) in &uni_rooms {
+        R[(t, g)] += n;
+    }
 
     // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
     // goes with them when the district changes market
@@ -1106,6 +1114,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         proj_got.push(got);
     }
+    let uni_got: Vec<(usize, usize, f64)> = uni_rooms.iter().map(|&(t, g, n)| (t, g, n * fill_plant[(t, g)])).collect(); // tree: plant waits
+    for &(t, g, n) in &uni_got {
+        sold[(t, g)] += n;
+    }
 
     // ---------------- money flows
     let mut merch = vec![0.0; T];
@@ -1278,6 +1290,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         proj_spend += pay + wages;
     }
     st.m_invest += proj_spend;
+    // state: the university's rooms paid for out of the treasury
+    if !uni_got.is_empty() {
+        let got: Vec<f64> = uni_got.iter().map(|x| x.2).collect();
+        crate::university::rooms_got(st, P, &uni_rooms, &got, &mut merch, &mut sales_value);
+    }
 
     // ---------------- inventories: sales out, production in
     // Python adds one bincount per sector good, then one per method output
@@ -1457,7 +1474,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
-            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got,
+            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got, uni_got: &uni_got,
             land_tasks: land_books.as_ref().or(land_got.as_ref().map(|g| &g.0)),
             R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });

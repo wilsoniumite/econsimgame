@@ -28,7 +28,8 @@ era), the three growth asks are met, and the working ages' years of school rise 
 
 The island had no state: no tax, no school, no pension. This is the floor of one, and the instrument panel for
 the questions a state answers on it: who pays, who is paid, what a programme costs. It holds one purse, one tax
-and two programmes.
+and two programmes, and since its second piece a third with a place, the university, in the island's seat
+("The university", below).
 
 **The treasury** is a purse like the households' or the merchants': `econ::money_total` counts it, the books
 of account count it among who holds the money (`money.treasury`), and every penny that goes in or out of it is
@@ -124,6 +125,11 @@ since it is not the book. A pension share set by hand where the book has no age 
 | `state.year_room` | 0.15 | how far a programme may grow toward its law in a year, as a share of the law |
 | `state.school_hands` | 0.1 | hands a pupil |
 | `state.school_years`, `state.pension_age`, `state.pension_share` | -1 | the chips: below nothing is the book's |
+| `state.university` | on | the university ("The university", below) |
+| `state.university_share` | -1 | its chip: the share of a cohort taken in; below nothing is the book's |
+| `state.university_years` | 3 | years a student is taught |
+| `state.university_hands` | 0.15 | its staff a student |
+| `state.university_rooms` | 60 | units of building work standing as rooms a student |
 
 The book's conditions and figures are constants in `purse::book`, the design's.
 
@@ -191,6 +197,111 @@ The island half of the Markets panel ends with "The state's purse" from 1900: th
 pensions over income as three lines on one scale, their figures in the year on the clock, and the months the
 treasury holds (`crates/isostate-viewer/src/purse_chart.rs`). The Rules tab pins the three chips at its head,
 in plain words. The acts are news, under "The state".
+
+## The university
+
+Added on 20 November 2026. `crates/isostate-core/src/university.rs`, switched by `state.university`: off under the
+port's rules, on under the game's, and acting only with the purse on. A programme of the treasury with a place.
+
+**The seat.** When the treasury's first programme begins (the first act is met, at the end of 1900 on every
+island of sixteen), the island's seat is the town with the most townsfolk that year, and it stays the seat.
+The town's card says so ("the island's seat, since 1900").
+
+**Founded by the book.** The first university is founded in the seat five years after the first schools act
+(1905 on every island), and a second in the largest other town by townsfolk two generations after it (1955).
+Each founding is news, under "The state", in the January after ("The University of Glenwick"), and the town's
+card names it with its year and its students. By hand, the sandbox's Works tool may found one in the town whose
+district holds a square (`Edit::FoundUniversity`) and close any one (`Edit::CloseUniversity`); both wait for
+the year's turn, as building a works does.
+
+**Students.** At each year's end the year's intake goes to the nearest open university (by the cost of the
+way): from every town, the book's share of its eighteen-year-olds (a fifth of its fifteen-to-nineteen group).
+Those who are not of the university's own town move to it as migrants do, with their cash a head, their ages
+and schooling, and their town's measure of how well townsfolk live. A student is taught three years
+(`university_years`); while taught they are townsfolk of the university's town whatever its works (the town's
+count of townsfolk takes them whole and reckons the rest as the port does), and they are not among its hands
+for hire: each month the town's hands are less by its students at the working ages' rate of work, before the
+wage is sought. After their years they are people of the town, and follow jobs like anyone.
+
+**The book's share of a cohort** is history's for a country of Britain's institutions, drawn straight between
+its years: the share of an age group entering higher education, from the Robbins report for 1900 to 1962 (all
+full-time higher education, since the island's one university stands for all of it), the age participation
+index for 1970 to 2000, and the participation rate after. The chip `state.university_share` (the Rules tab,
+pinned with the purse's three: The book, None, a twentieth, a sixth, a third, half) overrides it.
+
+| year | 1900 | 1938 | 1954 | 1962 | 1970 | 1980 | 1990 | 2000 | 2010 | 2020 on |
+|---|---|---|---|---|---|---|---|---|---|---|
+| share of a cohort | 0.012 | 0.027 | 0.058 | 0.085 | 0.14 | 0.13 | 0.19 | 0.33 | 0.45 | 0.50 |
+
+**Years of school.** A cohort turning fifteen is given, beside its years of school, the share it is offered
+times the years taught, as the mean of what its members will have. The share of those aged 15 to 64 who have
+been taken in is a fact of its own (`uni_been_Y`), reckoned on the island's ages by the year each age was
+eighteen.
+
+**What it costs** falls on the rate on pay with the schools and the pensions: the budget reckons next year's
+staff at December's wages with the teachers, and next year's rooms at December's prices.
+
+- *Its staff*, 0.15 hands a student (`university_hands`: a teacher to ten students, and half as many again
+  who keep its rooms, books and accounts), are hired as the schools' teachers are: taken out of the town's
+  hands before the wage is sought (with its students, at most a quarter of what the teachers leave), counted
+  at work, paid the town's wage. Two thirds of them teach and are counted in pay's reckoning
+  ([pay.md](pay.md)) as judging, the rest as clerking.
+- *Its rooms*, 60 units of building work a student standing (`university_rooms`), wearing out at a fiftieth a
+  year, are built by the builders of its town: each month the treasury orders a twelfth of what it lacks and
+  what wears out, as a railway orders its materials (served with the orders for plant, `tree.plant_waits`),
+  pays the merchants the town's price for what comes, at most a sixth of what it holds in a month, and the
+  books take the goods and the pay as a project's.
+
+**Islands 1 to 16 to 2050, the university on against off.**
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set state.university=false --out off
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --standing --out on --compare off
+cargo run --release -p isostate-core --example purse -- --seed 7 --end-year 2050 --every 10
+```
+
+No run fails, no month fails the money check, no year was cut and no month short; the treasury holds 1.53 to
+2.54 months of its spending at the end of every year from the first act (its least 1.66 and its most 2.42 on
+the mean island; without the university 1.69 and 2.40); the
+standing check is 12 of 12 inside on both sets of eight, and every series of the played century is what it was
+to the bit (1,208 island-years to 1900 in each set, no cell differing). The mean of islands 1 to 8, then 9 to 16:
+
+| | 1925 | 1950 | 2000 | 2025 | 2050 |
+|---|---|---|---|---|---|
+| students | 930 | 2,130 | 12,800 | 21,400 | 22,300 |
+| share of a cohort taken in | 0.022 | 0.050 | 0.33 | 0.50 | 0.50 |
+| share of those aged 15 to 64 who have been | 0.009 | 0.024 | 0.146 | 0.320 | 0.452 |
+| its staff over all hands | 0.0003 | 0.0007 | 0.0037 | 0.0061 | 0.0062 |
+| what it costs over income | 0.0003 | 0.0005 | 0.0027 | 0.0040 | 0.0037 |
+
+- **Years of school** of those aged 15 to 64: 7.41 against 7.34 in 1950, 11.2 against 10.8 in 2000, 12.4
+  against 11.0 in 2050, on both sets of eight.
+- **The rate on pay** is 0.140 against 0.129 in 2050 (1 to 8) and 0.142 against 0.129 (9 to 16); 0.076
+  against 0.075 in 1950.
+- **The seat.** The seat is the largest town in 1900 by construction. It is the largest in 2050 on 8 islands
+  of 16 with the university (1, 2, 4, 8, 13, 14 and 16) against 6 without (4, 5, 10, 13, 15 and 16); its share of all townsfolk in 2050 is 0.218 against 0.180 (1 to 8) and 0.231 against 0.223
+  (9 to 16). The largest town's share is 0.277 against 0.272 and 0.294 against 0.261; the second over the
+  first 0.81 against 0.79 and 0.71 against 0.80. Island by island the moves are large and go both ways (the
+  seat of island 6 holds 0.235 of townsfolk with the university and 0.068 without; that of island 5, 0.151
+  against 0.258): some ten to twenty thousand students and their staff in a town of a hundred and fifty
+  thousand are a push, and where people go after is the jobs' doing.
+- **The pay gauge's schooled over plain** is 0.63 in 2050 on and off (1 to 8; 0.66 against 0.61 on 9 to
+  16). The reckoning's hands of a class follow the work, not the schooling: more people who have been to the
+  university do not make more schooled hands in it, and its staff are a hundredth of the clerks and judges.
+  So the reckoning says nothing yet of what the schooled's growing numbers do to their pay.
+- **The three growth asks** are met: the linked real wage grows 1.22 per cent a year from 1900 to 1970 (0.99
+  to 1.53) and 1.27 (1.07 to 1.50); 2050 over 1970 is 1.13 and 1.11; the land's share of hands falls by
+  0.103 and 0.101.
+
+**On the map** a university stands as a works of the offices' kind (`works::site` plans a kind it has no
+drawing for from its process: a building of storeys), on its town's centre square, its size by its students,
+four hundred to a standard size. Only in a recorded run: the viewer puts it at the end of the record's works
+when it reads the run. A drawing of its own is a later piece of art.
+
+**What worries me.** The staff are paid the town's one wage, so a university costs a third of what one costs
+in Britain (about 0.004 of income against 0.01). The intake is reckoned from the ages' rows, a reckoning
+beneath the played people. A student counts as having been at the intake, so the share who have been leads
+the degrees held by three years. The second university is founded by date, not by need.
 
 ## What is not built, and where each will hang
 
