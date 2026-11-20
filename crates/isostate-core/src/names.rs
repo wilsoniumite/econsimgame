@@ -93,6 +93,8 @@ pub fn firm_patterns(method_name: &str) -> &'static [&'static str] {
         "electrical_works" => &["{S} Electrical Co.", "{S} & {S2}, Electrical Engineers", "{T} Lamp Works"],
         "oil_from_coal" => &["{T} Coal Oil Co.", "{S} Synthetic Oil Works", "{T} Hydrogenation Works"],
         "nitrogen_works" => &["{T} Nitrogen Co.", "{S} Fertiliser Works", "{T} Ammonia Works"],
+        "offices" => &["{S} & {S2}, Agents", "{T} Exchange Buildings", "{S} House"],
+        "steel_frame" => &["{S} & {S2}, Constructional Engineers", "{T} Steel Frame Co.", "{S} Concrete Co."],
         _ => &["{S} & Co."],
     }
 }

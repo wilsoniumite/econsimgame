@@ -1023,6 +1023,102 @@ stage = 6
 headline = "Nitrogen from the air at {town}"
 story = "{who} fixes the nitrogen of the air with coal and electric power at {town} and sells it to the farms by the sack. Spread on the fields, it makes the same ground bear half as much again."
 
+# ====================================================================================================
+# Stage 6, offices and steel frames (docs/rules/tree.md, "Offices and steel frames"): the office as a way
+# of making services, and building on a steel frame. Neither may be found before 1901 (`found_after`),
+# so the played century is untouched. Each is found on clocks every island runs at much the same pace
+# (services and paper; building work and steel), so that the islands find them within a few years of each
+# other. From 1901 the clocks have long run out on every island and the hazard is near its most (the
+# tree's 0.18 a year), so each is found some five years after 1901 on the mean island: the soonest a find
+# from 1901 can come, which is what `target` says. The design dates them 1895 and 1900. Plant as the
+# design's rule for the content after 1900 says: so many years of the works' own output at base prices,
+# of kind B (six tenths building work, two tenths steel, two tenths machinery, by value) for the offices
+# and kind M (three tenths building work, a tenth steel, six tenths machinery) for the frames.
+# ====================================================================================================
+
+# Offices with the telephone and the typewriter: services made by clerks in rooms of desks, lit and rung by
+# electricity, where the shops' and the warehouses' counting houses were. The office machines of
+# data/tasks.toml take their easy clerking from 1901 (docs/rules/tasks.md, "Office machines"), and with
+# clerking at 0.55 of their hours (the emporium's is 0.25) the offices gain most from them.
+# Labour: the design writes 0.6 a unit, against the port's services at 1.0, a third fewer hands than the
+# old way. The tree's emporium already takes 0.5, so the design's units are the port's and not the tree's:
+# two thirds of the emporium's, 0.33. The emporium learns (its 0.5 is 0.39 to 0.41 by 1900 on islands 1, 3
+# and 7, 0.34 by 1960), and the offices, a new method, start as good as their recipe and learn nothing (the
+# tree's rule after 1900), so they take 0.83 of the emporium's hands in 1901 and as many as it by 1960,
+# before machines: from then their edge is that the machines take more of their hours.
+# At base prices: sells 3.00; inputs 0.21 (paper 0.18, electricity 0.02), heat 0.00, labour 0.33 (0.83 at a
+# wage of 2.5); cost 1.04; margin +1.96 (65%). At island 7's prices of 1901 (wage 8.82, paper 1.41,
+# electricity 3.74 where a station stands, services 5.91): inputs 0.13, labour 2.91, cost 3.04, margin +2.87
+# (49%); the emporium that year, at its learned 0.39, has labour 3.44.
+# Plant 21.6 a unit of monthly capacity at base prices (0.6 years of output, kind B: building 12.96, steel
+# 4.32, machinery 4.32); at island 7's prices of 1901 about 8.7, 1.5 months of output (the emporium's 6.4).
+# K0 is the emporium's.
+[[method]]
+name = "offices"
+label = "Offices"
+output = "services"
+inputs = { paper = 0.04, electricity = 0.02 }
+heat = 0.0
+labor = 0.33
+capital = { building = 5.9, steel = 0.14, machinery = 0.062 }
+K0 = 1000.0
+known = false
+A0 = 1.0
+discover = { services = 41000000.0, paper = 5900000.0 }
+target = 1906
+found_after = 1901
+stage = 6
+headline = "Offices of clerks at {town}"
+story = "{who} takes three floors over the station at {town} and fills them with desks, typewriters and a telephone exchange. Insurance, freight and the town's accounts are kept there by clerks who never see a customer."
+
+# Steel frame and concrete: building work on a frame of rolled steel with concrete floors and walls of
+# glass and thin cladding, where the contract builders lay brick on brick with sawn timber in the floors.
+# It takes no timber at all, in its recipe or its plant: the first way after 1900 for timber to leave
+# building. Three quarters of the contract builders' hands as they work in 1900 (below).
+# Its materials: at base prices they cannot be set level with the contract builders', because steel's base
+# price is the crucible's of 1750 (30), where the island sells it at about 4.3 in 1900: a recipe level at
+# base prices would cost a quarter less than the contract builders' on the island it is found in. So they
+# are set level at the island's prices of 1900 (means of islands 1 to 8 under the game's rules with six
+# families, on main as this stage was cut: steel 4.27, lime 1.11, glass 3.08; bricks 0.90, sawn timber 2.83),
+# as the electrical works' heat and labour were set at the island's prices of its year: steel 0.06 (0.256),
+# lime 0.4 (0.442), glass 0.035 (0.108), 0.806 in all, against the contract builders' 0.810 (bricks 0.582,
+# lime 0.111, sawn timber 0.057, glass 0.062).
+# Hands: three quarters of the contract builders' as they work in 1900, not as written. The contract
+# builders learn fast (b 0.2): their 0.1 a unit is 0.060 by 1900 on the mean of islands 1 to 8 (0.044 to
+# 0.097 by island) and some 0.029 by 1960. RUN: at 0.075 and no curve, three quarters of their written
+# hands, the frames were 1.24 times the contract builders' hands in 1900 and 2.6 times by 1960, and on
+# sixteen islands they made at most a twentieth of building (1910 to 1920) and none from 1950. So 0.045,
+# three quarters of 0.060, and the contract builders' own curve (Q0 2 million, b 0.2): a building trade
+# learns as the building trades do. The offices are left at two thirds of the emporium's written hands,
+# because the emporium learns slowly (b 0.1) and they lead it from the start.
+# At base prices: sells 2.20; inputs 2.92 (steel 1.80, lime 0.80, glass 0.32), heat 0.00, labour 0.045
+# (0.11 at a wage of 2.5); cost 3.03; margin -0.83 (-38%), as the electrical works' (steel at 30). At the
+# island's prices of 1900 (building work 2.85, wage 8.98): inputs 0.81, labour 0.40, cost 1.21, margin
+# +1.64 (58%), where the contract builders' at their learned 0.060 is 0.81 + 0.54 = 1.35, margin +1.50 (53%).
+# Plant 7.92 a unit of monthly capacity at base prices (0.3 years of output, kind M: building 2.38, steel
+# 0.79, machinery 4.75); at the island's prices of 1900 3.6, 1.3 months of output (the contract builders'
+# bricks, sawn timber and tools 3.4). K0 is the contract builders'.
+[[method]]
+name = "steel_frame"
+label = "Steel-frame builders"
+output = "building"
+inputs = { steel = 0.06, lime = 0.4, glass = 0.035 }
+heat = 0.0
+labor = 0.045
+capital = { building = 1.08, steel = 0.026, machinery = 0.068 }
+K0 = 800.0
+known = false
+A0 = 1.0
+Q0 = 2000000.0
+b = 0.2
+discover = { building = 73000000.0, steel = 6400000.0 }
+target = 1906
+found_after = 1901
+group = "building"
+stage = 6
+headline = "A steel frame goes up at {town}"
+story = "{who} raises a frame of rolled-steel columns and girders at {town} and hangs the walls on it, floor by floor, with concrete poured between. It is up in a season, ten storeys if the ground is dear, and there is not a joist of timber in it."
+
 # Not a works: the improvement of seed and stock, and sprays against blight and pests, known in a town as
 # an invention is and taken up by the farms and pastures where it pays (docs/rules/machines.md).
 [[tech]]

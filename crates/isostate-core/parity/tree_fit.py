@@ -75,6 +75,11 @@ SPEC = {
     "nitrogen_works": [("chemicals", 1.0), ("electricity", "keep")],
     "oil_from_coal": [("coal", 1.0), ("electricity", "keep")],
     "breeding": [("chemicals", 1.0)],
+    # stage 6, offices and steel frames (docs/rules/tree.md, "Offices and steel frames"): found from 1901
+    # (`found_after`), on clocks every island runs at much the same pace, so that they come within a few
+    # years of each other
+    "offices": [("services", 1.0), ("paper", 0.85)],
+    "steel_frame": [("building", 1.0), ("steel", 0.85)],
 }
 
 
@@ -118,14 +123,15 @@ def resolve(x, first):
     return float(x[1:]) * first if isinstance(x, str) else float(x)
 
 
-def expected(thresholds, cum, first):
-    """The mean over seeds of the year found on average; a run that has not found it by the end counts as five years after."""
+def expected(thresholds, cum, first, after=START):
+    """The mean over seeds of the year found on average; a run that has not found it by the end counts as five years after.
+    No number is drawn before `after`, the entry's `found_after` (tech.rs)."""
     total = 0.0
     for seed in cum:
         need = [(g, resolve(x, first[seed].get(g, 0.0))) for g, x in thresholds.items() if g in cum[seed]]
         alive, e = 1.0, 0.0
         for k in range(END - START + 1):
-            p = min((cum[seed][g][k] / x if x > 0 else float("inf")) for g, x in need) if need else 0.0
+            p = min((cum[seed][g][k] / x if x > 0 else float("inf")) for g, x in need) if need and START + k >= after else 0.0
             p4 = max(p, 0.0) ** 4
             hz = DISCOVERY_RATE * p4 / (1.0 + p4)
             e += alive * hz * (START + k)
@@ -168,14 +174,14 @@ def sig(x):
     return round(x / 10 ** e) * 10 ** e
 
 
-def fit(name, now, target, cum, first):
+def fit(name, now, target, cum, first, after=START):
     lo, hi = float(START), float(END)
     # an aim that the kept thresholds alone put out of reach: leave it as it is
-    if expected(shaped(name, now, cum, lo), cum, first) >= target:
+    if expected(shaped(name, now, cum, lo), cum, first, after) >= target:
         return dict(now)
     for _ in range(40):
         mid = 0.5 * (lo + hi)
-        if expected(shaped(name, now, cum, mid), cum, first) < target:
+        if expected(shaped(name, now, cum, mid), cum, first, after) < target:
             lo = mid
         else:
             hi = mid
@@ -215,8 +221,9 @@ def main():
         name, target, now = m["name"], m.get("target"), m.get("discover")
         if not target or not now or name not in SPEC or (only is not None and name not in only):
             continue
-        reckoned = expected(now, cum, first)
-        new = fit(name, now, target, cum, first)
+        after = m.get("found_after", START)
+        reckoned = expected(now, cum, first, after)
+        new = fit(name, now, target, cum, first, after)
         out = {}
         for g, v in now.items():
             if isinstance(v, str) or isinstance(new[g], str):
