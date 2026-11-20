@@ -1119,6 +1119,25 @@ stage = 6
 headline = "A steel frame goes up at {town}"
 story = "{who} raises a frame of rolled-steel columns and girders at {town} and hangs the walls on it, floor by floor, with concrete poured between. It is up in a season, ten storeys if the ground is dear, and there is not a joist of timber in it."
 
+# Overrides the base entries: only history's year (`target`) is added, for the atlas's plate of ideas
+# (docs/atlas.md), which drew these two of the port's inventions with "no year in the data". Nothing in a
+# run reads it, and the fitter leaves an entry with no `discover` of its own alone, so no run moves.
+# Railways, 1825: the Stockton and Darlington, the first public line worked by locomotives (Trevithick's
+# engine ran on a wagonway in 1804, and the Liverpool and Manchester opened in 1830). The islands find it
+# from 1810 to 1836, about 1823 on the mean of sixteen.
+# Farm machinery, 1850: the portable steam engine for threshing was shown in 1841 and the reapers came
+# over for the Great Exhibition of 1851; steam threshing was common on British farms in the 1850s. The
+# islands find it from 1821 to 1874, about 1842 on the mean.
+[[tech]]
+name = "railway"
+target = 1825
+stage = 1
+
+[[tech]]
+name = "farm_machinery"
+target = 1850
+stage = 1
+
 # Not a works: the improvement of seed and stock, and sprays against blight and pests, known in a town as
 # an invention is and taken up by the farms and pastures where it pays (docs/rules/machines.md).
 [[tech]]

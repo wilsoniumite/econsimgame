@@ -25,6 +25,19 @@
 //! its whole `run.bin` (which holds the years before 1901 too, so it moves with
 //! either era). A change that acts only after 1900 moves the second era alone.
 //!
+//! The first era is hashed blind to what content added after 1900 changes
+//! without changing the run (`blind_series`, `blind_news`): a column of the
+//! series that is nothing in every month to 1900 is left out (a new method's
+//! output, which nothing makes before it is found), and the news names an
+//! invention by its name, not by its place in the content's list, which a new
+//! method placed before it moves on. A column that is anything but nothing in
+//! any month still counts, and so does every other field of the news. The
+//! first era has no `run.bin` of its own: the record carries the content's
+//! lists, so a new entry anywhere moves it, and the second era's `run.bin`
+//! already holds the years to 1900. The second era is hashed strictly, as it
+//! was. (Before 20 November 2026 the first era was strict too, and a piece
+//! that only added offices after 1900 moved three of its four.)
+//!
 //! The hash is 64-bit FNV-1a, as in `golden.rs`. Three runs go side by side on
 //! three threads: the run to 1900, and the run to 2050 twice. Before anything
 //! is set against the stored hashes, two things must hold. The two runs to
@@ -42,10 +55,11 @@
 //! ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
 //! ```
 //!
-//! which checks the two things above, writes the eight hashes into
-//! `golden_game.txt` with the reason as its `# Taken:` lines, prints which
-//! moved, and passes. (`ISOSTATE_GOLDEN_PRINT=1` instead checks nothing and
-//! stops with the eight lines, for pasting by hand.) The commit that does it
+//! which checks the two things above, writes the seven hashes into
+//! `golden_game.txt` with the reason added below the file's earlier `# Taken:`
+//! lines (its history, kept), prints which moved, and passes.
+//! (`ISOSTATE_GOLDEN_PRINT=1` instead checks nothing and stops with the seven
+//! lines, for pasting by hand.) The commit that does it
 //! says which moved and why (`docs/rules/README.md`, "The game's golden test",
 //! says who may and when).
 //!
@@ -65,6 +79,10 @@ use isostate_core::record;
 use isostate_core::sim::{self, RunResult};
 use isostate_core::{accounts, game_content, game_params};
 
+/// A heap for each thread: the three runs go side by side (`heaps.rs`).
+#[global_allocator]
+static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
+
 /// The stored hashes, read at build time: a new file rebuilds the test.
 const STORED: &str = include_str!("golden_game.txt");
 
@@ -75,7 +93,7 @@ const END: i64 = 2050;
 /// The two eras, as the file names them.
 const ERAS: [&str; 2] = ["1750-1900", "1901-2050"];
 
-/// What is hashed in each era, in the order the file lists it.
+/// What is hashed, in the order the file lists it.
 const NAMES: [&str; 4] = ["economy", "books", "news", "run.bin"];
 
 /// What each name means, for the messages.
@@ -86,8 +104,16 @@ const MEANING: [&str; 4] = [
     "the run file the viewer draws (run.bin)",
 ];
 
-/// Eight hashes: the first era's four, then the second's.
-type Hashes = [u64; 8];
+/// The seven hashes, each an era and a name (indices into `ERAS` and `NAMES`):
+/// the first era's three, blind to content added after 1900, then the second
+/// era's four.
+const SLOTS: [(usize, usize); 7] = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (1, 3)];
+
+/// How many of `SLOTS` are the first era's.
+const FIRST: usize = 3;
+
+/// Seven hashes, in the order of `SLOTS`.
+type Hashes = [u64; 7];
 
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -98,10 +124,10 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-/// The eight hashes as `golden_game.txt` holds them, each line an era, a name
+/// The seven hashes as `golden_game.txt` holds them, each line an era, a name
 /// and a hash.
 fn stored() -> Hashes {
-    let mut got = [None; 8];
+    let mut got = [None; 7];
     for (n, line) in STORED.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -121,14 +147,57 @@ fn stored() -> Hashes {
         let Some(value) = value else {
             panic!("golden_game.txt, line {}: {hex:?} is not a hash written 0x and sixteen hex digits", n + 1);
         };
-        assert!(got[4 * e + k].is_none(), "golden_game.txt, line {}: {era} {name} is given twice", n + 1);
-        got[4 * e + k] = Some(value);
+        let Some(i) = SLOTS.iter().position(|&s| s == (e, k)) else {
+            panic!(
+                "golden_game.txt, line {}: {era} {name} is not hashed: the first era has no run.bin of its own (the \
+                 second era's holds the years to 1900 too)",
+                n + 1
+            );
+        };
+        assert!(got[i].is_none(), "golden_game.txt, line {}: {era} {name} is given twice", n + 1);
+        got[i] = Some(value);
     }
-    let mut out = [0; 8];
-    for i in 0..8 {
-        out[i] = got[i].unwrap_or_else(|| panic!("golden_game.txt has no line for {} {}", ERAS[i / 4], NAMES[i % 4]));
+    let mut out = [0; 7];
+    for i in 0..7 {
+        let (e, k) = SLOTS[i];
+        out[i] = got[i].unwrap_or_else(|| panic!("golden_game.txt has no line for {} {}", ERAS[e], NAMES[k]));
     }
     out
+}
+
+/// Whether a cell of the series is nothing: nought, or empty.
+fn nothing(cell: &str) -> bool {
+    cell.is_empty() || cell.parse::<f64>().is_ok_and(|v| v == 0.0)
+}
+
+/// The series without the columns that are nothing in every row: those of
+/// methods and goods that nothing makes in these months. The year and the
+/// month are always kept, and every other column in the file's own order.
+fn blind_series(csv: &str) -> String {
+    let rows: Vec<Vec<&str>> = csv.split_terminator("\r\n").map(|r| r.split(',').collect()).collect();
+    let n = rows.first().expect("the series have a header").len();
+    let keep: Vec<usize> = (0..n).filter(|&k| k < 2 || rows[1..].iter().any(|r| !nothing(r[k]))).collect();
+    let mut out = String::new();
+    for r in &rows {
+        assert_eq!(r.len(), n, "every row of the series has a cell for every column");
+        out.push_str(&keep.iter().map(|&k| r[k]).collect::<Vec<_>>().join(","));
+        out.push_str("\r\n");
+    }
+    out
+}
+
+/// The news to 1900 as `events.json` holds it, with each invention named by
+/// its name in the content (`tech_name`) where the file gives its place in the
+/// content's list.
+fn blind_news(r: &RunResult) -> String {
+    let mut news = serde_json::to_value(&r.events).expect("the news serialise");
+    for item in news.as_array_mut().expect("the news are a list") {
+        let tech = item.get("tech").and_then(|t| t.as_u64());
+        if let Some(t) = tech {
+            item["tech"] = serde_json::Value::String(r.content.tech_name[t as usize].clone());
+        }
+    }
+    python_json_pretty(&news)
 }
 
 /// Split `series_monthly.csv` into the economy's columns and the books', each
@@ -236,18 +305,20 @@ fn dump(dir: &std::path::Path, csv: &str, news: &str, bin: &[u8]) {
     std::fs::write(dir.join("run.bin"), bin).expect("run.bin written");
 }
 
-/// The run to 1900, hashed whole: the first era's four, and its news without
-/// the chronicle's marks (`news_unmarked`).
-fn first_era(dump_to: Option<&std::path::Path>) -> ([u64; 4], u64) {
+/// The run to 1900: the first era's three, blind to content added after 1900
+/// (`blind_series`, `blind_news`); and, to set against the run to 2050, its
+/// months hashed strictly and its news without the chronicle's marks
+/// (`news_unmarked`).
+fn first_era(dump_to: Option<&std::path::Path>) -> ([u64; FIRST], [u64; 3]) {
     let r = run(false);
     let csv = series_csv(&r);
-    let (economy, books) = split_series(&csv);
-    let news = events_json(&r);
-    let bin = run_bin(&r);
     if let Some(dir) = dump_to {
-        dump(dir, &csv, &news, &bin);
+        dump(dir, &csv, &events_json(&r), &run_bin(&r));
     }
-    ([fnv1a(economy.as_bytes()), fnv1a(books.as_bytes()), fnv1a(news.as_bytes()), fnv1a(&bin)], news_unmarked(&r))
+    let (economy, books) = split_series(&blind_series(&csv));
+    let blind = [fnv1a(economy.as_bytes()), fnv1a(books.as_bytes()), fnv1a(blind_news(&r).as_bytes())];
+    let (economy, books) = split_series(&csv);
+    (blind, [fnv1a(economy.as_bytes()), fnv1a(books.as_bytes()), news_unmarked(&r)])
 }
 
 /// The run to 2050: the second era's four (its months and news after 1900,
@@ -267,11 +338,11 @@ fn to_2050(dump_to: Option<&std::path::Path>) -> ([u64; 4], [u64; 3]) {
     (late, early)
 }
 
-/// Which of the eight differ, in words, by era.
+/// Which of the seven differ, in words, by era.
 fn which(a: &Hashes, b: &Hashes) -> String {
     let mut parts = Vec::new();
     for e in 0..2 {
-        let moved: Vec<&str> = (0..4).filter(|&k| a[4 * e + k] != b[4 * e + k]).map(|k| MEANING[k]).collect();
+        let moved: Vec<&str> = (0..7).filter(|&i| SLOTS[i].0 == e && a[i] != b[i]).map(|i| MEANING[SLOTS[i].1]).collect();
         let list = match moved.len() {
             0 => "nothing".to_string(),
             1 => moved[0].to_string(),
@@ -282,9 +353,9 @@ fn which(a: &Hashes, b: &Hashes) -> String {
     parts.join("; ")
 }
 
-/// The eight lines of `golden_game.txt` for these hashes.
+/// The seven lines of `golden_game.txt` for these hashes.
 fn lines(h: &Hashes) -> String {
-    (0..8).map(|i| format!("{} {:<8} 0x{:016x}\n", ERAS[i / 4], NAMES[i % 4], h[i])).collect()
+    (0..7).map(|i| format!("{} {:<8} 0x{:016x}\n", ERAS[SLOTS[i].0], NAMES[SLOTS[i].1], h[i])).collect()
 }
 
 /// Words wrapped to lines of at most `width` characters.
@@ -306,9 +377,11 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-/// `golden_game.txt` written again with these hashes: the comment above its
-/// `# Taken:` lines kept as it is, those lines replaced by `why`, and the
-/// hashes below them, in the file's own line ends.
+/// `golden_game.txt` written again with these hashes: every comment above the
+/// hashes kept as it is, the history of earlier `# Taken:` lines with it, `why`
+/// added below them as the newest, and the hashes below that, in the file's own
+/// line ends. (Until 20 November 2026 this replaced the history with `why`
+/// alone, and the history was put back by hand from git.)
 fn write_file(h: &Hashes, why: &str) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden_game.txt");
     let old = std::fs::read_to_string(&path).expect("golden_game.txt can be read");
@@ -316,7 +389,7 @@ fn write_file(h: &Hashes, why: &str) {
     let mut text = String::new();
     for line in old.lines() {
         let t = line.trim();
-        if t.starts_with("# Taken:") || (!t.is_empty() && !t.starts_with('#')) {
+        if !t.is_empty() && !t.starts_with('#') {
             break;
         }
         text.push_str(line);
@@ -340,7 +413,7 @@ fn seed_7_under_the_games_rules_is_unchanged() {
     let dump_to = std::env::var("ISOSTATE_GOLDEN_DUMP").ok().map(std::path::PathBuf::from);
     // the run to 1900 and two runs to 2050 at once: each has its own state, so the two
     // runs to 2050 must agree to the last bit
-    let ((early, early_news), (late, late_early), (again, again_early)) = std::thread::scope(|s| {
+    let ((early, early_strict), (late, late_early), (again, again_early)) = std::thread::scope(|s| {
         let a = s.spawn(|| first_era(dump_to.as_ref().map(|d| d.join("game6")).as_deref()));
         let b = s.spawn(|| to_2050(dump_to.as_ref().map(|d| d.join("game6-2050")).as_deref()));
         let c = s.spawn(|| to_2050(None));
@@ -350,16 +423,17 @@ fn seed_7_under_the_games_rules_is_unchanged() {
             c.join().expect("the second run to 2050 finished"),
         )
     });
-    let glue = |e: [u64; 4], l: [u64; 4]| -> Hashes { std::array::from_fn(|i| if i < 4 { e[i] } else { l[i - 4] }) };
+    let glue = |e: [u64; FIRST], l: [u64; 4]| -> Hashes { std::array::from_fn(|i| if i < FIRST { e[i] } else { l[i - FIRST] }) };
     let first = glue(early, late);
     if (late, late_early) != (again, again_early) {
-        let one = glue([late_early[0], late_early[1], late_early[2], 0], late);
-        let two = glue([again_early[0], again_early[1], again_early[2], 0], again);
+        let one = glue(late_early, late);
+        let two = glue(again_early, again);
         panic!(
             "\n\nThe game's run is not repeatable: two runs of seed 7 to 2050 under game_params() with six families, \
              side by side in one process, disagree: {}.\n\
              first\n{}second\n{}\n\
-             (run.bin of the first era is the run to 1900's, and is shown as 0 here.)\n\
+             (The first era's three are here each run's months and news to 1900, hashed strictly, the news without \
+             the chronicle's marks.)\n\
              This is a fault whatever the stored hashes say. Something in the run reads what is not the rules and the \
              island: a clock, a thread, an environment variable, a global, or the order of a hash map that is walked. \
              The date in run.bin is already set aside. Find it before taking any hash.\n",
@@ -368,9 +442,8 @@ fn seed_7_under_the_games_rules_is_unchanged() {
             lines(&two)
         );
     }
-    let through = [early[0], early[1], early_news];
-    if late_early != through {
-        let moved: Vec<&str> = (0..3).filter(|&k| late_early[k] != through[k]).map(|k| MEANING[k]).collect();
+    if late_early != early_strict {
+        let moved: Vec<&str> = (0..3).filter(|&k| late_early[k] != early_strict[k]).map(|k| MEANING[k]).collect();
         panic!(
             "\n\nThe run to 2050 does not pass through the run to 1900: seed 7 under game_params() with six families, \
              run on to 2050, differs in its years to 1900 from the same island run to 1900, in {} (the news is set \
@@ -389,25 +462,26 @@ fn seed_7_under_the_games_rules_is_unchanged() {
         let moved = if first == want { "nothing".to_string() } else { which(&first, &want) };
         eprintln!(
             "\nISOSTATE_GOLDEN_WRITE is set, so nothing was checked against the file: the runs are repeatable and the \
-             run to 2050 passes through the run to 1900, and the eight hashes were written to \
+             run to 2050 passes through the run to 1900, and the seven hashes were written to \
              crates/isostate-core/tests/golden_game.txt.\nmoved: {moved}"
         );
-        for i in 0..8 {
-            eprintln!("  {} {:<8} 0x{:016x} -> 0x{:016x}{}", ERAS[i / 4], NAMES[i % 4], want[i], first[i], if want[i] != first[i] { "  moved" } else { "" });
+        for i in 0..7 {
+            let (e, k) = SLOTS[i];
+            eprintln!("  {} {:<8} 0x{:016x} -> 0x{:016x}{}", ERAS[e], NAMES[k], want[i], first[i], if want[i] != first[i] { "  moved" } else { "" });
         }
         return;
     }
     if std::env::var("ISOSTATE_GOLDEN_PRINT").is_ok() {
         panic!(
             "\n\nISOSTATE_GOLDEN_PRINT is set, so nothing was checked. The runs agree, and give\n\n{}\n\
-             Paste these eight lines over those in crates/isostate-core/tests/golden_game.txt, and say in the commit \
+             Paste these seven lines over those in crates/isostate-core/tests/golden_game.txt, and say in the commit \
              message which moved and why (docs/rules/README.md, \"The game's golden test\"); or let \
              ISOSTATE_GOLDEN_WRITE=\"why\" do both.\n",
             lines(&first)
         );
     }
     if first != want {
-        let only_late = first[..4] == want[..4];
+        let only_late = first[..FIRST] == want[..FIRST];
         panic!(
             "\n\nThe game moved: seed 7 under game_params() and game_content() with six families no longer gives the \
              run it gave. What moved: {}.{}\n\

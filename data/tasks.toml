@@ -192,8 +192,14 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 # The threshold: island 7 has made 4.07 million units of machinery by the end of 1901 and 4.18 million
 # by the end of 1902 (from the owners' sweep), so it finds the hoist in 1903. Islands 1, 2, 5, 6 and 8
 # have made more than that by 1900 and find it in 1901; islands 3 and 4 some years later.
+#
+# History's year (`target`, read by nothing in a run): 1850. Steam winding engines were at the pit heads
+# from the 1780s, and by the middle of the nineteenth century steam haulage below ground and steam cranes
+# on the quays and in the works were common. The stand-in is found from 1901 by design, so the atlas
+# draws it half a century late: its poor history, said out loud.
 [[use]]
 name = "hoist"
+target = 1850
 class = "haul"
 on = ["works", "quarry", "claypit", "ironmine", "coalmine"]
 from = 0.0
