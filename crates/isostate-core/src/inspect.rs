@@ -879,7 +879,8 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
         if !land.is_empty() {
             on.push(format!("on the land ({})", and_list(&land)));
         }
-        let place = if on.is_empty() { String::new() } else { format!(", {}", on.join(" and ")) };
+        // (a use replaced by later ones reaches none of the places it was laid on: the tasks rule's `replaces`)
+        let place = if on.is_empty() { ", though later machines have taken every place it was used in".to_string() } else { format!(", {}", on.join(" and ")) };
         let what = format!("Machines that take over tasks of the {class} kind{place}.");
         let idea = if found >= 0 {
             let said = format!("{label}: found on the island in {found}, by the island as a whole, since a use of the tasks rule is not known town by town. {what} How much of the work machines do is on the Markets panel's Work half.");
