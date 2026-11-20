@@ -299,7 +299,7 @@ bin_struct!(World { W, H, land, h, terrain, down, acc, river, navigable, coast, 
 bin_struct!(Graph { N, W, H, w, railed, min_w, max_w, boat, wharf });
 bin_struct!(SeriesMeta { label, group, unit });
 bin_struct!(ObserverState { cross_state, milestones, last_alarm, peak, in_slump, slump_start, trough, first_output, base, groups, crossings });
-bin_struct!(EngelState { need_spend, real_income, chain, base_p, base_q, acc_p, acc_q, months });
+bin_struct!(EngelState { year_now, need_spend, real_income, chain, base_p, base_q, acc_p, acc_q, months });
 bin_struct!(ChronicleState {
     kinds, reached, branch_opened, branch_extended, city_passed, pop, urban, coal, wage, moved, prices, peak, decline_told, leaders, challenger, lead_years, held,
     held_since, ousted, fell, told, redrawn

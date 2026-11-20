@@ -800,7 +800,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
 - **engel**: past a reference income each further shilling of a household
   leans from the content's shares toward a richer set (less food and warmth,
   more comfort), and the observer keeps a chained cost of living and real
-  wage beside the fixed-basket ones. [engel.md](engel.md), `engel.enabled`.
+  wage beside the fixed-basket ones. From 1901 the richer set itself leans,
+  a seventieth a year to 1970, from shelter and clothing to comfort (a stage
+  of the run to 2050). [engel.md](engel.md), `engel.enabled`, `engel.lean`.
 - **machines**: farm and quarry machinery is bought where it pays, machines
   stand for years and get better with the steel poured, and a converter and
   a steel rail that pay. [machines.md](machines.md), `machines.enabled`.

@@ -35,6 +35,10 @@ pub struct Content {
     /// read only when that mechanism is on). `shares_rich` in the services table,
     /// or the mechanism's own set for the needs it knows by name.
     pub shares_rich: Vec<f64>,
+    /// engel: the richer set once the lean after 1900 is complete (`engel::rich_now`;
+    /// read only when the lean is on). `shares_lean` in the services table, or
+    /// `shares_rich` itself, which leans nowhere.
+    pub shares_lean: Vec<f64>,
     /// (G, S): how much of each service one unit of each good provides.
     pub props: Mat,
     pub heat: Vec<f64>,
@@ -169,6 +173,7 @@ pub(crate) struct RawServices {
     pub(crate) shares: Vec<f64>,
     pub(crate) lord_shares: Option<Vec<f64>>,
     pub(crate) shares_rich: Option<Vec<f64>>,
+    pub(crate) shares_lean: Option<Vec<f64>>,
     // tree
     pub(crate) theta: Option<Vec<f64>>,
     pub(crate) props: BTreeMap<String, BTreeMap<String, f64>>,
@@ -271,6 +276,20 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
             rich.clone()
         }
     };
+    // engel's lean: the same, and the richer set where there is none
+    let shares_lean = match &svc.shares_lean {
+        None => shares_rich.clone(),
+        Some(lean) => {
+            let (want, got) = (svc.shares.iter().sum::<f64>(), lean.iter().sum::<f64>());
+            if lean.len() != S || lean.iter().any(|&v| !(v >= 0.0)) {
+                return Err(format!("content: shares_lean must be {S} shares, none negative (one for each need)"));
+            }
+            if (got - want).abs() > 1e-9 {
+                return Err(format!("content: shares_lean adds up to {got}, but shares adds up to {want}"));
+            }
+            lean.clone()
+        }
+    };
 
     let mut heat = vec![0.0; G];
     for (g, v) in &raw.heat {
@@ -331,6 +350,7 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         shares: svc.shares.clone(),
         lord_shares: svc.lord_shares.clone().unwrap_or_else(|| svc.shares.clone()),
         shares_rich,
+        shares_lean,
         props,
         heat,
         fuel_goods,

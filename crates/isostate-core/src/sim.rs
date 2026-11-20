@@ -654,6 +654,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::owners::start(&mut st);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
+    // engel: the lean's date (the warm-up's months ran with none, and lean nowhere)
+    st.engel.year_now = y0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
 }
 
@@ -784,6 +786,8 @@ pub fn end_year(sim: &mut Sim) {
     // pay (docs/rules/pay.md): each class's pay reckoned from the tasks' record, watched only
     crate::pay::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
+    // engel: the date the lean reads in next year's months, whatever the switches
+    st.engel.year_now = year + 1;
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
