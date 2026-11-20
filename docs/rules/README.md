@@ -174,15 +174,29 @@ It hashes them in two eras, so that a failure also says which century moved:
 
 | era | from | what |
 |---|---|---|
-| `1750-1900` | the island run to 1900, as the game has always ended | all four, whole |
-| `1901-2050` | the same island run on to 2050 | the months and the news from 1901 on, and the whole `run.bin` |
+| `1750-1900` | the island run to 1900, as the game has always ended | the economy, the books and the news, blind to content added after 1900 |
+| `1901-2050` | the same island run on to 2050 | the months and the news from 1901 on, and the whole `run.bin`, strictly |
 
 A change that acts only after 1900 (electricity, offices, the machines for
 tasks, which find nothing before 1901) moves the second era alone, and the
 message says that the played century held. The second era's `run.bin` holds
 the years before 1901 too, so it moves with either era.
 
-The eight hashes are kept in `tests/golden_game.txt`, beside the test, not in
+**The first era is blind to content added after 1900** (since 20 November
+2026). Adding a method that is found after 1900 used to move the first era
+without moving the run: the series gained the new method's columns, which
+are nothing in every month to 1900, the news names an invention by its place
+in the content's list, which a method put before it moves on, and `run.bin`
+carries the content's lists. So the first era is now hashed with every column
+that is nothing (nought or empty) in every month to 1900 left out, with each
+invention in the news named by its name, and without a `run.bin` of its own
+(the second era's holds the years to 1900). A column that is anything else in
+any month still counts, and so does every other field of the news. Proved on
+the case that cost a landing: the tree before the offices (c8fee93) and the
+tree after them (03e0dbb) give the same three first-era hashes. The second
+era stays strict: a new column or a moved place there moves it.
+
+The seven hashes are kept in `tests/golden_game.txt`, beside the test, not in
 its code. Three runs go side by side on three threads: the run to 1900 and
 the run to 2050 twice. Before anything is set against the file, the two runs
 to 2050 must agree, and the run to 2050 must pass through the run to 1900. So
@@ -202,7 +216,7 @@ a failure is one of three things, and the message says which:
   with the 1900s in one that goes on, so one item of 1900 is kept in one run
   and not the other. That is the history's reading of the news, not the news.)
 - **The game moved.** The runs agree with each other and not with the file.
-  The message names which of the eight moved.
+  The message names which of the seven moved.
 
 Unlike the port's, these hashes are meant to move. The game's rules are
 changed on purpose often (every stage of the rules pass and of the run to
@@ -233,21 +247,24 @@ ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --te
 ```
 
 It runs the three runs, checks that they are repeatable and that the run to
-2050 passes through the run to 1900, writes the eight hashes into
-`tests/golden_game.txt` with the reason as its `# Taken:` lines (the comment
-above them is kept), prints which moved, old and new, and passes. It never
-writes when either check fails. (`ISOSTATE_GOLDEN_PRINT=1` instead checks
-nothing and stops with the eight lines, for pasting by hand.) Who may do it:
+2050 passes through the run to 1900, writes the seven hashes into
+`tests/golden_game.txt` with the reason added as the newest `# Taken:` lines,
+below the earlier ones (the file keeps every reason it was ever taken for, as
+its history; until 20 November 2026 the command wiped that history to its
+own line, and what it wiped was put back from git), prints which moved, old
+and new, and passes. It never writes when either check fails.
+(`ISOSTATE_GOLDEN_PRINT=1` instead checks nothing and stops with the seven
+lines, for pasting by hand.) Who may do it:
 whoever builds, checks or lands a change that moves the game's rules on
 purpose, or what `run.bin` records for the viewer (the works' site planner
 moved `run.bin` alone by writing each good's price into its header), as
 above, and only after the sweep under the game's rules has been read and
 what moved is what was meant. A stage behind its own switch can show that
 nothing else moved: with the switch turned off in `game_params()` for one run
-(and not committed so), the test must pass on the old eight. Who may not: a
+(and not committed so), the test must pass on the old seven. Who may not: a
 change that claims to move nothing. If the test fails on such a change, the
 change is wrong, not the file. The commit that anchors them says, in its
-message, which of the eight moved and why ("1901-2050 economy, news and
+message, which of the seven moved and why ("1901-2050 economy, news and
 run.bin: electricity, which comes after 1900"), as the `# Taken:` lines do.
 
 To see what moved,
@@ -264,9 +281,10 @@ The test makes three runs of the game at once, two of them to 2050, which
 costs about one run to 2050's time on a machine with cores to spare: 83 to 86
 seconds in the dev profile on 19 November 2026, with another helper's tests
 running beside it (a run to 1900 alone took 52 to 76 seconds before the second
-era was added). It is in the default run, like the port's, and not behind
+era was added), and 70 to 76 seconds on 20 November with a heap for each of
+its threads (`src/heaps.rs`). It is in the default run, like the port's, and not behind
 `#[ignore]`: a guard that is skipped by default guards nothing. The dev
-profile and the release one give the same eight hashes, since the core is
+profile and the release one give the same seven hashes, since the core is
 optimised in the dev profile too (`Cargo.toml`).
 
 What it cannot see: another seed, another number of families, a player's
@@ -320,7 +338,11 @@ at a time on their own threads (half the machine's cores unless `--jobs` says
 otherwise). Eight seeds to 1900 take from 16 seconds to half a minute on this
 machine, depending on what else it is doing, and the numbers do not depend on
 how many run at once (`--jobs 1` and `--jobs 8` write the same files, the
-seconds aside). A run that panics or fails the monthly money check is reported
+seconds aside). Each thread takes its memory from a heap of its own
+(`src/heaps.rs`, since 20 November 2026): with the process's one heap the
+threads queued on it, and 24 islands to 2050 at once took 439 seconds a run
+with about six processors busy; now 80 seconds a run with 23 busy, about what
+a run takes alone. A run that panics or fails the monthly money check is reported
 as failed and the rest carry on; the command then ends with an error so a
 script notices.
 
