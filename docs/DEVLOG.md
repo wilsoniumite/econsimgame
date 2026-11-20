@@ -2,6 +2,10 @@
 
 Working notes, newest first. The plan lives in PLAN.md; this is what happened and what is in flight.
 
+## 2026-11-20: what landed
+
+**Office computing is found from 1960 on a floor of electrical goods made a head.** A use may now carry `discover_per_head`, which reads its find threshold over the island's people. Reckoning per head did not close the spread by itself. The islands are near one size but came to electrical goods 35 years apart, so a threshold on their own making that island 7 just reached in 1960 found the machine from 1960 to 1996. The year is now the gate (from 1960), and the island's making is a floor of 5.4 a head, half of island 7's. On sixteen islands it is found from 1960 to 1967. Half of clerking is taken in 2010.5 on the mean of islands 1 to 8 (2022 before), and 0.75 of it by 2050. The game's golden hashes held.
+
 ## 2026-11-19: what landed
 
 **The sandbox, stage 1: the hand and Run on.** `--sandbox` opens a game where nobody plays a family. There is no welcome, no decision card and no end card. A tray under the clock holds Look, Money, People and Harvest, and each tool lists its choices on chips with one line saying what a click will do. With a tool in hand, a click on the map in the present changes the island between two months. It is a saved order like any other, booked in a ledger that the money check reads, and the line it writes in the news goes up as a toast. Cutting the 1791 harvest to 71% brought a grain shortage and output down 7.9%. Run on plays 1, 10 or 25 years and stops at January, at about three years a second. Both golden tests pass unchanged, and the sweep moves nothing.
