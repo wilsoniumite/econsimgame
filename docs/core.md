@@ -1,18 +1,18 @@
 # The core of the island
 
-Written by `isostate-core ablate`, played on 2026-11-19 (UTC) from the code at `a0bc253`, and read again from its files on 2026-11-19 with the code at `365dd8a-dirty` (`--again`, which plays nothing). Nothing on this page is written by hand: to make it again, run
+Written by `isostate-core ablate`, played on 2026-11-19 (UTC) from the code at `7e09f65`. Nothing on this page is written by hand: to make it again, run
 
 ```text
 isostate-core ablate --out DIR --page docs/core.md
 ```
 
-This one was made by `isostate-core ablate --out DIR --page docs/core.md --jobs 24`.
+This one was made by `isostate-core ablate --out DIR --jobs 24 --page docs/core.md --quiet`.
 
-Every rule the game switches on is turned off from 1750, one at a time, and the island is played again: islands 1, 2, 3, 4, 5, 6, 7, 8 under the game's rules with 6 families, 1750 to 2050. Each such arm is set against the control, the islands as they are, island by island. 456 runs were played, 0 failed.
+Every rule the game switches on is turned off from 1750, one at a time, and the island is played again: islands 1, 2, 3, 4, 5, 6, 7, 8 under the game's rules with 6 families, 1750 to 2050. Each such arm is set against the control, the islands as they are, island by island. 344 runs were played, 0 failed.
 
-Of the 37 rules asked, 9 hold up the century, 19 shape the island, 9 are idle, 0 are leaned on.
+Of the 41 rules asked, 9 hold up the century, 18 shape the island, 14 are idle, 0 are leaned on.
 
-Read the small counts with care. With 8 islands a side, a fact the rule does not move, only stirs (a rule that changes anything sends each island down another path), stands apart by chance once in 6,435 facts; a rule that stirs the island stirs some 2,700 facts, so 0.42 of them would stand apart by chance alone, and more than that where facts move together. A rule with no more facts apart than chance gives one time in twenty is marked *faint*, unless one of its facts is the same on every island of one arm, which chance cannot give.
+Read the small counts with care. With 8 islands a side, a fact the rule does not move, only stirs (a rule that changes anything sends each island down another path), stands apart by chance once in 6,435 facts; a rule that stirs the island stirs some 2,700 facts, so 0.43 of them would stand apart by chance alone, and more than that where facts move together. A rule with no more facts apart than chance gives one time in twenty is marked *faint*, unless one of its facts is the same on every island of one arm, which chance cannot give.
 
 ![Facts that stand apart with each rule off](core.svg)
 
@@ -20,151 +20,115 @@ Read the small counts with care. With 8 islands a side, a fact the rule does not
 
 | rule | kind | facts apart | by chance alone | differ, of those both keep | not kept | the twelve out of their band | time of a run |
 |---|---|---:|---:|---:|---:|---|---:|
-| `engel.enabled` | holds up the century | 503 | 0.40 | 2573 of 2681 | 239 | `pop_1900`, `urban_share_1900`, `income_share_land_1900` (not kept without it: `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750`) | 106% |
-| `machines.enabled` | holds up the century | 1081 | 0.44 | 2812 of 2914 | 6 | `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750`, `urban_share_1900`, `rail_km_1900`, `income_share_work_1900` | 89% |
-| `works.enabled` | holds up the century | 891 | 0.44 | 2819 of 2914 | 6 | `pop_1800`, `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750`, `income_share_work_1900`, `income_share_land_1900` | 201% |
-| `works.keep_order` | holds up the century | 1 | 0.44 | 2813 of 2919 | 1 | `rail_km_1900` | 108% |
-| `railways.enabled` | holds up the century | 29 | 0.39 | 2515 of 2900 | 20 | `rail_km_1900` | 124% |
-| `carting.enabled` | holds up the century | 294 | 0.42 | 2720 of 2825 | 95 | `pop_1800`, `pop_1850`, `urban_share_1900` | 111% |
-| `people.enabled` | holds up the century | 286 | 0.43 | 2766 of 2870 | 50 | `pop_1800`, `pop_1850`, `towns_1900`, `urban_share_1900` | 90% |
-| `mines.enabled` | holds up the century | 508 | 0.44 | 2814 of 2917 | 3 | `pop_1850`, `urban_share_1900`, `rail_km_1900` | 128% |
-| `owners.enabled` | holds up the century | 10 | 0.42 | 2715 of 2823 | 97 | `pop_1900` | 139% |
-| `prices.enabled` | shapes the island | 84 | 0.44 | 2815 of 2917 | 3 | none | 116% |
-| `harvest.enabled` | shapes the island | 4 | 0.43 | 2795 of 2911 | 9 | none | 98% |
-| `works.count_spread` | shapes the island | 14 | 0.44 | 2811 of 2919 | 1 | none | 117% |
-| `works.family_extends` | shapes the island | 7 | 0.42 | 2716 of 2917 | 3 | none | 116% |
-| `works.spread_first` | shapes the island (faint) | 1 | 0.44 | 2814 of 2917 | 3 | none | 112% |
-| `railways.order_book` | shapes the island (faint) | 2 | 0.39 | 2532 of 2920 | 0 | none | 114% |
-| `people.shelves_go` | shapes the island (faint) | 1 | 0.42 | 2726 of 2920 | 0 | none | 104% |
-| `towns.enabled` | shapes the island | 38 | 0.44 | 2813 of 2917 | 3 | none | 104% |
-| `towns.mean_hands` | shapes the island (faint) | 1 | 0.44 | 2809 of 2919 | 1 | none | 100% |
-| `towns.donor_wage` | shapes the island (faint) | 1 | 0.42 | 2730 of 2917 | 3 | none | 106% |
-| `towns.rent_floor` | shapes the island (faint) | 2 | 0.44 | 2813 of 2919 | 1 | none | 124% |
-| `canals.navvies` | shapes the island | 1 | 0.42 | 2708 of 2917 | 3 | none | 106% |
-| `tree.seed_trades` | shapes the island | 33 | 0.44 | 2812 of 2920 | 0 | none | 111% |
-| `tree.plant_waits` | shapes the island | 27 | 0.44 | 2809 of 2920 | 0 | none | 114% |
-| `hands.ration` | shapes the island | 1 | 0.44 | 2814 of 2919 | 1 | none | 143% |
-| `longrun.enabled` | shapes the island | 133 | 0.42 | 2689 of 2880 | 40 | none | 143% |
-| `transition.enabled` | shapes the island | 255 | 0.42 | 2683 of 2881 | 39 | none | 139% |
-| `tasks.enabled` | shapes the island | 168 | 0.27 | 1724 of 2418 | 502 | none | 142% |
-| `tasks.land` | shapes the island | 57 | 0.29 | 1869 of 2789 | 131 | none | 163% |
-| `prices.no_spoil_markup` | idle | 0 | 0.44 | 2813 of 2919 | 1 | none | 97% |
-| `harvest.rent_as_paid` | idle | 0 | 0.42 | 2713 of 2919 | 1 | none | 108% |
-| `chronicle.enabled` | idle | 0 | 0.00 | 0 of 2920 | 0 | none | 108% |
-| `canals.enabled` | idle | 0 | 0.41 | 2635 of 2836 | 84 | none | 92% |
-| `accounts.enabled` | idle | 0 | 0.00 | 0 of 2235 | 685 | none (not kept without it: `income_share_work_1850`, `income_share_work_1900`, `income_share_land_1900`) | 151% |
-| `accounts.works` | idle | 0 | 0.00 | 0 of 2920 | 0 | none | 167% |
-| `gauges.enabled` | idle | 0 | 0.00 | 0 of 2595 | 325 | none | 166% |
-| `commons.carry_debt` | idle | 0 | 0.00 | 0 of 2920 | 0 | none | 150% |
-| `money.true_total` | idle | 0 | 0.44 | 2808 of 2919 | 1 | none | 136% |
+| `prices.enabled` | holds up the century | 78 | 0.45 | 2889 of 2993 | 1 | `pop_1850` | 110% |
+| `engel.enabled` | holds up the century | 600 | 0.41 | 2641 of 2756 | 238 | `pop_1900`, `urban_share_1900`, `income_share_land_1900` (not kept without it: `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750`) | 114% |
+| `machines.enabled` | holds up the century | 1388 | 0.44 | 2861 of 2968 | 26 | `real_wage_chained_1900_vs_1750`, `towns_1900`, `urban_share_1900` | 101% |
+| `works.enabled` | holds up the century | 1056 | 0.45 | 2881 of 2988 | 6 | `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750`, `income_share_work_1900`, `income_share_land_1900` | 180% |
+| `railways.enabled` | holds up the century | 49 | 0.40 | 2580 of 2977 | 17 | `towns_1900`, `rail_km_1900` | 114% |
+| `carting.enabled` | holds up the century | 208 | 0.43 | 2784 of 2900 | 94 | `urban_share_1900` | 113% |
+| `people.enabled` | holds up the century | 579 | 0.44 | 2834 of 2945 | 49 | `pop_1800`, `pop_1850`, `towns_1900`, `income_share_land_1900` | 99% |
+| `mines.enabled` | holds up the century | 292 | 0.45 | 2879 of 2994 | 0 | `pop_1800`, `pop_1850`, `pop_1900` | 114% |
+| `land.enabled` | holds up the century | 46 | 0.45 | 2878 of 2994 | 0 | `income_share_land_1900` | 97% |
+| `prices.no_spoil_markup` | shapes the island (faint) | 1 | 0.45 | 2877 of 2993 | 1 | none | 97% |
+| `harvest.enabled` | shapes the island | 5 | 0.44 | 2860 of 2986 | 8 | none | 108% |
+| `works.count_spread` | shapes the island | 31 | 0.45 | 2876 of 2991 | 3 | none | 115% |
+| `works.family_extends` | shapes the island | 9 | 0.43 | 2782 of 2992 | 2 | none | 116% |
+| `railways.order_book` | shapes the island (faint) | 1 | 0.40 | 2584 of 2994 | 0 | none | 110% |
+| `people.shelves_go` | shapes the island (faint) | 1 | 0.43 | 2787 of 2994 | 0 | none | 108% |
+| `towns.enabled` | shapes the island | 38 | 0.45 | 2875 of 2994 | 0 | none | 109% |
+| `towns.rent_floor` | shapes the island (faint) | 1 | 0.45 | 2873 of 2992 | 2 | none | 111% |
+| `canals.enabled` | shapes the island (faint) | 2 | 0.42 | 2703 of 2911 | 83 | none | 94% |
+| `canals.navvies` | shapes the island | 2 | 0.43 | 2780 of 2991 | 3 | none | 107% |
+| `tree.seed_trades` | shapes the island | 14 | 0.45 | 2874 of 2993 | 1 | none | 112% |
+| `tree.plant_waits` | shapes the island | 34 | 0.45 | 2873 of 2993 | 1 | none | 118% |
+| `longrun.enabled` | shapes the island | 29 | 0.43 | 2751 of 2955 | 39 | none | 125% |
+| `transition.enabled` | shapes the island | 593 | 0.43 | 2754 of 2956 | 38 | none | 129% |
+| `owners.enabled` | shapes the island (faint) | 2 | 0.43 | 2781 of 2896 | 98 | none | 117% |
+| `tasks.enabled` | shapes the island | 246 | 0.27 | 1747 of 2461 | 533 | none | 101% |
+| `tasks.land` | shapes the island | 227 | 0.29 | 1879 of 2831 | 163 | none | 108% |
+| `woods.enabled` | shapes the island | 376 | 0.36 | 2309 of 2991 | 3 | none | 108% |
+| `harvest.rent_as_paid` | idle | 0 | 0.43 | 2785 of 2994 | 0 | none | 103% |
+| `chronicle.enabled` | idle | 0 | 0.00 | 0 of 2994 | 0 | none | 103% |
+| `works.spread_first` | idle | 0 | 0.45 | 2876 of 2994 | 0 | none | 114% |
+| `works.keep_order` | idle | 0 | 0.45 | 2875 of 2990 | 4 | none | 105% |
+| `towns.mean_hands` | idle | 0 | 0.45 | 2877 of 2994 | 0 | none | 110% |
+| `towns.donor_wage` | idle | 0 | 0.43 | 2796 of 2990 | 4 | none | 112% |
+| `accounts.enabled` | idle | 0 | 0.00 | 0 of 2310 | 684 | none (not kept without it: `income_share_work_1850`, `income_share_work_1900`, `income_share_land_1900`) | 107% |
+| `accounts.works` | idle | 0 | 0.00 | 0 of 2994 | 0 | none | 114% |
+| `gauges.enabled` | idle | 0 | 0.00 | 0 of 2669 | 325 | none | 123% |
+| `commons.carry_debt` | idle | 0 | 0.00 | 0 of 2994 | 0 | none | 125% |
+| `hands.ration` | idle | 0 | 0.45 | 2876 of 2993 | 1 | none | 130% |
+| `money.true_total` | idle | 0 | 0.45 | 2876 of 2992 | 2 | none | 124% |
+| `woods.record` | idle | 0 | 0.00 | 0 of 2956 | 38 | none | 110% |
+| `crossings.enabled` | idle | 0 | 0.45 | 2877 of 2994 | 0 | none | 117% |
 
-The time of a run is the processor's time on a run with the rule off, against the control's (479 s on the clock for a run of the control): under a hundred per cent, the rule costs that much to run. It is taken on a machine shared with other work, whose load changed through the table, so only a time far from a hundred per cent says much.
+The time of a run is the processor's time on a run with the rule off, against the control's (474 s on the clock for a run of the control): under a hundred per cent, the rule costs that much to run. It is taken on a machine shared with other work, whose load changed through the table, so only a time far from a hundred per cent says much.
 
 ## What each rule that holds up the century holds up
 
+- **`prices.enabled`**: `pop_1850` (OUTSIDE).
+  Largest apart: `emigrants` 3.0 to 2,002 (85.2 spreads); `price_swing_cloth` 0.044 to 0.103 (6.8 spreads); `grain_price_year_after_harvest` 0.412 to -0.640 (6.8 spreads); `town_months_wage_moved_by_half` 0.000 to 0.002 (6.4 spreads); `farm_zigzag_beyond_weather` 1.26 to 3.66 (5.8 spreads).
 - **`engel.enabled`**: `pop_1900` (OUTSIDE), `urban_share_1900` (moved), `income_share_land_1900` (OUTSIDE).
-  Largest apart: `farm_share_1900` 0.245 to 0.359 (9.6 spreads); `farm_share_1891_1910` 0.255 to 0.366 (8.0 spreads); `grain_output_1970_vs_1750` 25.50 to 57.96 (7.7 spreads); `grain_output_1920_vs_1750` 14.68 to 27.13 (6.8 spreads); `months_at_bound_lumber` 0.006 to 0.131 (6.7 spreads).
-- **`machines.enabled`**: `real_wage_chained_1850_vs_1750` (OUTSIDE), `real_wage_chained_1900_vs_1750` (moved), `urban_share_1900` (moved), `rail_km_1900` (OUTSIDE), `income_share_work_1900` (OUTSIDE).
-  Largest apart: `price_clay_in_wages_1900` 0.043 to 0.188 (24.6 spreads); `budget_food_1990` 0.124 to 0.273 (18.5 spreads); `price_clay_in_wages_1910` 0.044 to 0.188 (18.4 spreads); `price_clay_in_wages_1950` 0.046 to 0.212 (18.0 spreads); `price_clay_in_wages_2050` 0.057 to 0.250 (17.3 spreads).
-- **`works.enabled`**: `pop_1800` (OUTSIDE), `real_wage_chained_1850_vs_1750` (moved), `real_wage_chained_1900_vs_1750` (moved), `income_share_work_1900` (OUTSIDE), `income_share_land_1900` (OUTSIDE).
-  Largest apart: `cells_industry_1800` 17 to 394.2 (94.3 spreads); `works_1930` 1,512 to 11,501 (61.3 spreads); `cells_industry_1750` 3 to 262.2 (51.9 spreads); `works_hands_within_2_of_market_1850` 0.997 to 0.835 (40.6 spreads); `works_1940` 1,586 to 12,293 (37.0 spreads).
-- **`works.keep_order`**: `rail_km_1900` (OUTSIDE).
-  Largest apart: `carters_per_1000_weight_path_1800` 0.207 to 0.192 (0.3 spreads).
-- **`railways.enabled`**: `rail_km_1900` (moved).
-  Largest apart: `canal_traffic_end_vs_peak` 0.03 to 0.49 (8.6 spreads); `canal_mton_km_2050` 11.2 to 195 (7.1 spreads); `rail_km_1930` 2,646 to 1,140 (6.7 spreads); `rail_km_1950` 2,685 to 1,147 (6.7 spreads); `rail_km_1940` 2,669 to 1,142 (6.6 spreads).
-- **`carting.enabled`**: `pop_1800` (OUTSIDE), `pop_1850` (OUTSIDE), `urban_share_1900` (moved).
-  Largest apart: `mine_share_1751_1770` 0.150 to 0.056 (5.6 spreads); `mine_share_1931_1950` 0.216 to 0.136 (4.6 spreads); `mine_share_1750` 0.134 to 0.041 (4.4 spreads); `mine_share_first` 0.134 to 0.041 (4.4 spreads); `mine_share_1911_1930` 0.214 to 0.143 (3.6 spreads).
-- **`people.enabled`**: `pop_1800` (moved), `pop_1850` (moved), `towns_1900` (OUTSIDE), `urban_share_1900` (OUTSIDE).
-  Largest apart: `town_growth_near_old_cap` 0.245 to 0.984 (6.0 spreads); `town_growth_pct_p90` 1.37 to 1.10 (3.6 spreads); `area_mines_2050` 16.6 to 26.5 (2.9 spreads); `last_town_founded` 2009 to 1844 (2.7 spreads); `budget_comfort_1990` 0.216 to 0.192 (2.6 spreads).
-- **`mines.enabled`**: `pop_1850` (OUTSIDE), `urban_share_1900` (OUTSIDE), `rail_km_1900` (OUTSIDE).
-  Largest apart: `area_mines_1750` 0.292 to 751 (5758.6 spreads); `workings_share_of_cell_1750` 0.001 to 1.279 (4167.4 spreads); `area_mines_1800` 1.04 to 967 (2019.4 spreads); `area_mines_1850` 2.57 to 1,053 (1237.0 spreads); `area_mines_1920` 6.06 to 1,169 (901.8 spreads).
-- **`owners.enabled`**: `pop_1900` (OUTSIDE).
-  Largest apart: `income_pay_share_1750` 0.951 to 0.902 (2.0 spreads); `income_pay_share_1920` 0.901 to 0.803 (1.6 spreads); `hands_ironmine_1980` 0.002 to 0.003 (1.6 spreads); `real_income_1750` 1.52 to 1.62 (1.1 spreads); `income_pay_share_1930` 0.891 to 0.829 (1.0 spreads).
+  Largest apart: `transition_F_2050` 0.063 to 0.467 (37.4 spreads); `timber_in_wages_2040` 0.224 to 5.15 (35.9 spreads); `transition_F_2040` 0.064 to 0.383 (26.7 spreads); `industry_share_2040` 0.659 to 0.425 (23.5 spreads); `transition_F_2030` 0.065 to 0.324 (20.2 spreads).
+- **`machines.enabled`**: `real_wage_chained_1900_vs_1750` (moved), `towns_1900` (OUTSIDE), `urban_share_1900` (moved).
+  Largest apart: `budget_food_2040` 0.086 to 0.302 (99.3 spreads); `price_clay_in_wages_2040` 0.019 to 0.283 (88.9 spreads); `transition_F_2050` 0.063 to 0.994 (86.3 spreads); `budget_food_2020` 0.085 to 0.288 (85.0 spreads); `transition_F_2040` 0.064 to 0.993 (77.8 spreads).
+- **`works.enabled`**: `real_wage_chained_1850_vs_1750` (OUTSIDE), `real_wage_chained_1900_vs_1750` (OUTSIDE), `income_share_work_1900` (OUTSIDE), `income_share_land_1900` (moved).
+  Largest apart: `cells_industry_1750` 1.8 to 236.2 (78.2 spreads); `works_hands_within_2_of_market_1950` 1.000 to 0.965 (41.3 spreads); `works_per_1000_people_2050` 1.60 to 7.85 (41.1 spreads); `works_per_1000_people_last` 1.60 to 7.85 (41.1 spreads); `works_founded` 7,967 to 38,075 (39.0 spreads).
+- **`railways.enabled`**: `towns_1900` (OUTSIDE), `rail_km_1900` (moved).
+  Largest apart: `canal_traffic_end_vs_peak` 0.01 to 0.41 (20.0 spreads); `canal_mton_km_2050` 4.73 to 196 (17.9 spreads); `rail_km_1980` 2,811 to 1,092 (10.9 spreads); `rail_km_1950` 2,789 to 1,073 (10.9 spreads); `rail_km_1970` 2,805 to 1,088 (10.6 spreads).
+- **`carting.enabled`**: `urban_share_1900` (moved).
+  Largest apart: `industry_share_2040` 0.659 to 0.723 (6.5 spreads); `urban_share_2030` 0.563 to 0.613 (4.8 spreads); `mine_share_1751_1770` 0.164 to 0.057 (4.7 spreads); `mine_share_2030` 0.167 to 0.098 (4.5 spreads); `urban_share_2050` 0.564 to 0.614 (4.2 spreads).
+- **`people.enabled`**: `pop_1800` (moved), `pop_1850` (moved), `towns_1900` (OUTSIDE), `income_share_land_1900` (OUTSIDE).
+  Largest apart: `timber_in_wages_2040` 0.224 to 6.98 (49.3 spreads); `town_growth_pct_p10` 0.10 to 1.10 (46.2 spreads); `budget_clothing_2050` 0.182 to 0.248 (36.2 spreads); `timber_in_wages_2020` 0.173 to 4.65 (33.9 spreads); `timber_in_wages_2050` 0.266 to 6.89 (22.6 spreads).
+- **`mines.enabled`**: `pop_1800` (OUTSIDE), `pop_1850` (OUTSIDE), `pop_1900` (OUTSIDE).
+  Largest apart: `area_mines_1750` 0.327 to 745 (5533.7 spreads); `area_mines_1800` 1.14 to 929 (2548.2 spreads); `workings_share_of_cell_1750` 0.002 to 1.639 (1736.6 spreads); `area_mines_1850` 2.49 to 1,016 (1468.7 spreads); `area_mines_2010` 5.71 to 978 (942.9 spreads).
+- **`land.enabled`**: `income_share_land_1900` (OUTSIDE).
+  Largest apart: `workings_claypit_1990` 244.1 to 160.6 (3.0 spreads); `area_pasture_1940` 2,085 to 2,222 (2.9 spreads); `workings_claypit_2000` 246.8 to 165.8 (2.8 spreads); `workings_claypit_1980` 240.6 to 155.5 (2.6 spreads); `workings_claypit_2040` 260.4 to 182.5 (2.5 spreads).
 
 ## The rules that shape the island
 
-- **`prices.enabled`**, 84 apart: `farm_zigzag` 2.36 to 6.11 (8.0 spreads); `farm_zigzag_beyond_weather` 1.90 to 5.33 (7.5 spreads); `price_swing_cloth` 0.050 to 0.111 (6.8 spreads); `emigrants` 41.2 to 1,719 (5.8 spreads); `months_at_bound_lumber` 0.006 to 0.092 (4.6 spreads).
-- **`harvest.enabled`**, 4 apart: `price_swing_grain` 0.105 to 0.046 (2.8 spreads); `output_swing_grain` 0.102 to 0.038 (2.0 spreads); `price_ac1_grain` -0.570 to -0.224 (1.7 spreads); `farm_zigzag` 2.36 to 1.68 (1.5 spreads).
-- **`works.count_spread`**, 14 apart: `works_closing_chance_age_10_14` 0.027 to 0.045 (2.5 spreads); `works_closing_chance_age_6_9` 0.039 to 0.061 (1.9 spreads); `works_closing_chance_age_15_24` 0.021 to 0.028 (1.7 spreads); `cells_derelict_2020` 2.6 to 10.8 (1.6 spreads); `cells_industry_1970` 444.5 to 553.5 (1.0 spreads).
-- **`works.family_extends`**, 7 apart: `works_1930` 1,512 to 1,883 (2.3 spreads); `works_closing_chance_age_15_24` 0.021 to 0.028 (1.7 spreads); `works_1940` 1,586 to 1,942 (1.2 spreads); `works_ex_services_1930` 1,487 to 1,858 (1.2 spreads); `works_ex_services_1940` 1,569 to 1,928 (1.1 spreads).
-- **`works.spread_first`**, 1 apart: `hours_minders_1960` 1,347 to 1,633 (0.6 spreads).
-- **`railways.order_book`**, 2 apart: `rail_spent_over_expected` 0.79 to 1.42 (4.0 spreads); `rail_cost_in_years_of_output` 0.223 to 0.324 (1.4 spreads).
-- **`people.shelves_go`**, 1 apart: `books_goods_worst` 1.60e-10 to 6.74e-13 (0.4 spreads).
-- **`towns.enabled`**, 38 apart: `urban_churn_10y` 0.003 to 0.083 (17.3 spreads); `cells_urban_2010` 575.1 to 171.2 (4.2 spreads); `cells_urban_1950` 439.8 to 156.9 (4.1 spreads); `cells_urban_2000` 551.8 to 175.5 (4.1 spreads); `cells_urban_1940` 408.2 to 148.4 (4.1 spreads).
-- **`towns.mean_hands`**, 1 apart: `oil_to_machines_1940` 1.027 to 0.986 (0.4 spreads).
-- **`towns.donor_wage`**, 1 apart: `hands_ironmine_1980` 0.002 to 0.003 (2.2 spreads).
-- **`towns.rent_floor`**, 2 apart: `books_income_worst` 6.82e-15 to 1.14e-13 (12.5 spreads); `canal_works_near_1760` 0.613 to 0.789 (0.9 spreads).
-- **`canals.navvies`**, 1 apart: `canal_most_navvies` 1,110 to 0 (1.1 spreads).
-- **`tree.seed_trades`**, 33 apart: `hours_haul_1750` 4,821 to 3,615 (3.9 spreads); `hours_tend_1750` 7,204 to 5,736 (3.3 spreads); `hours_judge_1750` 4,149 to 3,487 (3.0 spreads); `budget_shelter_1750` 0.109 to 0.129 (2.7 spreads); `gauge_fork_made_1800` 1.70 to 2.14 (2.3 spreads).
-- **`tree.plant_waits`**, 27 apart: `months_at_bound_lumber` 0.006 to 0.094 (4.7 spreads); `works_top_1pct_capacity_share_2050` 0.139 to 0.298 (3.2 spreads); `works_top_1pct_capacity_share_last` 0.139 to 0.298 (3.2 spreads); `hands_quarry_2050` 0.024 to 0.045 (2.9 spreads); `area_mines_2050` 16.6 to 24.5 (2.3 spreads).
-- **`hands.ration`**, 1 apart: `town_months_more_at_work_than_people` 0 to 10.5 (1.3 spreads).
-- **`longrun.enabled`**, 133 apart: `months_at_bound_oil` 0.000 to 0.417 (497.4 spreads); `months_at_bound_gas` 0.000 to 0.018 (26.3 spreads); `months_at_bound_lumber` 0.006 to 0.172 (8.9 spreads); `months_at_bound_electricity` 0.042 to 0.352 (4.3 spreads); `months_at_bound_machinery` 0.023 to 0.401 (3.5 spreads).
-- **`transition.enabled`**, 255 apart: `area_mines_2050` 16.6 to 29.1 (3.7 spreads); `area_mines_2030` 13.1 to 22.6 (3.4 spreads); `months_at_bound_lumber` 0.006 to 0.066 (3.2 spreads); `hours_haul_2010` 31,957 to 40,010 (3.0 spreads); `area_mines_2020` 11.9 to 19.8 (3.0 spreads).
-- **`tasks.enabled`**, 168 apart: `gauge_hand_hours_1960` 0.071 to 0.088 (3.3 spreads); `real_wage_2000_vs_1750` 0.60 to 1.44 (3.1 spreads); `gauge_hand_hours_1940` 0.080 to 0.099 (3.0 spreads); `electricity_lost_2010` 0.029 to 0.100 (2.2 spreads); `gauge_hand_hours_1970` 0.068 to 0.086 (2.2 spreads).
-- **`tasks.land`**, 57 apart: `oil_to_machines_2020` 1.008 to 0.000 (27.3 spreads); `oil_to_machines_2050` 0.999 to 0.000 (25.0 spreads); `oil_to_machines_2010` 1.007 to 0.000 (21.5 spreads); `oil_to_machines_2030` 1.012 to 0.000 (13.5 spreads); `oil_to_machines_2040` 1.018 to 0.000 (10.3 spreads).
+- **`prices.no_spoil_markup`**, 1 apart: `electricity_lost_1900` 0.075 to 0.169 (1.8 spreads).
+- **`harvest.enabled`**, 5 apart: `output_ac1_grain` -0.714 to -0.281 (4.6 spreads); `price_ac1_grain` -0.596 to -0.030 (3.8 spreads); `price_swing_grain` 0.102 to 0.036 (2.1 spreads); `output_swing_grain` 0.100 to 0.024 (1.8 spreads); `farm_zigzag` 1.73 to 1.04 (0.8 spreads).
+- **`works.count_spread`**, 31 apart: `works_founded` 7,967 to 13,601 (7.3 spreads); `works_slots_used` 8,425 to 14,106 (7.3 spreads); `works_closed` 6,452 to 11,727 (7.0 spreads); `works_closing_chance_age_10_14` 0.034 to 0.063 (4.7 spreads); `machines_years_2030` 0.072 to 0.093 (4.6 spreads).
+- **`works.family_extends`**, 9 apart: `electricity_lost_1900` 0.075 to 0.331 (4.9 spreads); `works_founded` 7,967 to 10,437 (3.2 spreads); `works_slots_used` 8,425 to 10,895 (3.2 spreads); `works_closed` 6,452 to 8,790 (3.1 spreads); `works_closing_chance_age_25_49` 0.017 to 0.022 (2.6 spreads).
+- **`railways.order_book`**, 1 apart: `rail_spent_over_expected` 0.78 to 1.41 (5.9 spreads).
+- **`people.shelves_go`**, 1 apart: `books_goods_worst` 1.07e-10 to 9.62e-15 (0.3 spreads).
+- **`towns.enabled`**, 38 apart: `urban_churn_10y` 0.001 to 0.074 (50.0 spreads); `books_income_worst` 4.83e-15 to 5.98e-14 (23.2 spreads); `cells_urban_1920` 436.6 to 151.1 (3.1 spreads); `cells_urban_1930` 464.6 to 161.1 (2.9 spreads); `cells_urban_1900` 359 to 128.4 (2.7 spreads).
+- **`towns.rent_floor`**, 1 apart: `books_income_worst` 4.83e-15 to 9.71e-15 (2.1 spreads).
+- **`canals.enabled`**, 2 apart: `electricity_lost_1900` 0.075 to 0.298 (4.2 spreads); `carting_share_of_output_1800` 0.072 to 0.081 (1.4 spreads).
+- **`canals.navvies`**, 2 apart: `electricity_lost_1900` 0.075 to 0.364 (5.5 spreads); `canal_most_navvies` 1,166 to 0 (0.8 spreads).
+- **`tree.seed_trades`**, 14 apart: `owners_works_hh_1750` 0.204 to 0.237 (4.2 spreads); `owners_works_lords_1750` 0.728 to 0.695 (3.9 spreads); `gauge_hand_hours_1750` 1.383 to 1.446 (2.9 spreads); `hours_haul_1750` 4,592 to 3,501 (2.6 spreads); `hours_tend_1750` 6,807 to 5,532 (2.0 spreads).
+- **`tree.plant_waits`**, 34 apart: `machines_years_2030` 0.072 to 0.090 (4.0 spreads); `works_per_1000_people_2050` 1.60 to 2.09 (3.2 spreads); `works_per_1000_people_last` 1.60 to 2.09 (3.2 spreads); `works_utilisation_2050` 0.799 to 0.682 (3.1 spreads); `works_utilisation_last` 0.799 to 0.682 (3.1 spreads).
+- **`longrun.enabled`**, 29 apart: `months_at_bound_oil` 0.000 to 0.407 (111.4 spreads); `months_at_bound_electricity` 0.038 to 0.325 (3.8 spreads); `months_at_bound_fertiliser` 0.000 to 0.379 (2.9 spreads); `gauge_labour_in_machinery_1940` 0.633 to 0.531 (1.9 spreads); `carters_between_towns_share_of_hands_2050` 0.061 to 0.038 (1.8 spreads).
+- **`transition.enabled`**, 593 apart: `timber_in_wages_2040` 0.224 to 6.94 (49.0 spreads); `town_growth_pct_p10` 0.10 to 0.99 (41.1 spreads); `timber_in_wages_2020` 0.173 to 5.27 (38.6 spreads); `budget_clothing_2050` 0.182 to 0.252 (38.2 spreads); `timber_in_wages_2050` 0.266 to 6.91 (22.6 spreads).
+- **`owners.enabled`**, 2 apart: `income_pay_share_1750` 0.937 to 0.885 (1.5 spreads); `income_pay_share_1900` 0.878 to 0.819 (1.2 spreads).
+- **`tasks.enabled`**, 246 apart: `budget_food_2040` 0.086 to 0.097 (4.9 spreads); `budget_food_2020` 0.085 to 0.096 (4.4 spreads); `transition_F_2050` 0.063 to 0.107 (4.0 spreads); `transition_F_2040` 0.064 to 0.108 (3.7 spreads); `gauge_hand_hours_2020` 0.049 to 0.068 (3.6 spreads).
+- **`tasks.land`**, 227 apart: `oil_to_machines_1950` 0.996 to 0.000 (31.2 spreads); `oil_to_machines_1960` 0.980 to 0.000 (29.2 spreads); `oil_to_machines_1970` 0.996 to 0.000 (20.9 spreads); `oil_to_machines_2020` 0.990 to 0.000 (18.0 spreads); `oil_to_machines_2030` 0.993 to 0.000 (16.8 spreads).
+- **`woods.enabled`**, 376 apart: `timber_in_wages_2020` 0.173 to 4.53 (33.0 spreads); `timber_in_wages_2040` 0.224 to 4.68 (32.5 spreads); `timber_in_wages_1990` 0.196 to 3.30 (23.4 spreads); `timber_in_wages_2000` 0.217 to 3.77 (19.5 spreads); `timber_in_wages_2050` 0.266 to 5.76 (18.7 spreads).
 
 ## The idle rules, and the second pass
 
-- **`prices.no_spoil_markup`**: it stirs the island (2813 of the 2919 facts both keep differ) and moves no fact clear of the spread.
-- **`harvest.rent_as_paid`**: it stirs the island (2713 of the 2919 facts both keep differ) and moves no fact clear of the spread.
+- **`harvest.rent_as_paid`**: it stirs the island (2785 of the 2994 facts both keep differ) and moves no fact clear of the spread.
 - **`chronicle.enabled`**: no fact differs on any island.
-- **`canals.enabled`**: it stirs the island (2635 of the 2836 facts both keep differ) and moves no fact clear of the spread.
-- **`accounts.enabled`**: no fact both keep differs on any island, and it keeps 685 facts the island does not keep without it: it watches.
+- **`works.spread_first`**: it stirs the island (2876 of the 2994 facts both keep differ) and moves no fact clear of the spread.
+- **`works.keep_order`**: it stirs the island (2875 of the 2990 facts both keep differ) and moves no fact clear of the spread.
+- **`towns.mean_hands`**: it stirs the island (2877 of the 2994 facts both keep differ) and moves no fact clear of the spread.
+- **`towns.donor_wage`**: it stirs the island (2796 of the 2990 facts both keep differ) and moves no fact clear of the spread.
+- **`accounts.enabled`**: no fact both keep differs on any island, and it keeps 684 facts the island does not keep without it: it watches.
 - **`accounts.works`**: no fact differs on any island.
 - **`gauges.enabled`**: no fact both keep differs on any island, and it keeps 325 facts the island does not keep without it: it watches.
 - **`commons.carry_debt`**: no fact differs on any island.
-- **`money.true_total`**: it stirs the island (2808 of the 2919 facts both keep differ) and moves no fact clear of the spread.
+- **`hands.ration`**: it stirs the island (2876 of the 2993 facts both keep differ) and moves no fact clear of the spread.
+- **`money.true_total`**: it stirs the island (2876 of the 2992 facts both keep differ) and moves no fact clear of the spread.
+- **`woods.record`**: no fact both keep differs on any island, and it keeps 38 facts the island does not keep without it: it watches.
+- **`crossings.enabled`**: it stirs the island (2877 of the 2994 facts both keep differ) and moves no fact clear of the spread.
 
-**The second pass**: the 8 idle rules turned off together are not the same island. With all of them off: the century does not stand (`rail_km_1900` OUTSIDE); 8 apart, the largest `wage_scale_1960` 2.72 to 3.77 (2.0 spreads); `wage_scale_1920` 2.10 to 2.78 (1.7 spreads); `wage_scale_1950` 2.60 to 3.41 (1.7 spreads); `wage_scale_1980` 3.24 to 4.40 (1.5 spreads); `wage_scale_2000` 3.50 to 4.71 (1.4 spreads). The smallest groups that must not go off together, each idle alone:
-
-- `prices.no_spoil_markup` with `harvest.rent_as_paid`: with both off, 2 apart, the largest `wage_scale_1900` 1.83 to 2.30 (1.8 spreads); `carters_per_1000_weight_path_1960_vs_1750` 0.62 to 0.39 (0.3 spreads).
-- `prices.no_spoil_markup` with `canals.enabled`: with both off, the century does not stand (`rail_km_1900` OUTSIDE); 3 apart, the largest `carters_share_of_hands_1900` 0.084 to 0.072 (0.8 spreads); `carting_share_of_output_1900` 0.056 to 0.047 (0.8 spreads); `carting_share_of_output_1950` 0.056 to 0.046 (0.6 spreads).
-- `prices.no_spoil_markup` with `money.true_total`: with both off, 6 apart, the largest `wage_scale_1960` 2.72 to 3.76 (2.0 spreads); `wage_scale_1900` 1.83 to 2.32 (1.8 spreads); `wage_scale_1950` 2.60 to 3.41 (1.7 spreads); `wage_scale_1990` 3.45 to 4.70 (1.7 spreads); `wage_scale_2000` 3.50 to 4.97 (1.7 spreads).
-
-With `harvest.rent_as_paid` and `canals.enabled` and `money.true_total` kept on, the other 5 go off together and the island is the same: `prices.no_spoil_markup`, `chronicle.enabled`, `accounts.works`, `gauges.enabled`, `commons.carry_debt`.
-
-`accounts.enabled` is idle as this page reads the table, and was not among the rules the second pass turned off together, since the pass was played with the reading of its day; the next table puts it there.
+**The second pass**: all 14 idle rules turned off together are the same island. That island is the same island with fewer rules.
 
 The arms the second pass played, in order:
 
-- 8 rules off: not the same island
-  (prices.no_spoil_markup, harvest.rent_as_paid, chronicle.enabled, canals.enabled, accounts.works, gauges.enabled, commons.carry_debt, money.true_total)
-- 4 rules off: not the same island
-  (prices.no_spoil_markup, harvest.rent_as_paid, chronicle.enabled, canals.enabled)
-- 4 rules off: the same island
-  (accounts.works, gauges.enabled, commons.carry_debt, money.true_total)
-- 2 rules off: not the same island
-  (prices.no_spoil_markup, harvest.rent_as_paid)
-- 2 rules off: the same island
-  (chronicle.enabled, canals.enabled)
-- 7 rules off: not the same island
-  (prices.no_spoil_markup, chronicle.enabled, canals.enabled, accounts.works, gauges.enabled, commons.carry_debt, money.true_total)
-- 3 rules off: not the same island
-  (prices.no_spoil_markup, chronicle.enabled, canals.enabled)
-- 2 rules off: the same island
-  (prices.no_spoil_markup, chronicle.enabled)
-- 2 rules off: not the same island
-  (prices.no_spoil_markup, canals.enabled)
-- 6 rules off: not the same island
-  (prices.no_spoil_markup, chronicle.enabled, accounts.works, gauges.enabled, commons.carry_debt, money.true_total)
-- 3 rules off: the same island
-  (prices.no_spoil_markup, chronicle.enabled, accounts.works)
-- 3 rules off: the same island
-  (gauges.enabled, commons.carry_debt, money.true_total)
-- 4 rules off: not the same island
-  (prices.no_spoil_markup, gauges.enabled, commons.carry_debt, money.true_total)
-- 5 rules off: the same island
-  (chronicle.enabled, accounts.works, gauges.enabled, commons.carry_debt, money.true_total)
-- 2 rules off: the same island
-  (prices.no_spoil_markup, gauges.enabled)
-- 3 rules off: not the same island
-  (prices.no_spoil_markup, commons.carry_debt, money.true_total)
-- 2 rules off: the same island
-  (prices.no_spoil_markup, commons.carry_debt)
-- 2 rules off: not the same island
-  (prices.no_spoil_markup, money.true_total)
-- 5 rules off: the same island
-  (prices.no_spoil_markup, chronicle.enabled, accounts.works, gauges.enabled, commons.carry_debt)
+- 14 rules off: the same island
+  (harvest.rent_as_paid, chronicle.enabled, works.spread_first, works.keep_order, towns.mean_hands, towns.donor_wage, accounts.enabled, accounts.works, gauges.enabled, commons.carry_debt, hands.ration, money.true_total, woods.record, crossings.enabled)
 
 ## The century after 1900
 
@@ -172,39 +136,42 @@ What the design asks of the years after 1900, as the standing check reports it (
 
 | | per cent a year, 1900 to 1970 | 2050 over 1970 | 2050 less 1900 |
 |---|---:|---:|---:|
-| the control | -0.00% (missed) | 0.50 (missed) | +0.111 (missed) |
-| `prices.enabled` off | 0.04% (missed) | 0.66 (missed) | +0.119 (missed) |
-| `prices.no_spoil_markup` off | 0.38% (missed) | 0.41 (missed) | +0.101 (missed) |
-| `engel.enabled` off | - (-) | - (-) | +0.082 (missed) |
-| `machines.enabled` off | 0.10% (missed) | 0.46 (missed) | +0.221 (missed) |
-| `harvest.enabled` off | 0.04% (missed) | 0.55 (missed) | +0.104 (missed) |
-| `harvest.rent_as_paid` off | 0.12% (missed) | 0.54 (missed) | +0.117 (missed) |
-| `works.enabled` off | 0.25% (missed) | 0.51 (missed) | +0.195 (missed) |
-| `works.count_spread` off | -0.02% (missed) | 0.58 (missed) | +0.103 (missed) |
-| `works.family_extends` off | -0.13% (missed) | 0.60 (missed) | +0.106 (missed) |
-| `works.spread_first` off | 0.16% (missed) | 0.51 (missed) | +0.109 (missed) |
-| `works.keep_order` off | 0.46% (missed) | 0.49 (missed) | +0.117 (missed) |
-| `railways.enabled` off | 0.17% (missed) | 0.55 (missed) | +0.116 (missed) |
-| `railways.order_book` off | 0.02% (missed) | 0.60 (missed) | +0.105 (missed) |
-| `carting.enabled` off | 0.37% (missed) | 0.55 (missed) | +0.088 (missed) |
-| `people.enabled` off | -0.30% (missed) | 0.56 (missed) | +0.130 (missed) |
-| `people.shelves_go` off | 0.21% (missed) | 0.58 (missed) | +0.110 (missed) |
-| `towns.enabled` off | 0.26% (missed) | 0.52 (missed) | +0.094 (missed) |
-| `towns.mean_hands` off | 0.31% (missed) | 0.46 (missed) | +0.111 (missed) |
-| `towns.donor_wage` off | 0.10% (missed) | 0.53 (missed) | +0.112 (missed) |
-| `towns.rent_floor` off | 0.15% (missed) | 0.52 (missed) | +0.108 (missed) |
-| `mines.enabled` off | 0.25% (missed) | 0.52 (missed) | +0.147 (missed) |
-| `canals.enabled` off | 0.03% (missed) | 0.63 (missed) | +0.118 (missed) |
-| `canals.navvies` off | 0.17% (missed) | 0.54 (missed) | +0.107 (missed) |
-| `tree.seed_trades` off | 0.28% (missed) | 0.47 (missed) | +0.117 (missed) |
-| `tree.plant_waits` off | 0.26% (missed) | 0.52 (missed) | +0.040 (missed) |
-| `hands.ration` off | 0.10% (missed) | 0.55 (missed) | +0.115 (missed) |
-| `money.true_total` off | 0.16% (missed) | 0.51 (missed) | +0.113 (missed) |
-| `longrun.enabled` off | 0.06% (missed) | 0.49 (missed) | +0.136 (missed) |
-| `transition.enabled` off | 0.26% (missed) | 0.40 (missed) | +0.139 (missed) |
-| `owners.enabled` off | 0.42% (missed) | 0.52 (missed) | +0.106 (missed) |
-| `tasks.enabled` off | 0.37% (missed) | 0.61 (missed) | +0.102 (missed) |
-| `tasks.land` off | 0.35% (missed) | 0.51 (missed) | +0.145 (missed) |
+| the control | 1.14% (met) | 1.13 (met) | -0.076 (met) |
+| `prices.enabled` off | 1.18% (met) | 1.22 (met) | -0.075 (met) |
+| `prices.no_spoil_markup` off | 1.09% (met) | 1.12 (met) | -0.070 (met) |
+| `engel.enabled` off | - (-) | - (-) | -0.012 (met) |
+| `machines.enabled` off | 0.26% (missed) | 0.86 (missed) | +0.080 (missed) |
+| `harvest.enabled` off | 1.14% (met) | 1.10 (met) | -0.076 (met) |
+| `harvest.rent_as_paid` off | 1.14% (met) | 1.11 (met) | -0.078 (met) |
+| `works.enabled` off | 1.05% (met) | 1.02 (met) | -0.022 (met) |
+| `works.count_spread` off | 1.18% (met) | 1.07 (met) | -0.080 (met) |
+| `works.family_extends` off | 1.14% (met) | 1.09 (met) | -0.078 (met) |
+| `works.spread_first` off | 1.17% (met) | 1.10 (met) | -0.075 (met) |
+| `works.keep_order` off | 1.16% (met) | 1.13 (met) | -0.074 (met) |
+| `railways.enabled` off | 1.13% (met) | 1.10 (met) | -0.080 (met) |
+| `railways.order_book` off | 1.17% (met) | 1.09 (met) | -0.075 (met) |
+| `carting.enabled` off | 1.14% (met) | 1.13 (met) | -0.083 (met) |
+| `people.enabled` off | 0.96% (missed) | 0.53 (missed) | +0.004 (missed) |
+| `people.shelves_go` off | 1.14% (met) | 1.10 (met) | -0.075 (met) |
+| `towns.enabled` off | 1.17% (met) | 1.14 (met) | -0.073 (met) |
+| `towns.mean_hands` off | 1.11% (met) | 1.10 (met) | -0.075 (met) |
+| `towns.donor_wage` off | 1.10% (met) | 1.13 (met) | -0.075 (met) |
+| `towns.rent_floor` off | 1.08% (met) | 1.10 (met) | -0.077 (met) |
+| `mines.enabled` off | 1.27% (met) | 1.11 (met) | -0.075 (met) |
+| `canals.enabled` off | 1.14% (met) | 1.09 (met) | -0.078 (met) |
+| `canals.navvies` off | 1.11% (met) | 1.16 (met) | -0.075 (met) |
+| `land.enabled` off | 1.07% (met) | 1.13 (met) | -0.083 (met) |
+| `tree.seed_trades` off | 1.10% (met) | 1.12 (met) | -0.073 (met) |
+| `tree.plant_waits` off | 1.07% (met) | 1.15 (met) | -0.070 (met) |
+| `hands.ration` off | 1.17% (met) | 1.09 (met) | -0.073 (met) |
+| `money.true_total` off | 1.19% (met) | 1.11 (met) | -0.080 (met) |
+| `longrun.enabled` off | 1.11% (met) | 1.11 (met) | -0.071 (met) |
+| `transition.enabled` off | 0.92% (missed) | 0.51 (missed) | +0.022 (missed) |
+| `owners.enabled` off | 1.19% (met) | 1.11 (met) | -0.080 (met) |
+| `tasks.enabled` off | 0.93% (missed) | 1.09 (met) | -0.041 (met) |
+| `tasks.land` off | 1.00% (missed) | 1.08 (met) | -0.033 (met) |
+| `woods.enabled` off | 0.96% (missed) | 0.81 (missed) | +0.016 (missed) |
+| `crossings.enabled` off | 1.12% (met) | 1.14 (met) | -0.083 (met) |
 
 ## What was left out, and why
 
@@ -212,7 +179,6 @@ What the design asks of the years after 1900, as the standing check reports it (
 - `tree.stage`: 6 under the game's rules and 0 under the port's; fixed when the island is made, and not a switch: its off is not one value.
 - `tree.canal_stone`: 0.35 under the game's rules and 1.0 under the port's: a number or a choice, not a switch, so its off is not one value.
 - `roads.enabled`: off under the game's rules already: there is nothing to turn off.
-- `land.enabled`, `woods.enabled`, `woods.record`, `crossings.enabled`: switched on under the game's rules since this table was played, so not in it; the next table asks them.
 
 ## How to read it
 
