@@ -381,8 +381,10 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
                 dead[a] += more[a];
             }
         }
-        // a fifth of each group up; those turning fifteen take their schooling
-        let sch = school_years(st.ages.ybar[t]);
+        // a fifth of each group up; those turning fifteen take their schooling:
+        // what their families bought, or what the treasury paid for while they
+        // were at school (docs/rules/state.md), whichever is more
+        let sch = school_years(st.ages.ybar[t]).max(crate::purse::cohort_years(st));
         let (mut new, mut ns) = ([0.0; GROUPS], [0.0; GROUPS]);
         for a in 0..GROUPS {
             let stay = (r[a] - dead[a]).max(0.0);

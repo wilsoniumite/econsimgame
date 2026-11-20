@@ -382,6 +382,11 @@ pub struct Params {
     /// docs/rules/ages.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub ages: crate::ages::AgesParams,
+    /// The state's purse: a treasury that balances by rule, a rate on pay,
+    /// schools and pensions under a book of acts (not in the Python; see
+    /// docs/rules/state.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub state: crate::purse::StateParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -603,6 +608,7 @@ pub fn default_params() -> Params {
         pay: crate::pay::PayParams::default(),
         city: crate::city::CityParams::default(),
         ages: crate::ages::AgesParams::default(),
+        state: crate::purse::StateParams::default(),
     }
 }
 
@@ -670,6 +676,9 @@ pub fn game_params() -> Params {
     P.engel.lean = true;
     // ages (docs/rules/ages.md): watches only, the people's ages beneath the played totals
     P.ages = crate::ages::AgesParams::game();
+    // state (docs/rules/state.md): the treasury, a rate on pay, schools and
+    // pensions, on the default book, which enacts nothing before 1900
+    P.state = crate::purse::StateParams::game();
     P
 }
 
