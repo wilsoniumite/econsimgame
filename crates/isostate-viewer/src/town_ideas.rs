@@ -153,7 +153,10 @@ fn discover(
 struct Look {
     from: i64,
     to: i64,
-    groups: Vec<(String, Vec<(String, String, Stands, Option<i64>, bool)>)>,
+    /// each group's name, and each of its ideas: its name, its chip's words,
+    /// where it stands, and for one known here the year it was learnt (none
+    /// for one known before the history began) and how it was found here
+    groups: Vec<(String, Vec<(String, String, Stands, Option<i64>, Found)>)>,
     /// the idea chosen: its name, its line and whether it may be found here
     chosen: Option<(String, String, bool)>,
 }
@@ -166,18 +169,45 @@ impl Look {
             groups: ideas
                 .groups
                 .iter()
-                .map(|g| (g.name.clone(), g.ideas.iter().map(|i| (i.name.clone(), chip_words(i), i.stands, if i.stands == Stands::Here { i.year } else { None }, i.how.starts_with("found here"))).collect()))
+                .map(|g| (g.name.clone(), g.ideas.iter().map(|i| (i.name.clone(), chip_words(i), i.stands, learnt(i), Found::of(i))).collect()))
                 .collect(),
             chosen: chosen.and_then(|n| ideas.all().find(|i| i.name == n)).map(|i| (i.name.clone(), i.said.clone(), i.discover)),
         }
     }
 }
 
+/// How an idea known here came to be: found here by hand, found here by the
+/// island's own rule (a draw, or a pin), or learnt.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Found {
+    ByHand,
+    Here,
+    Learnt,
+}
+
+impl Found {
+    fn of(i: &TownIdea) -> Found {
+        match i.how.as_str() {
+            h if h.starts_with("found here") && h.ends_with("by hand") => Found::ByHand,
+            h if h.starts_with("found here") => Found::Here,
+            _ => Found::Learnt,
+        }
+    }
+}
+
+/// The year an idea known here was learnt, for the strip: none for one known
+/// elsewhere or nowhere, or known before the history began.
+fn learnt(i: &TownIdea) -> Option<i64> {
+    i.year.filter(|_| i.stands == Stands::Here && !i.how.starts_with("known before"))
+}
+
 /// The words on an idea's chip: the year it was learnt and its label for one
-/// known here; with the number of towns that know it for one known elsewhere.
+/// known here (the label alone for one known before the history began, of
+/// which there are a score); with the number of towns that know it for one
+/// known elsewhere.
 fn chip_words(i: &TownIdea) -> String {
     match (i.stands, i.year) {
-        (Stands::Here, Some(y)) => format!("{y} {}", i.label),
+        (Stands::Here, Some(y)) if !i.how.starts_with("known before") => format!("{y} {}", i.label),
         (Stands::Elsewhere, _) if i.towns > 0 => format!("{} ({})", i.label, if i.towns == 1 { "1 town".to_string() } else { format!("{} towns", i.towns) }),
         _ => i.label.clone(),
     }
@@ -224,6 +254,7 @@ fn section(p: &mut ChildSpawnerCommands, f: &Handle<Font>, l: &Look) {
     let count = |s: Stands| l.groups.iter().flat_map(|g| g.1.iter()).filter(|c| c.2 == s).count();
     p.spawn(text(f, &format!("{} known here, {} known elsewhere on the island (greyed), {} found nowhere yet (faint).", count(Stands::Here), count(Stands::Elsewhere), count(Stands::Nowhere)), 12.0, MUTED));
     strip(p, f, l);
+    p.spawn(text(f, "A short tick for each idea learnt from the other towns, a tall one for each found here, in the hand's ink if by hand.", 11.0, MUTED));
     // the line of the idea chosen, and the one chip that changes the island
     match &l.chosen {
         Some((_, said, may)) => {
@@ -273,19 +304,24 @@ fn chip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, name: &str, words: &str,
 }
 
 /// The strip from the run's first year to the year in progress: a rule with
-/// a tick at each year the town came to know an idea (taller, in the hand's
-/// ink, where it was found here), and the years at the ends and each
-/// half-century between.
+/// a tick at each year the town came to know an idea (short and muted where
+/// it was learnt from the other towns, tall and in ink where it was found
+/// here, tall and in the hand's ink where it was found here by hand), and the
+/// years at the ends and each half-century between.
 fn strip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, l: &Look) {
     let span = (l.to - l.from).max(1) as f32;
     let x = |y: i64| ((y - l.from) as f32 / span).clamp(0.0, 1.0) * STRIP_W;
-    p.spawn(Node { width: Val::Px(STRIP_W), height: Val::Px(34.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|s| {
-        s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(14.0), width: Val::Px(STRIP_W), height: Val::Px(1.0), ..default() }, BackgroundColor(MUTED)));
+    p.spawn(Node { width: Val::Px(STRIP_W), height: Val::Px(38.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|s| {
+        s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(18.0), width: Val::Px(STRIP_W), height: Val::Px(1.0), ..default() }, BackgroundColor(MUTED)));
         for (_, ideas) in &l.groups {
-            for (_, _, stands, year, found) in ideas {
-                let (Stands::Here, Some(y)) = (stands, year) else { continue };
-                let (h, colour) = if *found { (14.0, HAND_INK) } else { (8.0, INK.with_alpha(0.7)) };
-                s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x(*y) - 0.75), top: Val::Px(14.0 - h), width: Val::Px(1.5), height: Val::Px(h), ..default() }, BackgroundColor(colour)));
+            for (_, _, _, year, found) in ideas {
+                let Some(y) = year else { continue };
+                let (h, colour) = match found {
+                    Found::ByHand => (18.0, HAND_INK),
+                    Found::Here => (16.0, INK),
+                    Found::Learnt => (9.0, MUTED),
+                };
+                s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x(*y) - 1.0), top: Val::Px(18.0 - h), width: Val::Px(2.0), height: Val::Px(h), ..default() }, BackgroundColor(colour)));
             }
         }
         let mut marks = vec![l.from];
@@ -297,7 +333,7 @@ fn strip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, l: &Look) {
         marks.push(l.to);
         for y in marks {
             let left = (x(y) - 14.0).clamp(0.0, STRIP_W - 28.0);
-            s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(left), top: Val::Px(18.0), width: Val::Px(28.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|t| {
+            s.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(left), top: Val::Px(22.0), width: Val::Px(28.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|t| {
                 t.spawn(text(f, &y.to_string(), 10.5, MUTED));
             });
         }
