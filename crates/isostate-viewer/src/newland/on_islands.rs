@@ -97,6 +97,7 @@ pub(crate) fn bare_run(seed: u64, w: usize, h: usize, terrain: Vec<u8>, elev: Ve
         works: Vec::new(),
         workings: Vec::new(),
         rent_scale: Vec::new(),
+        builds: Default::default(),
         land: land.map(Arc::new),
         holds: Default::default(),
     }

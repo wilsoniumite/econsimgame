@@ -208,6 +208,14 @@ pub struct LiveLayers {
     /// The share of the cell under works, 0 to 255, on every cell.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub works: Option<Vec<u8>>,
+    // ground: two more, only in a game past 1900 that builds by them
+    // (`record::GROUND_LAYERS`, the same bytes as in `run.bin`)
+    /// How densely the square is built (`record::dens_byte`); 0: not town ground.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dens: Option<Vec<u8>>,
+    /// Its land value (`record::value_byte`); 0: not known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<Vec<u8>>,
 }
 
 /// Town arrays for the year, indexed by town slot (`T_max` of them).
@@ -443,6 +451,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     let mut l = record::layers(st, C, rent_scale).into_iter();
     let mut next = || l.next().expect("nine layers");
     let mut tl = record::town_layers(st, tb).unwrap_or_default().into_iter();
+    let mut gl = record::ground_layers(st, P, tb).unwrap_or_default().into_iter();
     let layers = LiveLayers {
         rent_scale: rent_scale as f32,
         town_bytes: tb.version,
@@ -458,6 +467,8 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         built: tl.next(),
         res: tl.next(),
         works: tl.next(),
+        dens: gl.next(),
+        value: gl.next(),
     };
     let towns = LiveTowns {
         active: st.town_active.clone(),

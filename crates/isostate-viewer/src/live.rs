@@ -1403,6 +1403,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         land: None,
         // (crossings: each year brings them, `take_year`)
         crossings: Vec::new(),
+        techs: stat.techs.iter().map(|t| replay::TechName { name: t.name.clone() }).collect(),
     };
     let series_len = ny * 12;
     Replay {
@@ -1446,6 +1447,12 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         works: Vec::new(),
         workings: Vec::new(),
         rent_scale: Vec::new(),
+        // the techs' places now; the layers and the towns' knowledge by the year (`apply_year`)
+        builds: {
+            let mut b = replay::Builds::default();
+            b.name_techs(&stat.techs.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+            b
+        },
         // the second island generator's land, in a game played on it (newland.rs)
         land: stat.land.as_deref().map(|lf| std::sync::Arc::new(crate::newland::NewLand::from_core(lf, w, h))),
         // the ground's fields and the sectors' goods now; the rest by the year (`holds_year`)
@@ -1636,6 +1643,25 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             }
             dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
         }
+    }
+    // what a town's lots past 1900 are built by: two more, in a game past 1900 that builds by them
+    for (dst, src) in [(&mut r.builds.dens, &l.dens), (&mut r.builds.value, &l.value)] {
+        if let Some(src) = src {
+            if dst.is_empty() {
+                *dst = vec![0; ny * n];
+            }
+            dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
+        }
+    }
+    // and what each town knows, as a recording keeps it (`town_know`)
+    let techs = r.builds.techs;
+    let nt_know = if techs > 0 { y.towns.know.len() / techs } else { 0 };
+    if nt_know > 0 && y.towns.know.len() == nt_know * techs {
+        if r.builds.know_towns != nt_know {
+            r.builds.know = vec![0; ny * nt_know * techs];
+            r.builds.know_towns = nt_know;
+        }
+        r.builds.know[k * nt_know * techs..(k + 1) * nt_know * techs].copy_from_slice(&y.towns.know);
     }
 
     // towns: the slots are fixed for the run, so the arrays are made on the first year

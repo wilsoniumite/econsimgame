@@ -258,6 +258,11 @@ garden = "#9cb46b"
 garden_bed = "#8f7452"
 garden_path = "#d3c5a4"
 back_yard = "#a89c89"
+# the motor age: tarmac on a road or a car park, the paler tarmac of a yard
+# or a drive worn by tyres, and the white lines painted on them
+tarmac = "#7a7773"
+tarmac_worn = "#9d958a"
+road_line = "#f0ead8"
 
 [walls]
 # the washes of the separate houses in town and of the lowland farmhouses;
@@ -386,6 +391,53 @@ terrace_sooty = "#96574a"
 chimney = "#a9553f"
 # a lowland barn
 barn = "#a8553e"
+# the pale brick of after the second war, buff with a little pink in it
+pale = "#caa793"
+
+[modern]
+# The materials of the twentieth century and after, for the building forms
+# of the run to 2050 (isostate-gen's `forms`): a table of their own, so that
+# no form mixes its colours out of the older tokens.
+# poured and precast concrete, weathered warm
+concrete = "#c9c0b2"
+# the roughcast or pebbledash over the brick of a house of between the wars
+render = "#f8e7c9"
+# pale dressed stone of a front or a podium of the 1930s
+portland = "#e7d6ba"
+# the solid panel under each window of a curtain wall
+spandrel = "#e4d5bb"
+# the mullions and transoms of a curtain wall, in bronzed metal
+mullion = "#4c515e"
+# the grey-blue glass of a curtain wall of the 1960s
+curtain_glass = "#82929a"
+# glass of the new century: light (as a toy's glass is), sky blue, warm
+# bronze, and sea green, which a tower is glazed in one of
+tower_glass = "#a3b9c1"
+sky_glass = "#91b7cc"
+bronze_glass = "#d0ab78"
+green_glass = "#8eabb1"
+# the pink stone panels of an office of the 1980s and 90s
+stone_panel = "#e8c9b3"
+# the terracotta fins of an office of the new century
+terracotta = "#d2977a"
+# copper gone green on a crown or a cap
+copper = "#92a59a"
+# a shed's profiled cladding, in blue, green and white
+cladding_blue = "#8ea1af"
+cladding_green = "#b1b898"
+cladding_white = "#ece3d0"
+# timber boards on a storey added to a block after 1990
+cladding_timber = "#bc9a75"
+# a shed's shallow metal roof; a flat roof's felt, dark, and its gravel
+shed_roof = "#b5b4af"
+felt = "#717071"
+gravel = "#bfb08f"
+# sedum on a green roof (it grows: winter takes it as it takes a garden)
+green_roof = "#769553"
+# a row of solar panels
+solar_panel = "#4a5a72"
+# the bright panels of the 1960s, a balcony's front, a retailer's band
+panels = ["#c65b45", "#4f8a9a", "#d9a443", "#e8cc7e"]
 
 [glass]
 window = "#414552"
@@ -505,6 +557,8 @@ boat_deck = "#b08a5e"
 boat_mast = "#5a4030"
 sail = "#f3ead6"
 jib = "#e8dcc0"
+# motor cars, in one of these
+cars = ["#b5523f", "#3d4f6b", "#e9e4d8", "#5c6b5a", "#d9a443", "#2f2d2c"]
 
 [marks]
 # what the game draws on the island. The banner colours themselves are the
