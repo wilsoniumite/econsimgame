@@ -908,7 +908,9 @@ machine names its sector:
   sector's work, out of its revenue, so they come off the rent, and the books
   count them among the land's inputs as they count the port's farm machinery.
   The return on the plant is never paid to anyone: it stays in the rent, so
-  whoever holds the land holds its machines. Where the run goods are short
+  whoever holds the land holds its machines. A rented machine with no plant
+  (models, [computing.md](computing.md)) reaches the land too: the sector
+  holds what it means to from the first month and pays only its run goods. Where the run goods are short
   the machines stand for that part of their work and the hands do it, as in
   the works ("A machine short of its run good", above).
 - **The rent's split.** The gauges split the farms' and pits' rent in two:

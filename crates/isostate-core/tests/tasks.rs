@@ -3,9 +3,10 @@
 //! did not move.
 //!
 //! The island runs here are played on island 7 to 1925 (to 1949 for the
-//! ceiling on yield, and to 1975 for office computing) under the game's rules
-//! with six families, with the switches they lean on set by name
-//! (`tasks.enabled`, `tasks.land`, `tasks.yield_cap`, `tasks.computing`) and
+//! ceiling on yield, to 1975 for office computing and to 2030 for models)
+//! under the game's rules with six families, with the switches they lean on
+//! set by name (`tasks.enabled`, `tasks.land`, `tasks.yield_cap`,
+//! `tasks.computing`, `tasks.models`) and
 //! every other rule as the game has it. What they check
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
