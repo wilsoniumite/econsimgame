@@ -490,6 +490,11 @@ fn print_state(world: &mut World, note: &str) {
             for line in crate::work_charts::said(&world.resource::<Data>().r, k) {
                 println!("script:   {line}");
             }
+            // and the reckoning of pay by class, at the dials the rules last told
+            let dials = crate::work_charts::Dials::of(world.get_resource::<crate::rulebook::Known>());
+            for line in crate::work_charts::said_pay(&world.resource::<Data>().r, k, dials) {
+                println!("script:   {line}");
+            }
         }
     }
     // the note about what was clicked, every text of it, while it shows

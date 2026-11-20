@@ -419,3 +419,33 @@ They are "The atlas", under the sandbox in the order of work: four plates (the m
 > When we were doing the modelling for the calibration for the paper, we would every so often go through the model and cut things. We'd do that because things we thought we added to fix some behaviour may be fixed by some later addition and knowing what the simple core of the model is is very important. I'd like if we can do something similar here, but rather than cutting things maybe just turning them off. I don't want you to worry about it too much, this doesn't need to be as simple as the papers model, but it might be good.
 
 It is "The simple core", beside the step backs at the top: `isostate-core ablate` turns each rule off in turn and writes [core.md](core.md).
+
+**20 November 2026.**
+
+> A question: do we have systems for households, pensions, universities?
+
+Answered the same day: households are one purse a town and one kind; there is no pension, no state and no tax; a university exists only in the family game. Ranked, in the order of building: ages with schooling; a state as a purse with taxes that pays for schools and pensions; the university as a place in one or two towns; who works by age; and wages by class of task with households of two kinds. Until the last is built, the reckoning of pay by class watches the island and plays nothing ([rules/pay.md](rules/pay.md)).
+
+**20 November 2026, later.**
+
+> small item for the backlog: On map views, I'd like for the color range to be either full, 30 year, or this year, meaning how the min and max values are set.
+
+A switch on a map view's legend for how the colours' least and greatest values are taken: the whole run, the last thirty years, or this year alone. Ranked for the next small viewer piece on map views, together with seeing where the deposits are (her note of 19 November, evening).
+
+A few minutes later, the third note of the same message, on this one:
+
+> And the 30 year should be smoothed somehow, so that the min and max colors don't move too quick
+
+In the thirty-year setting the legend's two ends glide: each year they move part of the way toward the window's least and greatest, and those are taken a little inside the extremes, so that one odd town or one odd year cannot set them or make them jump.
+
+**20 November 2026, a few minutes later, the second note of the same message.**
+
+> And an output map view per good
+
+A map view that colours the towns and the land by how much of one chosen good is made there. Ranked for the same viewer piece on map views, which also takes up "Map views and charts that say what is so" in Ready next (one outlying town flattening a map's scale is the same trouble her colour range answers).
+
+**20 November 2026, afternoon, on the sandbox.**
+
+> I think in general the "painting" method of world editing is sometimes nice, but alternatives should exist. For example, opening up a towns known ideas timeline should allow me to click and discover things. That maybe can be in the production flowchart view, which could be per town, with scaled flows and boxes and things. just some ideas
+
+Taken as a rule for the sandbox: every view is also a handle. Where the sandbox shows a thing, a click on it offers the edits that apply to it, and the brush stays for what is spatial by nature (deposits, woods, land). In this order: first a town's card gains a timeline of its ideas, those known with their years and those not yet known greyed with what each waits on, and a click on a greyed one discovers it in that town (the hand's edit for an idea exists already); then the atlas's first plate as a panel of the game for one town, boxes for its kinds of works and ribbons as wide as what flows, read only; then the hand on that panel (discover an idea, build or close a works, forbid a kind). It goes with the atlas under the sandbox.

@@ -984,3 +984,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   that they do not drift with timber's price; the news's slump clock reads what
   is made, the viewer's charts and the growth after 1900 read the linked wage.
   [measures.md](measures.md), `linked.enabled`, `linked.link`, `linked.window`.
+- **pay** (watches only; acts from 1900): each class of task's pay, reckoned
+  from the hands the island plays and not played: demand at one wage bends to
+  pay, hands follow the work, and pay is scaled so that the hands' mean is the
+  one wage; with real pay on the linked wage and the schooled over the plain,
+  and the two dials in the Rules tab and the Work panel. [pay.md](pay.md),
+  `pay.watch`, `pay.bend`, `pay.follow_years`.

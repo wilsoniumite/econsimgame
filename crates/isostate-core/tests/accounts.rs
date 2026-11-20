@@ -446,7 +446,8 @@ fn a_game_left_in_the_middle_of_a_year_goes_on_with_the_same_books() {
         assert_eq!((s.st.acct.years.len(), s.st.acct.hist.n, s.t), (2, 2, 29));
         assert_eq!(accounts::town_books(&s.st, &s.content, 0, None).unwrap().year, 1751);
         assert!(accounts::year_series(&s.st, 1752).is_empty() && accounts::year_series(&s.st, 1751).len() == 8);
-        for name in s.st.series.names.iter().filter(|n| accounts::own_series(n)) {
+        // (the reckoning of pay, counted among them, has no figure before 1900: docs/rules/pay.md)
+        for name in s.st.series.names.iter().filter(|n| accounts::own_series(n) && !n.starts_with("pay_")) {
             let months = s.st.series.get(name);
             assert!(months[..24].iter().all(|v| v.is_finite()) && months[24..].iter().all(|v| v.is_nan()), "{name}: {:?}", &months[..36]);
         }
@@ -827,7 +828,8 @@ fn a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures() {
     let mut g = save::Game::new(3, 6, 0);
     let (C, P) = (g.sim.content.clone(), g.sim.params.clone());
     let stat = live::live_static(&g.sim.st, &C);
-    let own: Vec<usize> = (0..stat.series.len()).filter(|&i| accounts::own_series(&stat.series[i].name)).collect();
+    // (the reckoning of pay, counted among the books' own, has no figure before 1900: docs/rules/pay.md)
+    let own: Vec<usize> = (0..stat.series.len()).filter(|&i| accounts::own_series(&stat.series[i].name) && !stat.series[i].name.starts_with("pay_")).collect();
     // the books' eight, and the gauges' that are read off them (docs/rules/gauges.md), which come the same way
     assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     let mut cursor = live::LiveCursor::new(&C);

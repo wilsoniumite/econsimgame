@@ -193,10 +193,16 @@
 # linked measure (docs/rules/measures.md) adds three series under the game's
 # rules, and the news's slump clock reads what is made, linked, in place of
 # real output
+# Taken: pay by class of task, a watcher (docs/rules/pay.md): its series,
+# nothing before 1900 and counted with the books' own, move 1750-1900 books,
+# 1901-2050 books and run.bin; economy and news hold in both eras
+# Taken: pay by class of task: the work settled over five years
+# (pay::SETTLE_YEARS) moves its series after 1900, so 1901-2050 books and
+# run.bin again; economy and news hold in both eras
 1750-1900 economy  0x0d20ccc26eb3ba58
-1750-1900 books    0x6c0cc4ef99e35938
+1750-1900 books    0x04b0974e4e77f3f5
 1750-1900 news     0x5d3a55a39961b3e2
 1901-2050 economy  0x588a1bb84f1ae1fe
-1901-2050 books    0xcc7a0b23e48bf4a5
+1901-2050 books    0x59bdbf8ba19a8cee
 1901-2050 news     0xfd6b3077b36e5ca4
-1901-2050 run.bin  0x977701b1b1fbf392
+1901-2050 run.bin  0xeff64f9b4820a4c1

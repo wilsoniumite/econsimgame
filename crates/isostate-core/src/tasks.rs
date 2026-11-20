@@ -565,6 +565,15 @@ pub struct TasksYear {
     pub land_work: Vec<[f64; K]>,
     pub land_held: Vec<[f64; K]>,
     pub land_aim: Vec<[f64; K]>,
+    /// The land's hands at each class, every sector together (`land_hands_month`):
+    /// each class's work less what the machines in place did, or before any
+    /// machine on the land, every hand at its sector's shares of the classes;
+    /// what else the land's units hired beside them (the machines' minders,
+    /// the mines' sinkers); and the hands carting. Worker-months a month, the
+    /// year's mean; counted whenever the rule is on, from the first year.
+    pub land_hands: [f64; K],
+    pub land_minders: f64,
+    pub carters: f64,
     /// The return on the land's machines over the year (`hurdle` a year on
     /// their plant at each month's prices), and their plant's worth at the
     /// year's end.
@@ -614,6 +623,9 @@ struct Acc {
     land_work: Vec<[f64; K]>,
     land_held: Vec<[f64; K]>,
     land_aim: Vec<[f64; K]>,
+    land_hands: [f64; K],
+    land_minders: f64,
+    carters: f64,
     land_return: f64,
     capped_value: f64,
     land_value: f64,
@@ -1618,10 +1630,38 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
         }
     }
     // ---- the land: each town's sectors toward their targets, the plant worn
-    if land && on {
-        land_end_month(st, C, P, &mut acc, step);
-    }
+    let by_hand = if land && on { land_end_month(st, C, P, &mut acc, step) } else { None };
+    // the land's hands by class and the carters, for the facts and the reckoning of pay (pay.rs)
+    land_hands_month(st, C, &mut acc, by_hand);
     st.tasks.acc = acc;
+}
+
+/// The land's hands this month by class, and the carters, into the year's sums
+/// (`TasksYear::land_hands`). Where the land's machines are reckoned (`by_hand`:
+/// each class's work less what the machines in place did, every town and
+/// sector together, from `land_end_month`) those are the class's hands, and
+/// what else the land's units hired is put beside them (`land_minders`: the
+/// machines' minders, the mines' sinkers). Before any machine on the land each
+/// unit's hands do its whole work, so they are at its sector's shares of the
+/// classes (`data/tasks.toml`). It only counts.
+fn land_hands_month(st: &State, C: &Content, acc: &mut Acc, by_hand: Option<[f64; K]>) {
+    let n = st.ex_labor.len().min(st.ex_sector.len());
+    let hired: f64 = st.ex_labor[..n].iter().sum();
+    let hands = by_hand.unwrap_or_else(|| {
+        let mut h = [0.0; K];
+        for u in 0..n {
+            let sh = C.tasks.sector.get(st.ex_sector[u]).copied().unwrap_or([0.0; K]);
+            for k in 0..K {
+                h[k] += st.ex_labor[u] * sh[k];
+            }
+        }
+        h
+    });
+    for k in 0..K {
+        acc.land_hands[k] += hands[k];
+    }
+    acc.land_minders += (hired - hands.iter().sum::<f64>()).max(0.0);
+    acc.carters += st.carters.iter().sum::<f64>();
 }
 
 /// The land's tables as long as the towns' and sectors'.
@@ -1656,10 +1696,14 @@ fn land_life(C: &Content, s: usize) -> f64 {
 /// The land's month's end (`end_month`): the year's sums at the part held this
 /// month; each town's sectors moved toward their target as a works is (gated
 /// by the fill of their order for plant, down no faster than wear); the plant
-/// worn, and the return on it reckoned at the month's prices.
-fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: f64) {
+/// worn, and the return on it reckoned at the month's prices. Gives the
+/// month's work done by hand at each class, every town and sector together,
+/// or None where no sector had work this month (the land's machines are not
+/// reckoned yet).
+fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: f64) -> Option<[f64; K]> {
     let (T, NS) = (st.T_max, C.NS);
     let tb = &C.tasks;
+    let mut by_hand: Option<[f64; K]> = None;
     fit_land(st, C);
     if acc.land_work.len() != NS {
         acc.land_work.resize(NS, [0.0; K]);
@@ -1685,10 +1729,12 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
                 }
                 let held = now.map_or([0.0; K], |h| h.1);
                 let aim = hold(st, C, P, &sh, &st.tasks.land_auto[t][s], &|k| land_parts(st, t, s, k)).map_or([0.0; K], |h| h.1);
+                let h = by_hand.get_or_insert([0.0; K]);
                 for k in 0..K {
                     acc.land_work[s][k] += work * sh[k];
                     acc.land_held[s][k] += work * sh[k] * held[k];
                     acc.land_aim[s][k] += work * sh[k] * aim[k];
+                    h[k] += work * sh[k] * (1.0 - held[k]);
                 }
             }
             for k in 0..K {
@@ -1705,6 +1751,7 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
             }
         }
     }
+    by_hand
 }
 
 /// The part of class `k` held a month on, from `x`, where the target is
@@ -1793,6 +1840,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         land_work: acc.land_work.iter().map(|r| r.map(|v| v / n)).collect(),
         land_held: acc.land_held.iter().map(|r| r.map(|v| v / n)).collect(),
         land_aim: acc.land_aim.iter().map(|r| r.map(|v| v / n)).collect(),
+        land_hands: acc.land_hands.map(|v| v / n),
+        land_minders: acc.land_minders / n,
+        carters: acc.carters / n,
         land_return: acc.land_return,
         land_book: land_book(st, C),
         capped_value: acc.capped_value,
@@ -1929,7 +1979,9 @@ pub fn rank_correlation(x: &[f64], y: &[f64]) -> f64 {
 /// (hauling meant for machines not yet delivered), the same three for the
 /// pits under `land`, `hours_CLASS_Y` (hands at each class's tasks in works,
 /// and `hours_minders_Y`), `hours_share_CLASS_Y` and `hours_share_minders_Y`
-/// (the same over all the hours worked in works), `machines_years_Y` (the machines' book over the
+/// (the same over all the hours worked in works), `hours_land_CLASS_Y`,
+/// `hours_land_minders_Y` and `hours_carters_Y` (the land's hands at each class,
+/// what else its units hired, and the carters), `machines_years_Y` (the machines' book over the
 /// year's wage bill), at the sweep's marks and in 1890; `CLASS_half_year_works`
 /// and (under `land`) `haul_half_year_pits`, the first year the share held
 /// passes a half;
@@ -2008,6 +2060,19 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     }
     for &y in &marks {
         out.push((format!("hours_share_minders_{y}"), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.minders, all_hours(t)))));
+    }
+    // the land's hands at each class, every sector together, what else its units hired
+    // (minders, sinkers), and the carters (`land_hands_month`; docs/rules/pay.md)
+    for k in 0..K {
+        for &y in &marks {
+            out.push((format!("hours_land_{}_{y}", CLASSES[k]), Kind::Count, at(y).map_or(f64::NAN, |t| t.land_hands[k])));
+        }
+    }
+    for &y in &marks {
+        out.push((format!("hours_land_minders_{y}"), Kind::Count, at(y).map_or(f64::NAN, |t| t.land_minders)));
+    }
+    for &y in &marks {
+        out.push((format!("hours_carters_{y}"), Kind::Count, at(y).map_or(f64::NAN, |t| t.carters)));
     }
     for &k in &open {
         for &y in &marks {

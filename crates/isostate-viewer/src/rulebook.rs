@@ -144,8 +144,11 @@ pub fn plugin(app: &mut App) {
 
 /// The rules are asked for when the tab opens and after any order's answer
 /// (`Game::answered`), and the tab is drawn again when the answer kept changes.
+/// The Markets panel's Work half asks and draws again in the same way, for the
+/// chips of the reckoning of pay that stand over its charts (`dial_chips`).
 fn ask(live: Res<Live>, game: Res<Game>, mut known: ResMut<Known>, mut ui: ResMut<UiState>, mut asked: Local<Option<u64>>, mut drawn: Local<u64>) {
-    if ui.tab != Some(crate::ui::Tab::Rules) {
+    let work = ui.tab == Some(crate::ui::Tab::Markets) && ui.markets == crate::ui::MarketsShow::Work;
+    if ui.tab != Some(crate::ui::Tab::Rules) && !work {
         // asked afresh when the tab opens again
         *asked = None;
         return;
@@ -348,6 +351,32 @@ fn name_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, e: &Entry, label: &s
     });
 }
 
+/// A name said in plain words where the tab has words for it: the two dials of
+/// the reckoning of pay by class (docs/rules/pay.md), which are an argument's
+/// two sides more than settings.
+pub fn plain(name: &str) -> Option<&'static str> {
+    match name {
+        "pay.bend" => Some("How far demand for a class bends to its pay"),
+        "pay.follow_years" => Some("How many years hands take to follow the work"),
+        _ => None,
+    }
+}
+
+/// The two dials of the reckoning of pay, as the tab draws them, for the Work
+/// half of the Markets panel to stand over its charts of pay: only in a
+/// sandbox, once the rules have been told.
+pub fn dial_chips(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesParams) {
+    if rules.sandbox.is_none() {
+        return;
+    }
+    let Some(known) = rules.known.as_ref().filter(|k| !k.entries().is_empty()) else { return };
+    for name in ["pay.bend", "pay.follow_years"] {
+        if let Some(e) = known.entry(name) {
+            name_row(p, f, e, plain(name).unwrap_or(name));
+        }
+    }
+}
+
 /// The words over the tab.
 pub const ABOUT: &str = "The island's rules as they stand. A chip sets a number from this month on, as an edit by hand; a dot marks one that differs from the game's.";
 /// Before the first answer.
@@ -375,7 +404,7 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesParams
     heading(p, f, "Most asked");
     for name in PINNED {
         if let Some(e) = known.entry(name) {
-            name_row(p, f, e, name);
+            name_row(p, f, e, plain(name).unwrap_or(name));
         }
     }
     heading(p, f, "Every rule");
@@ -414,7 +443,7 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesParams
             if open {
                 for e in &names {
                     let short = e.name.strip_prefix(&format!("{rule}.")).unwrap_or(&e.name);
-                    name_row(block, f, e, short);
+                    name_row(block, f, e, plain(&e.name).unwrap_or(short));
                 }
             }
         });

@@ -171,6 +171,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::woods::add_series(&mut reg, P, n_months);
     // linked (docs/rules/measures.md): the cost of living, the wage and what is made, linked
     crate::linked::add_series(&mut reg, P, n_months);
+    // pay (docs/rules/pay.md): each class's pay, reckoned from 1900
+    crate::pay::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
