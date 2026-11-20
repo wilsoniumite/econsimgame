@@ -153,6 +153,17 @@ off, every hook in `towns.rs` returns at once (`towns::update_urban` is not
 called: `land::update_land_use` calls the port's) and the state's tables stay
 empty; `tests/golden.rs` holds the port to the byte.
 
+**After 1900** (`ground.enabled`, on under the game's rules; [ground.md](ground.md)).
+From the yearly step of 1901 a cell's room no longer rises with the
+calendar: it is held at the ceiling of 1900 (1,430 people on old ground)
+and multiplied by what has been built up on the cell, its `dens`, which
+rises with its rent. A town grows as above, but a cell may join it only
+within five cells of its centre in a straight line (eight once the tramway is
+found and the town has 30,000 townsfolk), and with a belt set only so many a
+year. The towns' bill above is still reckoned, as the old rule's: from 1901
+to 1920 what the households pay moves from it to a rent that clears the
+room the town has built, and is shared among the cells as the bill is.
+
 ## For the viewer
 
 A run with kept ground records three more layers, one byte per cell and year
