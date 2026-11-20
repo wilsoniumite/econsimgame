@@ -152,7 +152,12 @@ out a second time, month by month, from the prices and purchases the observer
 reads.
 
 The old `cpi`, `real_wage`, `gdp_real` and `gdp_pc` are untouched and still on
-the 1750 basket; the news still reads the old ones.
+the 1750 basket. Since 20 November 2026 the game's rules keep a third measure
+beside these two, linked every five years (`cpi_linked`, `real_wage_linked`,
+`made_linked`), which the news's slump clock, the viewer's charts and the
+gate's growth after 1900 read; [measures.md](measures.md) says what each of
+the three is, which to trust for what, and the test that chose between them.
+The chained index stays as it is, since two of the standing facts read it.
 
 ## Its numbers
 
@@ -629,6 +634,9 @@ time (it lists them as not checked).
   deflated by it. With the curve on, the basket of 1750 is less and less what
   anyone buys. Moving the news and the charts to the chained series is a small
   change, but it changes what the player is told, so it wants a decision.
+  (Since 20 November 2026 the slump clock and the viewer's charts read the
+  linked measure, [measures.md](measures.md); the doublings of real output and
+  of the real wage in the news still read the 1750 basket.)
 - **A month's chained value is read against last year's basket and that month's
   purchases**, and the year's link is closed on the year's means. The mean of
   the twelve months is therefore not exactly the closed link, though the gap is
@@ -637,7 +645,8 @@ time (it lists them as not checked).
   the ones they were bought at, as the port's `cpi` always has.
 - **National prices are town prices weighted by people**, as for the fixed
   basket, not what was paid per unit bought. A good bought mostly in cheap towns
-  is priced a little too high in both indices.
+  is priced a little too high in both indices. (The linked cost of living,
+  [measures.md](measures.md), weighs each town's price by what was bought there.)
 - **Landlords and families have no curve.** Their shares are fixed however rich
   they grow. For the gentry that is probably right; for a family that goes from
   a farm to an empire it may not be.
