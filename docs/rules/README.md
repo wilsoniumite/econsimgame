@@ -998,3 +998,10 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   room is wanted less than in proportion as it dears, so a city's burden can
   rise. Three switches, all on. [city.md](city.md), `city.follow_jobs`,
   `city.gather`, `city.dear_room`.
+- **ages** (watches only): each town's people in seventeen five-year groups
+  that sum to its played people at every year's end, with deaths by age from
+  food and a stand-in for medicine, births the remainder, movers drawn three
+  times as heavily from 15 to 34, and each cohort's years of school carried
+  with it; births and deaths a thousand, life at birth and the shares by age
+  as series and facts, and a pyramid in the viewer's island charts.
+  [ages.md](ages.md), `ages.watch`.
