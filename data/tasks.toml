@@ -134,6 +134,8 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #   life            years a machine stands: a twelfth of this many years' part wears out a month
 #   pace, cap       quality grows by `pace` a year from the year found, up to `cap`
 #   found_after     nothing is found before this year
+#   target          (may be left out) the year our own history had it, as the tree's `target`: a label for
+#                   the atlas (docs/atlas.md), read by nothing in a run; left out where history has none
 #   discover        the island finds it at the first year's turn (from `found_after`) when it has made
 #                   at least this much of each good named, counted from 1750
 #   discover_per_head  (may be left out; false) true: `discover` is read per head, what the island has made
@@ -232,6 +234,7 @@ life = 20.0
 pace = 0.03
 cap = 8.0
 found_after = 1901
+target = 1901
 discover = { electricals = 15000.0 }
 # Refitted (19 November 2026). The towns' target in the year found reads nothing on an island with no
 # station that year (half the islands find the drive before their first), so the refit reads what the
@@ -267,6 +270,7 @@ life = 10.0
 pace = 0.04
 cap = 6.0
 found_after = 1915
+target = 1915
 discover = { oil = 300.0 }
 scale = 0.87
 
@@ -288,6 +292,7 @@ life = 15.0
 pace = 0.03
 cap = 6.0
 found_after = 1920
+target = 1920
 discover = { electricals = 600000.0 }
 scale = 1.0
 replaces = "hoist"
@@ -320,6 +325,7 @@ life = 12.0
 pace = 0.04
 cap = 6.0
 found_after = 1935
+target = 1935
 discover = { oil = 100000.0 }
 # Refitted once (19 November 2026): at 1.0 the towns' share in the year found was 0.194 on the mean of
 # islands 1 to 16 (0.162 to 0.214), so the unit was made exp(ln(1000) * (0.194 - 0.2)) = 0.96 times as
@@ -369,6 +375,7 @@ life = 8.0
 pace = 0.05
 cap = 100.0
 found_after = 1960
+target = 1960
 discover = { electricals = 5.4 }
 discover_per_head = true
 switch = "computing"
@@ -419,6 +426,7 @@ life = 1.0   # not read: a rented use has no plant to wear
 pace = 0.08
 cap = 1000.0
 found_after = 2022
+target = 2022
 discover = { electricals = 11.6 }
 discover_per_head = true
 switch = "models"

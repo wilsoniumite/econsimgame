@@ -184,6 +184,9 @@ pub struct Use {
     pub cap: f64,
     /// Nothing is found before this year.
     pub found_after: i64,
+    /// The year our own history had it (`target`, may be left out): a label
+    /// for the atlas's third plate (docs/atlas.md), read by nothing in a run.
+    pub target: Option<i64>,
     /// Found at the first year's turn when the island has made this much of
     /// each good, counted from the start year.
     pub discover: Vec<(usize, f64)>,
@@ -294,6 +297,9 @@ struct RawUse {
     pace: f64,
     cap: f64,
     found_after: i64,
+    /// The year our own history had it: a label, read by nothing in a run.
+    #[serde(default)]
+    target: Option<i64>,
     discover: BTreeMap<String, f64>,
     /// The thresholds of `discover` are per head of the island's people.
     #[serde(default)]
@@ -415,6 +421,7 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             pace: u.pace,
             cap: u.cap,
             found_after: u.found_after,
+            target: u.target,
             discover,
             discover_per_head: u.discover_per_head,
             scale: u.scale,
@@ -1788,7 +1795,14 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         if st.tasks.found[u] < 0 {
             // a use behind a switch that is off is never found
             let made = |g: usize| if us.discover_per_head { st.cumprod[g] / people } else { st.cumprod[g] };
-            if us.allowed(P) && next >= us.found_after && us.discover.iter().all(|&(g, x)| made(g) >= x) {
+            let found = us.allowed(P) && next >= us.found_after && us.discover.iter().all(|&(g, x)| made(g) >= x);
+            // a pin by hand (edits::Pin): held back, or found in its year whatever was made
+            let found = match crate::edits::pin_says(st, crate::edits::Idea::Use(u), next) {
+                crate::edits::Pinned::Free => found,
+                crate::edits::Pinned::Hold => false,
+                crate::edits::Pinned::Find => us.allowed(P),
+            };
+            if found {
                 st.tasks.found[u] = next;
                 st.tasks.quality[u] = 1.0;
             }

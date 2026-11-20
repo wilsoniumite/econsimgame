@@ -3,7 +3,7 @@
 //! has no switch and changes nothing a run does. `docs/lab.md` is its page.
 //!
 //! ```text
-//! isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
+//! isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json] [--pin NAME@YEAR]... [--hold NAME@YEAR]...
 //!                   [--seeds 1-8] [--rules port|game] [--set NAME=VALUE]... [--families N] [--end-year Y]
 //!                   [--years 1850,1900,1950,2000,2050] [--facts NAME,...] [--jobs N] [--quiet]
 //! ```
@@ -27,6 +27,10 @@
 //!   the game's rules no longer do (docs/rules/land.md, "The switch").
 //! - `--edits FILE` reads a list of dated edits in the form `run --edits`
 //!   reads, and puts it in every treated arm, before the `--rule` edits.
+//! - `--pin NAME@YEAR` pins an idea (`edits::Edit::Pin`) to be found in YEAR
+//!   on every island, and `--hold NAME@YEAR` holds it back until YEAR, both
+//!   given before January of the run's first year, in every treated arm after
+//!   the file's edits. The name is checked against the content before any run.
 //! - The defaults are chosen for questions about work and machines: the game's
 //!   rules, six families, islands 1 to 8, played to 2050, and the facts read in
 //!   1850, 1900, 1950, 2000 and 2050 (those of them inside the run).
@@ -68,13 +72,13 @@ use serde_json::{Value, json};
 
 use crate::cli::{check_end_year, parse_rules, read_edits};
 use crate::content::Content;
-use crate::edits::{self, Dated, Edit};
+use crate::edits::{self, Dated, Edit, PinWhen};
 use crate::facts::{self, Fact, Kind, SPEED};
 use crate::params::{Params, Rules};
 use crate::sim;
 use crate::sweep::{self, Done, Run, Setting, Side, Sweep};
 
-pub const USAGE: &str = "usage: isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
+pub const USAGE: &str = "usage: isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json] [--pin NAME@YEAR]... [--hold NAME@YEAR]...
                          [--seeds 1-8] [--rules port|game] [--set NAME=VALUE]... [--families N] [--end-year Y]
                          [--years 1850,1900,1950,2000,2050] [--facts NAME,...] [--jobs N] [--quiet]";
 
@@ -114,6 +118,8 @@ pub struct Options {
     pub out: PathBuf,
     pub rule_edits: Vec<RuleEdit>,
     pub edits_file: Option<PathBuf>,
+    /// Each `--pin` and `--hold`: an idea pinned from the start of the run.
+    pub pins: Vec<(String, i64, PinWhen)>,
     pub seeds: Vec<u64>,
     pub rules: Rules,
     /// `--set`: rules' numbers set from the start in every arm, as typed.
@@ -221,6 +227,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         out: PathBuf::new(),
         rule_edits: Vec::new(),
         edits_file: None,
+        pins: Vec::new(),
         seeds: (1..=8).collect(),
         rules: Rules::Game,
         sets: Vec::new(),
@@ -240,6 +247,12 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             "--out" => out = Some(PathBuf::from(value("--out")?)),
             "--rule" => o.rule_edits.push(parse_rule(&value("--rule")?)?),
             "--edits" => o.edits_file = Some(PathBuf::from(value("--edits")?)),
+            "--pin" | "--hold" => {
+                let v = value(a)?;
+                let (name, year) = v.rsplit_once('@').ok_or_else(|| format!("{a} {v:?}: write it as NAME@YEAR, the idea's name in the data and a year"))?;
+                let year: i64 = year.trim().parse().map_err(|_| format!("{a} {v:?}: {year:?} after the @ is not a year"))?;
+                o.pins.push((name.trim().to_string(), year, if a == "--pin" { PinWhen::In } else { PinWhen::NotBefore }));
+            }
             "--seeds" => o.seeds = sweep::parse_seeds(&value("--seeds")?)?,
             "--rules" => o.rules = parse_rules(&value("--rules")?)?,
             "--set" => {
@@ -279,8 +292,8 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             many.join(" and ")
         ));
     }
-    if o.rule_edits.is_empty() && o.edits_file.is_none() {
-        return Err(format!("the lab needs at least one edit: --rule NAME=VALUE@YEAR or --edits FILE.json\n{USAGE}"));
+    if o.rule_edits.is_empty() && o.edits_file.is_none() && o.pins.is_empty() {
+        return Err(format!("the lab needs at least one edit: --rule NAME=VALUE@YEAR, --pin NAME@YEAR or --edits FILE.json\n{USAGE}"));
     }
     Ok(o)
 }
@@ -294,6 +307,10 @@ pub fn arms(o: &Options, from_file: &[Dated]) -> Vec<Arm> {
     for c in 0..choices {
         let mut edits = from_file.to_vec();
         let mut said: Vec<String> = file.iter().cloned().collect();
+        // the pins are in the list `plan` reads (dated from the run's start), after the file's
+        for (name, year, when) in &o.pins {
+            said.push(format!("{name} {} {year}", if *when == PinWhen::In { "pinned to" } else { "held back until" }));
+        }
         for r in &o.rule_edits {
             let v = if r.values.len() > 1 { &r.values[c] } else { &r.values[0] };
             edits.push(Dated { before: (r.year, 1), edit: Edit::Rule { name: r.name.clone(), value: sweep::parse_value(v) } });
@@ -314,6 +331,17 @@ pub fn check_arm(P: &Params, content: &Content, arm: &Arm) -> Result<(), String>
     }
     let mut list: Vec<&Dated> = arm.edits.iter().collect();
     list.sort_by_key(|d| d.before);
+    // a pin names an idea of the content as the runs will play it, with the tree laid
+    if list.iter().any(|d| matches!(d.edit, Edit::Pin { .. })) {
+        let played = crate::tree::content(P, content.clone())?;
+        for d in &list {
+            if let Edit::Pin { idea, .. } = &d.edit {
+                if edits::idea_named(&played, idea).is_none() {
+                    return Err(format!("{}: the pin of {idea:?}: there is no such idea in the content these rules play (a method, a technique, or a use of the tasks rule)", arm.label));
+                }
+            }
+        }
+    }
     let mut rules = P.clone();
     for d in list {
         let (year, month) = d.before;
@@ -371,10 +399,13 @@ pub fn plan(o: &Options) -> Result<Plan, String> {
     P.check()?;
     let content = o.rules.content();
     check_end_year(&P, &content)?;
-    let from_file = match &o.edits_file {
+    let mut from_file = match &o.edits_file {
         Some(p) => read_edits(p)?,
         None => Vec::new(),
     };
+    for (name, year, when) in &o.pins {
+        from_file.push(Dated { before: (content.start_year, 1), edit: Edit::Pin { idea: name.clone(), year: *year, when: *when } });
+    }
     let arms = arms(o, &from_file);
     for arm in &arms[1..] {
         check_arm(&P, &content, arm)?;
