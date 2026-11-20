@@ -251,6 +251,7 @@ using the kit and not by copying numbers.
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
 | `bridge.rs` | `road_bridge`, at three levels: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
+| `forms/` | the building forms of a town from 1750 to 2050 as one catalogue (`FORMS`: each form's years, storeys, lot, use, and what its builders must know, `Know`), the question a town asks of a lot (`choose`: what it knows, the year, the storeys its rent asks for, the lot and the use; always answered, and always the same), and `form`, which draws any of them: today's houses through their own generators, and the 29 forms of the three directions of 19 November (semis, detached houses, flats over shops and courtyard blocks in four ages, low flats, slab and point blocks, towers of flats, offices from a bank to a glass tower, sheds and a car park) from the kit, their colours from the look file's `[modern]` table. Nothing in the game draws them yet. Sheets: `forms` (every form at one scale), `forms-houses`, `forms-blocks`, `forms-flats`, `forms-offices`, `forms-sheds` |
 | `scenes.rs` | small scenes for the lab: a street, a market place, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
 
