@@ -257,6 +257,10 @@ pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> Pat
     PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32, soft_shore: g.laid.is_some() as u8 as f32 }
 }
 
+/// The bit of a parcel's depth byte that says it lies in a filled square
+/// (terrain.wesl reads the depth from the low seven, which never reach it).
+pub const FILLED_BIT: u8 = 128;
+
 /// The year's land for every parcel, as the shader reads it: its class
 /// (`world::year_land`), how many times it is cut into fields this year
 /// (`YearLand::depth`), the town density of its cell that scatter.rs builds
@@ -273,7 +277,10 @@ pub fn year_parcels(r: &Replay, g: &Ground, k: usize, land: &crate::world::YearL
         // (task A) a parcel of town ground is never farmed, so its last byte says which of
         // its eight closes are built up
         let last = if class == crate::world::URBAN { land.town.built[i] } else { land.under[i] };
-        out.extend_from_slice(&[class, land.depth[i], dense, last]);
+        // (on town ground the depth's high bit says the parcel is in a filled square, whose
+        // closes not built up are its park, never the paddocks of a town's edge)
+        let filled = class == crate::world::URBAN && land.town.in_filled(g.land.wcell[i]);
+        out.extend_from_slice(&[class, land.depth[i] | if filled { FILLED_BIT } else { 0 }, dense, last]);
     }
     out
 }

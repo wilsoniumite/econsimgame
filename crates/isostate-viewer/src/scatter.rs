@@ -1527,6 +1527,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let begun = std::time::Instant::now();
     // (office works drawn as buildings of the forms, for ISOSTATE_TIMING)
     let mut offices = 0usize;
+    // the year's roads, which an office building turns to face (`towns::lots::facing`)
+    let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::road_segments(r, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
     // what each works' plan is made from this year, and the plans themselves. Where many are
     // not made yet (a game just opened, a replay opened on a late year or moved a long way)
     // they are made on every core; most years want a handful
@@ -1581,7 +1583,10 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         // an office works after 1900 stands in a building of the forms, by its hands, its year
         // and its square's land value (`towns::lots::office`); every other works as the planner lays it
         if let Some(b) = towns::lots::office(r, f, k) {
-            towns::lots::draw_office(g, p, &b, f, lod, lk, &mut works_b, &mut smoke);
+            // its front to the street it stands on, not to the planner's grid
+            let yaw = towns::lots::facing(bevy::math::Vec2::new(p.0, p.1), p.2, &road_lines);
+            towns::lots::draw_office(g, (p.0, p.1, yaw), &b, f, lod, lk, &mut works_b, &mut smoke);
+            towns::lots::note_tall(bevy::math::Vec2::new(p.0, p.1), yaw, b.storeys, firm.cell as u32);
             offices += 1;
             continue;
         }
@@ -1637,6 +1642,16 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let mut tally = TreeCensus::new(std::env::var_os("ISOSTATE_TREES").is_some());
     for s in &slots.trees {
         let (cls, margin) = land.at(s.place);
+        if cls == world::URBAN && land.town.park.get(s.place.parcel as usize).is_some_and(|&m| m != 0) {
+            // a filled square's park: trees in clumps and along its walks, none in its pond
+            let (parcel, sub) = world::close_at(g, s.x, s.z);
+            let clump = fields_smooth(0.5, 0.75, 0.5 + 0.5 * world::vnoise(s.x * 9.0, s.z * 9.0, 459));
+            if land.town.park_at(parcel, sub) && s.u < 0.15 + 0.45 * clump && !near_plot(s.x, s.z) && world::water_dist(g, s.x, s.z) > 0.02 {
+                let p = ground(g, s.x, s.z);
+                tally.add(TreeKind::Field, &mut trees, |t| tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species: Species::Broadleaf, size: 0.38 + 0.14 * s.v, tint: s.u, turn: s.yaw }, lk));
+            }
+            continue;
+        }
         if !(world::FARM..=world::HEATH).contains(&cls) {
             continue;
         }
@@ -1703,8 +1718,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let census = towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &land, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
     if let Some(c) = census.filter(|_| std::env::var_os("ISOSTATE_TOWNS").is_some()) {
         eprintln!(
-            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side); {} houses short on cells with open ground left and {} on cells built up whole",
-            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone, c.short, c.short_full
+            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side); {} houses short on cells with open ground left and {} on cells built up whole; {} filled squares with {} closes of park and {} built over by themselves",
+            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone, c.short, c.short_full, c.filled, c.park, c.infill
         );
     }
 

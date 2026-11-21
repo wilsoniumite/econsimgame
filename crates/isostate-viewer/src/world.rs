@@ -1271,6 +1271,10 @@ pub struct TownCell {
     pub houses: u16,
     /// the cell its ground is built up from, if it is not a town's first
     pub parent: Option<u32>,
+    /// a filled square (`Builds::filled`): all of its ground built up but its
+    /// park, which is the last `park` closes of its order
+    pub filled: bool,
+    pub park: u16,
 }
 
 /// The town ground of a year.
@@ -1281,6 +1285,8 @@ pub struct TownGround {
     pub built: Vec<u8>,
     /// per close (eight to a parcel): its place in its cell's order, on kept town ground
     pub rank: Vec<u16>,
+    /// per parcel: which of its eight closes are a filled square's park, a bit for each
+    pub park: Vec<u8>,
     /// the cells of kept town ground
     pub cells: std::collections::HashMap<u32, TownCell>,
 }
@@ -1289,6 +1295,16 @@ impl TownGround {
     /// Whether close `sub` of a parcel is built up.
     pub fn built_up(&self, parcel: u32, sub: u8) -> bool {
         self.built.get(parcel as usize).is_some_and(|m| m >> sub & 1 != 0)
+    }
+
+    /// Whether close `sub` of a parcel is a filled square's park.
+    pub fn park_at(&self, parcel: u32, sub: u8) -> bool {
+        self.park.get(parcel as usize).is_some_and(|m| m >> sub & 1 != 0)
+    }
+
+    /// Whether a parcel is in a filled square: its closes are built up, or park.
+    pub fn in_filled(&self, cell: u32) -> bool {
+        self.cells.get(&cell).is_some_and(|c| c.filled)
     }
 
     /// The place of a close in its cell's order, if it is kept town ground.
@@ -1560,22 +1576,44 @@ pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround
     }
     let cen = crate::network::centres(r);
     town.rank = vec![u16::MAX; class.len() * 8];
+    town.park = vec![0; class.len()];
     for (&c, parcels) in &by_cell {
         let c = c as usize;
         let parent = town_parent(r, k, c);
         let order = town_order(r, g, &cen, k, c, parcels);
         let houses = town_houses(r, k, c);
-        let (built, reach) = closes_built(&order, houses);
+        let closes = order.iter().filter(|o| o.2 > 0.0).count();
+        // a filled square is built up whole but for its park, the last of its order
+        let filled = r.filled(k, c);
+        let park = if filled { park_closes(&order[..closes], r.fill_of(k, c).map_or(0.0, |f| f.1)) } else { 0 };
+        let (built, reach) = if filled { (closes - park, closes - park) } else { closes_built(&order, houses) };
         for (n, &(i, sub, _)) in order.iter().enumerate() {
             town.rank[i as usize * 8 + sub as usize] = n as u16;
             if n < built {
                 town.built[i as usize] |= 1 << sub;
+            } else if filled && n < closes {
+                town.park[i as usize] |= 1 << sub;
             }
         }
-        let closes = order.iter().filter(|o| o.2 > 0.0).count();
-        town.cells.insert(c as u32, TownCell { order: order.clone(), closes: closes as u16, built: built as u16, reach: reach as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
+        town.cells.insert(c as u32, TownCell { order: order.clone(), closes: closes as u16, built: built as u16, reach: reach as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32), filled, park: park as u16 });
     }
     town
+}
+
+/// How many closes at the end of a filled square's order (its dry closes,
+/// `order`) are its park: as many as make up `share` of its ground, and one
+/// at the least where the record keeps a park.
+pub fn park_closes(order: &[(u32, u8, f32)], share: f32) -> usize {
+    if share <= 0.0 || order.is_empty() {
+        return 0;
+    }
+    let want = share * order.iter().map(|o| o.2).sum::<f32>();
+    let (mut have, mut n) = (0.0, 0);
+    while n < order.len() && (n == 0 || have + order[order.len() - 1 - n].2 * 0.5 < want) {
+        have += order[order.len() - 1 - n].2;
+        n += 1;
+    }
+    n.min(order.len() - 1)
 }
 
 /// The number of the parcel at a map position (`Land::index`).

@@ -559,6 +559,9 @@ struct Spot {
     // at the town's edge and not built up (world::town_ground)
     close: Cut,
     town_open: bool,
+    // the close lies in a filled square (world::TownCell::filled): if it is
+    // open it is the square's park, never a paddock of the town's edge
+    filled: bool,
 }
 
 // ------------------------------------------------------------------ fields
@@ -1062,6 +1065,42 @@ fn town_edge(sp: Spot) -> vec3<f32> {
     return c;
 }
 
+// A filled square's park (world::TownCell::park): the last of the square's
+// ground, kept open when the town built the rest of it whole. Mown grass,
+// lighter and darker in stripes close to; a gravel walk round each close and
+// one across it; and on wet ground (a river's floor) a pond. Its trees are
+// put in with the other trees (scatter.rs).
+fn park(sp: Spot) -> vec3<f32> {
+    let close = sp.close;
+    let key = field_key(sp.bl, close);
+    let k = hash3(key, 99u, 0u);
+    let lawn = grass_season(paint.pasture_light.rgb, sp.ph);
+    let stripes = 0.5 + 0.5 * cos(TAU * dot(sp.p, vec2<f32>(cos(TAU * k), sin(TAU * k))) / 0.008);
+    var c = lawn * (1.0 + 0.05 * (stripes - 0.5) * detail(120.0, sp.foot) * (1.0 - winter(sp.ph)));
+    // a pond where the ground is wet: a round of water in the middle of the close
+    let mid = 0.5 * (close.lo + close.hi);
+    let from_mid = abs(sp.bl.uv - mid) / max(close.hi - close.lo, vec2<f32>(1e-5));
+    let pond = sp.flood > 0.3 && k < 0.6;
+    if (pond) {
+        let r = length(from_mid * vec2<f32>(1.0, 1.3)) + 0.06 * vnoise(sp.p.x * 160.0, sp.p.y * 160.0, 475);
+        let water = mix(paint.seabed_shelf.rgb, paint.river_thread.rgb, 0.4);
+        c = mix(c, paint.rushes.rgb, smoothstep(0.36, 0.3, r));
+        c = mix(c, water, smoothstep(0.31, 0.27, r));
+    }
+    // the walks: round the close, set in from its edge, and one across it
+    let path = paint.yard_gravel.rgb * 1.08;
+    let e = cut_edge(sp.bl, close) * BLOCK;
+    let seen = detail(60.0, sp.foot);
+    c = mix(c, path, 0.85 * band(abs(e - 0.006), 0.0012, sp.foot) * seen);
+    let across = select(from_mid.x - from_mid.y, from_mid.x + from_mid.y - 1.0, k < 0.5);
+    if (!pond) {
+        c = mix(c, path, 0.85 * band(abs(across) * min(close.hi.x - close.lo.x, close.hi.y - close.lo.y) * BLOCK, 0.0012, sp.foot) * seen);
+    }
+    // its railings or hedge at the edge
+    c = mix(c, paint.hedge.rgb, 0.7 * band(e, HEDGE * 0.5, sp.foot) * seen);
+    return c;
+}
+
 // Works stand in yards of cinder and gravel with lanes between them.
 fn works_yard(sp: Spot) -> vec3<f32> {
     let q = sp.p * 3.5;
@@ -1132,7 +1171,10 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
             // them. A town in the hills is slate over stone.
             let roofs = select(paint.town_roofs_far.rgb, paint.town_roofs_far_hills.rgb, sp.terr >= 2u);
             let mass = ground.town_kept * sp.far;
-            if (sp.town_open) {
+            if (sp.town_open && sp.filled) {
+                // a filled square's park: from far off a deep green in the roofs
+                c = mix(park(sp), roofs, mass * 0.25);
+            } else if (sp.town_open) {
                 c = mix(town_edge(sp), roofs, mass * 0.9 * sp.dense);
             } else {
                 c = mix(town(sp), roofs, mass * (0.42 + 0.45 * sp.dense));
@@ -1324,7 +1366,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     }
 
     // the field: the parcel cut as finely as it asks (world::field_at)
-    let depth = max(u32(round(yp.y * 255.0)), PARCEL_LEVEL);
+    // (the depth byte's high bit marks a parcel of a filled square: terrain::FILLED_BIT)
+    let depth_byte = u32(round(yp.y * 255.0));
+    let depth = max(depth_byte & 127u, PARCEL_LEVEL);
     let open_code = round(fp.y * 255.0);
     let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
     let leaf = cut(bl, pc, PARCEL_LEVEL, depth);
@@ -1407,9 +1451,11 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             // (where a parcel of open land has what it is farmed as)
             sp.close = pc;
             sp.town_open = false;
+            sp.filled = false;
             if (cls == URBAN) {
                 sp.close = cut(bl, pc, PARCEL_LEVEL, 6u);
                 sp.town_open = ((u32(round(yp.w * 255.0)) >> (sp.close.id & 7u)) & 1u) == 0u;
+                sp.filled = (depth_byte & 128u) != 0u;
             }
             let lc = class_colour(cls, sp);
             top = mix(top, lc, landk);
