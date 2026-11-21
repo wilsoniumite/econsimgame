@@ -236,10 +236,15 @@
 # university, a town's ideas): against main only 1901-2050 run.bin moved, by
 # the record's two new layers dens and value; the economy, books and news of
 # both eras held
+# Taken: 1901-2050 all four: a town fills its ground before it spreads
+# (ground.fill, docs/rules/ground.md): from 1901 a square a town takes is
+# built whole where its rent for it outbids the plough, with a tenth kept as a
+# park, and the record carries two more ground layers, fill and park;
+# 1750-1900 held, since nothing of the rule acts before 1901
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x1d7f92f3ce7ef952
-1901-2050 books    0xb5c2235b161e5b20
-1901-2050 news     0x93e916658c0d7e0f
-1901-2050 run.bin  0x3cc91b30dee62039
+1901-2050 economy  0x7e1280e0984a7577
+1901-2050 books    0x56f5db4e3c158b18
+1901-2050 news     0x9706d5be7ce3fd07
+1901-2050 run.bin  0x711c8d3167fc342a

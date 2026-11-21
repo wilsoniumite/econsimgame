@@ -553,3 +553,9 @@ Taken as a rule for the sandbox: every view is also a handle. Where the sandbox 
 > I mean, I think it should reflect technology, year, and land value no? These are assets that then can be used by the sim
 
 Built the same night: the forms of all three directions as one catalogue of assets, and each lot of a town after 1900 built and rebuilt by its year, its town's knowledge and its square's land value (The order of work, 3, "The look of 1900 to 2050").
+
+**21 November 2026, morning, on the pictures of the first city.**
+
+> For the backlog: dense towns shouldn't have patches if farmland, they can have parks but we'll need to find some way to make the cities properly dense
+
+Built the same day in the core (docs/rules/ground.md, "A town fills its ground"): from 1901 a square a town takes is built whole at once where the town's rent for it outbids the plough, with a tenth kept as a park, and a town on cheap ground still spreads in ribbons. The record now says how much of each square is built and which is park; drawing a filled square as filled is the next piece, since today's picture draws houses from a square's residents, not from what is built on it.

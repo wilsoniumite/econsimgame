@@ -57,6 +57,7 @@ struct Row {
     works: f64,
     per_room: f64,
     outbid: f64,
+    node: (usize, usize),
 }
 
 fn parse_seeds(s: &str) -> Vec<u64> {
@@ -160,7 +161,7 @@ fn measure(s: &sim::Sim, seed: u64, year: i64) -> Vec<Row> {
                 }
             }
         }
-        let mut r = Row { seed, year, town: t, name: st.town_name[t].clone(), townsfolk: st.urban_pop[t], squares: list.len(), ..Default::default() };
+        let mut r = Row { seed, year, town: t, name: st.town_name[t].clone(), townsfolk: st.urban_pop[t], squares: list.len(), node: (st.town_node[t] % W, st.town_node[t] / W), ..Default::default() };
         let mut built_of = vec![0.0f64; N];
         let (mut young, mut works, mut per_room) = (0.0, 0.0, 0.0);
         for &c in list {
@@ -302,12 +303,12 @@ fn main() {
         .collect();
     let rows: Vec<Row> = handles.into_iter().flat_map(|h| h.join().expect("a run")).collect();
     let mut f = std::fs::File::create(&out).expect("the file can be written");
-    writeln!(f, "seed,year,town,name,townsfolk,squares,outline,built,drawn,park,open,hole_farmed,hole_built,hole_other,under_half,filled,groups,largest_group,value,dens_mean,dens_middle,dens_edge,young,works,per_room,outbid").unwrap();
+    writeln!(f, "seed,year,town,name,townsfolk,squares,outline,built,drawn,park,open,hole_farmed,hole_built,hole_other,under_half,filled,groups,largest_group,value,dens_mean,dens_middle,dens_edge,young,works,per_room,outbid,x,y").unwrap();
     for r in &rows {
         writeln!(
             f,
-            "{},{},{},{},{:.0},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3}",
-            r.seed, r.year, r.town, r.name, r.townsfolk, r.squares, r.outline, r.built, r.drawn, r.park, r.open, r.hole_farmed, r.hole_built, r.hole_other, r.under_half, r.filled, r.groups, r.largest_group, r.value, r.dens_mean, r.dens_middle, r.dens_edge, r.young, r.works, r.per_room, r.outbid
+            "{},{},{},{},{:.0},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{}",
+            r.seed, r.year, r.town, r.name, r.townsfolk, r.squares, r.outline, r.built, r.drawn, r.park, r.open, r.hole_farmed, r.hole_built, r.hole_other, r.under_half, r.filled, r.groups, r.largest_group, r.value, r.dens_mean, r.dens_middle, r.dens_edge, r.young, r.works, r.per_room, r.outbid, r.node.0, r.node.1
         )
         .unwrap();
     }
