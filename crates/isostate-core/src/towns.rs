@@ -284,6 +284,11 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
     let cy = crate::ground::ceiling_year(st, P, year);
     let dens: Option<Vec<f64>> = (cy != year).then(|| (0..N).map(|c| crate::ground::dens_of(st, P, year, c)).collect());
     let dens_at = |c: usize| dens.as_ref().map_or(1.0, |d| d[c]);
+    // ground (docs/rules/ground.md, "A town fills its ground"): the squares built
+    // whole, and whether this step builds so the squares it takes
+    let fills = crate::ground::fills(st, P, year);
+    let mut filled: Vec<bool> = if fills || !st.ground.filled.is_empty() { (0..N).map(|c| crate::ground::is_filled(st, c)).collect() } else { Vec::new() };
+    let is_full = |filled: &[bool], c: usize| filled.get(c).copied().unwrap_or(false);
     st.urban_rent = vec![0.0; T];
     st.cell_urban_rent = vec![0.0; N];
     st.town_ground_rent.iter_mut().for_each(|v| *v = 0.0);
@@ -370,8 +375,11 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
                 st.town_built[node] = built_now;
             }
         }
-        let room_of = |built: &[i64], c: usize| room_at(C, P, year, built[c], cy) * dens_at(c) * room_beside_works(P, ks[c]);
-        let mut total: f64 = list.iter().map(|&c| room_of(&st.town_built, c)).sum();
+        let room_of = |built: &[i64], filled: &[bool], c: usize| crate::ground::clear_room(C, P, year, built[c], cy, is_full(filled, c)) * dens_at(c) * room_beside_works(P, ks[c]);
+        let mut total: f64 = list.iter().map(|&c| room_of(&st.town_built, &filled, c)).sum();
+        // ground: what the town would pay for a whole square, set against the plough's rent
+        let square_bid = crate::ground::square_bid(C, st, P, year, i);
+        let wild_bid = P.land_fixed_cost * wbar[i].max(1e-6);
         // ground: after 1900 a cell joins only within the town's reach of its
         // centre, in a straight line, and a belt is the most it adds in a year
         let reach = crate::ground::reach_of(st, P, year, i);
@@ -422,7 +430,11 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             owned[c] = true;
             list.push(c);
             stack.push(c);
-            total += room_of(&st.town_built, c);
+            // ground: the square is built whole where the town's rent for it outbids the plough
+            if let Some(bid) = square_bid {
+                filled[c] = bid * room_beside_works(P, ks[c]) >= P.ground.outbid * plough_rent(P, bids, wild_bid, c, &plough);
+            }
+            total += room_of(&st.town_built, &filled, c);
             added += 1;
             farthest = farthest.max(from_centre(c));
         }
@@ -431,7 +443,7 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             // not yet kept: ground the town's people do not need is let go
             while list.len() > 1 {
                 let c = *list.last().unwrap();
-                let r = room_of(&st.town_built, c);
+                let r = room_of(&st.town_built, &filled, c);
                 if total - r < U {
                     break;
                 }
@@ -471,12 +483,11 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         }
         // people are shared out by room; rent as the port's rule has it, highest at
         // the centre and falling to nothing a cell past the edge
-        let clear: Vec<f64> = list.iter().map(|&c| room_at(C, P, year, st.town_built[c], cy) * dens_at(c)).collect();
+        let clear: Vec<f64> = list.iter().map(|&c| crate::ground::clear_room(C, P, year, st.town_built[c], cy, is_full(&filled, c)) * dens_at(c)).collect();
         let rooms: Vec<f64> = list.iter().zip(&clear).map(|(&c, &r)| r * room_beside_works(P, ks[c])).collect();
         let per_room = U / rooms.iter().sum::<f64>().max(1.0);
         let dmax = list.iter().map(|&c| st.dist[(i, c)]).fold(0.0, f64::max);
         let fringe = dmax + 1.0;
-        let wild_bid = P.land_fixed_cost * wbar[i].max(1e-6);
         let mut bill = 0.0;
         for (j, &c) in list.iter().enumerate() {
             let per_head = P.urban_rent_rate * wbar[i] * (1.0 - st.dist[(i, c)] / fringe).max(0.0);
@@ -517,6 +528,12 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             st.town_built[c] = 0;
             st.town_room[c] = 0.0;
         }
+    }
+    if !filled.is_empty() {
+        for c in 0..N {
+            filled[c] &= urban[c];
+        }
+        st.ground.filled = filled;
     }
     st.urban = urban;
     st.urban_res = res;
