@@ -1646,9 +1646,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             // a filled square's park: trees in clumps and along its walks, none in its pond
             let (parcel, sub) = world::close_at(g, s.x, s.z);
             let clump = fields_smooth(0.5, 0.75, 0.5 + 0.5 * world::vnoise(s.x * 9.0, s.z * 9.0, 459));
-            if land.town.park_at(parcel, sub) && s.u < 0.06 + 0.3 * clump && !near_plot(s.x, s.z) && world::water_dist(g, s.x, s.z) > 0.03 {
+            if land.town.park_at(parcel, sub) && s.u < 0.15 + 0.45 * clump && !near_plot(s.x, s.z) && world::water_dist(g, s.x, s.z) > 0.02 {
                 let p = ground(g, s.x, s.z);
-                tally.add(TreeKind::Field, &mut trees, |t| tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species: Species::Broadleaf, size: 0.75 + 0.3 * s.v, tint: s.u, turn: s.yaw }, lk));
+                tally.add(TreeKind::Field, &mut trees, |t| tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species: Species::Broadleaf, size: 0.38 + 0.14 * s.v, tint: s.u, turn: s.yaw }, lk));
             }
             continue;
         }

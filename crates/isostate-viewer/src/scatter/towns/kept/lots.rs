@@ -650,6 +650,12 @@ pub(super) fn tell_square(r: &Replay, k: usize, forms_tall: &[(Vec2, f32, u8, u3
         blocks.iter().map(|b| b.1).sum::<usize>(),
         kinds.join(", ")
     );
+    // the squares of its parks nearest its market place, for pointing a camera at one
+    let node = r.header.towns[t].node;
+    let mut parks: Vec<(f32, usize)> = (0..r.n).filter(|&c| ours(c as u32) && r.fill_of(k, c).is_some_and(|f| f.1 > 0.0)).map(|c| (((c % r.w) as f32 - (node % r.w) as f32).hypot((c / r.w) as f32 - (node / r.w) as f32), c)).collect();
+    parks.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let near: Vec<String> = parks.iter().take(6).map(|&(_, c)| format!("{},{}", c % r.w, c / r.w)).collect();
+    eprintln!("lots {}: {name}: {} squares with a park; the nearest its market place: {}", r.y0 + k as i32, parks.len(), near.join("; "));
 }
 
 /// Draw an office works' building at its place on the map, its front to its

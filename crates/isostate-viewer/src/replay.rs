@@ -346,6 +346,11 @@ pub const WHOLE_SQUARE: f32 = 1430.0;
 /// record says of its fill: the forms' year (`scatter/towns/kept/lots.rs`, `FROM`).
 pub const FILL_FROM: i32 = 1900;
 
+/// The land value (the record's `value`, a square's rent a unit of room over
+/// its town's of 1900) from which a square is drawn by its fill (`fill_of`):
+/// its town's of 1900. A town whose ground never grew dear stands below it.
+pub const FILLED_VALUE: f32 = 1.0;
+
 /// How densely each square of a town is built and what its land is worth,
 /// year by year, and what each town knew of what builders need: what the
 /// lots of a town past 1900 are built and rebuilt by (the core's
@@ -604,16 +609,25 @@ impl Replay {
     /// (`Builds::fill`): only after 1900, where the forms build a town. The
     /// record keeps the layer from 1750, but a town to 1900 is drawn by its
     /// houses' own rules, from its residents, and those houses never change.
+    ///
+    /// And only where the square's ground grew dear: a park kept (the town
+    /// built it whole because its rent outbid the plough's), or land worth
+    /// its town's of 1900 or more. On cheap ground a town's houses follow its
+    /// people as they always did: there the core's room by age stands far
+    /// above them where a town has shrunk (island 7's Grancombe, one square
+    /// of 112 people whose fill is 230 of 250), and the picture of a few
+    /// cottages left in their fields is the truer one (`FILLED_VALUE`).
     pub fn fill_of(&self, k: usize, c: usize) -> Option<(f32, f32)> {
         if self.y0 + k as i32 <= FILL_FROM {
             return None;
         }
-        self.builds.fill(self.n, k, c)
+        self.builds.fill(self.n, k, c).filter(|&(_, park)| park > 0.0 || self.builds.value(self.n, k, c).is_none_or(|v| v >= FILLED_VALUE))
     }
 
-    /// Whether cell `c` is a filled square in year `k` (`Builds::filled`), after 1900.
+    /// Whether cell `c` is a filled square in year `k` (`Builds::filled`),
+    /// after 1900, on ground that grew dear (`fill_of`).
     pub fn filled(&self, k: usize, c: usize) -> bool {
-        self.y0 + k as i32 > FILL_FROM && self.builds.filled(self.n, k, c)
+        self.fill_of(k, c).is_some() && self.builds.filled(self.n, k, c)
     }
 
     /// The ground cell `c`'s houses take in year `k`, in people as a square of
