@@ -85,6 +85,16 @@ pub struct GroundParams {
     pub tram_after: i64,
     /// ...nor before the island has made this many electrical goods a head.
     pub tram_floor: f64,
+    /// A town fills its ground before it spreads: from the year after `from`
+    /// a square a town takes is built whole at once where the town's rent for
+    /// it outbids what the plough would pay for it (`docs/rules/ground.md`,
+    /// "A town fills its ground").
+    pub fill: bool,
+    /// The share of a square filled so that is kept open as a park.
+    pub park: f64,
+    /// The town outbids the plough where its rent for a whole square is at
+    /// least this many times the plough's rent for it.
+    pub outbid: f64,
 }
 
 impl Default for GroundParams {
@@ -109,14 +119,20 @@ impl Default for GroundParams {
             // the office machines' floor (to2050-7b): the electric drive's
             // threshold, 15,000 made, over island 7's people in 1893
             tram_floor: 0.02,
+            // off unless asked for (the game's turns it on): with the ground
+            // on and this off, the ground is as it was before 21 November 2026
+            fill: false,
+            park: 0.1,
+            outbid: 1.0,
         }
     }
 }
 
 impl GroundParams {
-    /// The game's ground: room and reach, with no belt.
+    /// The game's ground: room and reach, with no belt, and towns that fill
+    /// their ground before they spread.
     pub fn game() -> GroundParams {
-        GroundParams { enabled: true, ..GroundParams::default() }
+        GroundParams { enabled: true, fill: true, ..GroundParams::default() }
     }
 }
 
@@ -154,6 +170,9 @@ pub struct GroundState {
     pub year_now: i64,
     /// Each cell's `dens` (1 where nothing has been built up).
     pub dens: Vec<f64>,
+    /// The squares built whole when they joined their town (`fill`); empty
+    /// while that rule is off.
+    pub filled: Vec<bool>,
     /// Each town's room, in units of room: what its months' rent clears.
     pub room: Vec<f64>,
     /// Each town's rent a unit of room, as the month ended.
@@ -409,6 +428,54 @@ pub fn land_value(st: &State, P: &Params) -> Vec<f64> {
     out
 }
 
+// ---------------------------------------------------------------- filling
+
+/// Whether the yearly step of `year` fills the squares its towns take.
+pub fn fills(st: &State, P: &Params, year: i64) -> bool {
+    acts_in(st, P, year) && P.ground.room && P.ground.fill
+}
+
+/// Whether cell `c` was built whole when it joined its town.
+pub fn is_filled(st: &State, c: usize) -> bool {
+    st.ground.filled.get(c).copied().unwrap_or(false)
+}
+
+/// The share of cell `c` kept open as a park (0 where none is).
+pub fn park_of(st: &State, P: &Params, c: usize) -> f64 {
+    if is_filled(st, c) { P.ground.park.clamp(0.0, 1.0) } else { 0.0 }
+}
+
+/// The room a clear cell has before its `dens` and its works, in the yearly
+/// step of `year` with the ceiling read in `cy`: a square filled whole has the
+/// ceiling's room less its park; any other fills in with its age as the towns'
+/// rule has it (`towns::room_at`).
+pub fn clear_room(C: &Content, P: &Params, year: i64, built: i64, cy: i64, filled: bool) -> f64 {
+    if filled { crate::towns::ceiling(C, P, cy) * (1.0 - P.ground.park.clamp(0.0, 1.0)) } else { crate::towns::room_at(C, P, year, built, cy) }
+}
+
+/// The share of cell `c`'s ground its buildings stand on, counted by room
+/// against a whole square of the ceiling (the record's `fill`): a square
+/// filled whole stands on all but its park; any other on its room for its
+/// age over the ceiling's. The works' share is apart (the record's `works`).
+pub fn built_share(st: &State, C: &Content, P: &Params, year: i64, c: usize) -> f64 {
+    let cy = ceiling_year(st, P, year);
+    let full = crate::towns::ceiling(C, P, cy).max(1e-9);
+    (clear_room(C, P, year, st.town_built[c], cy, is_filled(st, c)) / full).clamp(0.0, 1.0)
+}
+
+/// What town `i` would pay for a whole square of clear ground in the yearly
+/// step of `year`, before its works: its rent a unit of room as the last
+/// month ended, times the room of a square filled whole (`dens` 1). None
+/// where the rule does not fill or the town has no rent yet.
+pub fn square_bid(C: &Content, st: &State, P: &Params, year: i64, i: usize) -> Option<f64> {
+    if !fills(st, P, year) {
+        return None;
+    }
+    let r = st.ground.rent.get(i).copied().filter(|r| r.is_finite() && *r > 0.0)?;
+    Some(r * clear_room(C, P, year, year, ceiling_year(st, P, year), true))
+}
+
+/// Put away the year whose months have just run.
 /// Put away the year whose months have just run.
 fn close_year(st: &mut State, P: &Params, year: i64) {
     let anchor = crate::longrun::anchor(st, P);
@@ -477,6 +544,9 @@ pub fn year_end(st: &mut State, P: &Params, year: i64) {
     for c in 0..N {
         if !st.urban[c] {
             st.ground.dens[c] = 1.0;
+            if let Some(f) = st.ground.filled.get_mut(c) {
+                *f = false;
+            }
         }
     }
     for i in 0..T {
