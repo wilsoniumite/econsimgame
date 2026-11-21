@@ -289,6 +289,11 @@ pub struct Census {
     /// and of them those that stand where houses of 1900 or before stood
     pub forms: usize,
     pub rebuilt: usize,
+    /// filled squares, and the closes kept as their parks
+    pub filled: usize,
+    pub park: usize,
+    /// closes of filled squares built over by themselves (`lots::infill`)
+    pub infill: usize,
 }
 
 /// A street that may be laid on kept town ground.
@@ -1447,10 +1452,29 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     steadiness(r, k, &layout);
     let Layout { lanes, standing, whats, ms: laying, .. } = layout;
     let t3 = std::time::Instant::now();
+    // after 1900: which plots are built as forms of their year, and which whole blocks stand (`lots.rs`)
+    let lots::Lots { drawn, blocks } = lots::drawn_on(r, g, k, &standing, near_plot);
     let colour = *lk.ground.street_earth;
     for (line, width) in &lanes {
-        let pts: Vec<Vec3> = line.iter().map(|p| Vec3::new(p.x, world::height_at(g, p.x, p.y).max(0.0) + 0.006, p.y)).collect();
-        into.houses.ribbon(&pts, *width, colour);
+        // (a lane runs on up to a whole block and on from it, not through it)
+        let mut run: Vec<Vec3> = Vec::new();
+        for (i, p) in line.iter().enumerate() {
+            let inside = |q: Vec2| blocks.iter().any(|(f, _)| f.holds(q));
+            let cut = inside(*p) || (i > 0 && inside((line[i - 1] + *p) * 0.5));
+            if cut {
+                if run.len() >= 2 {
+                    into.houses.ribbon(&run, *width, colour);
+                }
+                run.clear();
+                if inside(*p) {
+                    continue;
+                }
+            }
+            run.push(Vec3::new(p.x, world::height_at(g, p.x, p.y).max(0.0) + 0.006, p.y));
+        }
+        if run.len() >= 2 {
+            into.houses.ribbon(&run, *width, colour);
+        }
     }
 
     // the houses, street by street
@@ -1461,6 +1485,8 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     }
     for (&c, cell) in &town.cells {
         census.cells += 1;
+        census.filled += cell.filled as usize;
+        census.park += cell.park as usize;
         census.residents += r.residents(k, c as usize);
         census.wanted += cell.houses as usize;
         // the houses a cell has not the plots for: on ground that is all built up, or not
@@ -1485,10 +1511,23 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         }
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    // after 1900: which plots are built as forms of their year (`lots.rs`)
-    let drawn = lots::drawn(r, k, &standing);
+    // a filled square's ground that no street's plots reach is built over close by close (`lots::infill`)
+    census.infill = lots::infill(r, g, k, town, &standing, &blocks, &lanes, near_plot, lk, into);
     if std::env::var_os("ISOSTATE_LOTS").is_some() {
         lots::tell(r, k, &standing, &whats.iter().map(What::storeys).collect::<Vec<u8>>(), &drawn);
+        // the forms of five storeys or more on the lots, each where it stands and facing as its plot does
+        let mut tall: Vec<(Vec2, f32, u8, u32)> = Vec::new();
+        let mut shapes = Vec::new();
+        for (i, d) in drawn.iter().enumerate() {
+            if let lots::Drawn::Form(b, plots) = *d {
+                let (a, z) = (&standing[i].lot.pl, &standing[i + plots - 1].lot.pl);
+                tall.push(((a.p + z.p) * 0.5, a.yaw, b.storeys, standing[i].lot.cell));
+                if blocks.iter().any(|(f, _)| f.holds((a.p + z.p) * 0.5 + Vec2::new(a.yaw.sin(), a.yaw.cos()) * (a.depth * 0.5 - lots::BLOCK_DEPTH * 0.5))) {
+                    shapes.push(b.shape);
+                }
+            }
+        }
+        lots::tell_square(r, k, &tall, &lanes, &blocks, &shapes);
     }
     for (i, (s, what)) in standing.iter().zip(&whats).enumerate() {
         let pl = &s.lot.pl;
@@ -1712,6 +1751,65 @@ mod tests {
         assert!(!new.is_empty() && new.iter().all(|(_, d)| d.0 > lots::FROM && d.2 != lots::Drawn::House), "{new:?}");
         // the same record draws the same town, however often it is drawn
         assert_eq!(drawn_in(&r, &g, 5), now);
+    }
+
+    /// No paddock or field is drawn inside a filled square. Past 1900, in a
+    /// record that says how much of each square is built and which is park
+    /// (the core's `fill` and `park`), every dry close of a filled square is
+    /// built up or is its park, never the open ground of a town's edge; the
+    /// park is the last of its order and about the share the record keeps;
+    /// and the ground shader is told which parcels lie in a filled square. A
+    /// square at the edge, built on a fifth, keeps its open closes; and 1900,
+    /// whose fill the record keeps too, is laid out as with no fill at all.
+    #[test]
+    fn no_field_or_paddock_is_drawn_inside_a_filled_square() {
+        let mut r = past_1900(|_| 1.2, |_| 2.0);
+        let n = r.n;
+        let last = r.ny - 1;
+        // the newest square is the edge
+        let edge = (0..n).filter(|&c| r.built[last * n + c] > 0).max_by_key(|&c| (r.built[last * n + c], c)).unwrap();
+        r.builds.fill = vec![0; r.ny * n];
+        r.builds.park = vec![0; r.ny * n];
+        for k in 0..r.ny {
+            for c in (0..n).filter(|&c| r.built[k * n + c] > 0) {
+                let (fill, park) = if c == edge { (52, 0) } else { (225, 25) };
+                r.builds.fill[k * n + c] = fill;
+                r.builds.park[k * n + c] = park;
+            }
+        }
+        let g = world::build_ground(&r);
+        let land = world::year_land(&r, &g, last);
+        let mut filled = 0;
+        for (&c, cell) in &land.town.cells {
+            let dry = &cell.order[..cell.closes as usize];
+            if c as usize == edge {
+                assert!(!cell.filled && cell.built < cell.closes, "the edge square: {} of {} closes built", cell.built, cell.closes);
+                continue;
+            }
+            assert!(cell.filled, "cell {c}");
+            filled += 1;
+            let (mut park, mut all) = (0.0, 0.0);
+            for (i, &(parcel, sub, area)) in dry.iter().enumerate() {
+                let (built, kept) = (land.town.built_up(parcel, sub), land.town.park_at(parcel, sub));
+                assert!(built != kept, "cell {c}, close {i}: built {built}, park {kept}");
+                assert_eq!(kept, i >= cell.built as usize, "cell {c}, close {i}: the park is the last of the order");
+                park += if kept { area } else { 0.0 };
+                all += area;
+            }
+            assert!(cell.park > 0 && park / all > 0.04 && park / all < 0.2, "cell {c}: park {} of {all}", park);
+        }
+        assert!(filled >= 3, "{filled} filled squares");
+        // the shader is told which parcels lie in a filled square
+        let px = crate::terrain::year_parcels(&r, &g, last, &land);
+        for (i, &cls) in land.class.iter().enumerate().filter(|&(_, c)| *c == world::URBAN) {
+            let inside = land.town.in_filled(g.land.wcell[i]);
+            assert_eq!(px[i * 4 + 1] & crate::terrain::FILLED_BIT != 0, inside, "parcel {i} of class {cls}");
+        }
+        // 1900 is as it was
+        let mut none = r.clone();
+        none.builds.fill.clear();
+        none.builds.park.clear();
+        assert_eq!(year(&r, &g, 2).0, year(&none, &g, 2).0);
     }
 
     /// A town whose ground grows dear after 1900 rebuilds some of its old

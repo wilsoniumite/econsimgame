@@ -321,6 +321,36 @@ pub struct Replay {
     pub builds: Builds,
 }
 
+/// `ISOSTATE_LOOK=plain`: draw a town after 1900 as it was drawn before the
+/// look of a filled square (21 November 2026), for setting before beside after
+/// in one program (`scatter/towns/kept/lots.rs`, `plain`).
+pub fn look_plain() -> bool {
+    static PLAIN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *PLAIN.get_or_init(|| std::env::var("ISOSTATE_LOOK").as_deref() == Ok("plain"))
+}
+
+/// The share of its ground a square's buildings stand on from which it is a
+/// filled square (`Builds::filled`), where no park says so: four fifths. The
+/// core's notes put an edge square, a young one still filling in, and one of a
+/// town on cheap ground at a fill under about 200 of 250; a square of the old
+/// ground stands at 230 to 250 by 1950.
+pub const FILLED: f32 = 0.8;
+
+/// The people a square built whole holds at the ceiling of 1900, which the
+/// core's `fill` is counted against (`isostate_core::towns::ceiling`): 1,430,
+/// which the viewer draws as 119 houses with their yards and streets over the
+/// whole of the cell (`world::PEOPLE_TO_A_HOUSE`).
+pub const WHOLE_SQUARE: f32 = 1430.0;
+
+/// The last year a town is drawn by its houses' own rules whatever the
+/// record says of its fill: the forms' year (`scatter/towns/kept/lots.rs`, `FROM`).
+pub const FILL_FROM: i32 = 1900;
+
+/// The land value (the record's `value`, a square's rent a unit of room over
+/// its town's of 1900) from which a square is drawn by its fill (`fill_of`):
+/// its town's of 1900. A town whose ground never grew dear stands below it.
+pub const FILLED_VALUE: f32 = 1.0;
+
 /// How densely each square of a town is built and what its land is worth,
 /// year by year, and what each town knew of what builders need: what the
 /// lots of a town past 1900 are built and rebuilt by (the core's
@@ -334,6 +364,11 @@ pub struct Builds {
     /// `[year, cell]`: 0 where unknown, else 1 plus twentieths of a doubling of
     /// the land value above a sixteenth
     pub value: Vec<u8>,
+    /// `[year, cell]`: the share of the square its buildings stand on, in
+    /// 250ths (the core's `fill`; 0 off town ground), and the share kept as a
+    /// park (`park`). Empty in a record made before 21 November 2026.
+    pub fill: Vec<u8>,
+    pub park: Vec<u8>,
     /// `[year, town, tech]`: what each town knows of each, 0 to 255
     pub know: Vec<u8>,
     /// towns and techs to a year of `know`
@@ -359,6 +394,25 @@ impl Builds {
     /// The land value of cell `c` in year `k`, if the run knows it.
     pub fn value(&self, n: usize, k: usize, c: usize) -> Option<f32> {
         self.value.get(k * n + c).filter(|&&b| b > 0).map(|&b| ((b - 1) as f32 / 20.0 - 4.0).exp2())
+    }
+
+    /// The share of cell `c`'s ground its buildings stand on in year `k`, and
+    /// the share kept as a park, 0 to 1 each; None where the run does not say
+    /// (a year to 1900, a record made before these layers, or not town ground).
+    pub fn fill(&self, n: usize, k: usize, c: usize) -> Option<(f32, f32)> {
+        if look_plain() {
+            return None;
+        }
+        let f = *self.fill.get(k * n + c).filter(|&&b| b > 0)?;
+        Some((f as f32 / 250.0, self.park.get(k * n + c).map_or(0.0, |&p| p as f32 / 250.0)))
+    }
+
+    /// Whether cell `c` is a filled square in year `k`: one the town built
+    /// whole when it took it (a park kept), or one whose buildings stand on
+    /// `FILLED` of its ground or more. The rest of a filled square is yards,
+    /// gardens and courts, and its park; never a paddock or a field.
+    pub fn filled(&self, n: usize, k: usize, c: usize) -> bool {
+        self.fill(n, k, c).is_some_and(|(f, p)| p > 0.0 || f >= FILLED)
     }
 
     /// Whether town `t` knew the tech at `tech` (half or more of it) in year `k`;
@@ -551,11 +605,44 @@ impl Replay {
         self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * self.res_unit())
     }
 
-    /// The residents of cell `c` in year `k` over how densely it is built
-    /// (`Builds::dens`): the ground its houses take, in people as a square of
-    /// 1900 holds them. The residents themselves where the run does not say.
+    /// How much of cell `c` is built in year `k`, and how much is park
+    /// (`Builds::fill`): only after 1900, where the forms build a town. The
+    /// record keeps the layer from 1750, but a town to 1900 is drawn by its
+    /// houses' own rules, from its residents, and those houses never change.
+    ///
+    /// And only where the square's ground grew dear: a park kept (the town
+    /// built it whole because its rent outbid the plough's), or land worth
+    /// its town's of 1900 or more. On cheap ground a town's houses follow its
+    /// people as they always did: there the core's room by age stands far
+    /// above them where a town has shrunk (island 7's Grancombe, one square
+    /// of 112 people whose fill is 230 of 250), and the picture of a few
+    /// cottages left in their fields is the truer one (`FILLED_VALUE`).
+    pub fn fill_of(&self, k: usize, c: usize) -> Option<(f32, f32)> {
+        if self.y0 + k as i32 <= FILL_FROM {
+            return None;
+        }
+        self.builds.fill(self.n, k, c).filter(|&(_, park)| park > 0.0 || self.builds.value(self.n, k, c).is_none_or(|v| v >= FILLED_VALUE))
+    }
+
+    /// Whether cell `c` is a filled square in year `k` (`Builds::filled`),
+    /// after 1900, on ground that grew dear (`fill_of`).
+    pub fn filled(&self, k: usize, c: usize) -> bool {
+        self.fill_of(k, c).is_some() && self.builds.filled(self.n, k, c)
+    }
+
+    /// The ground cell `c`'s houses take in year `k`, in people as a square of
+    /// 1900 holds them. Where the record says how much of the square is built
+    /// (`Builds::fill`, since 21 November 2026), that share of a whole
+    /// square's people (`WHOLE_SQUARE`): the core counts it by room, which is
+    /// what stands, and not by the heads that rent it, who take more room each
+    /// when a town's people grow slower than its building. Else its residents
+    /// over how densely it is built (`Builds::dens`); the residents themselves
+    /// where the run says neither.
     pub fn footprint(&self, k: usize, c: usize) -> f32 {
-        self.residents(k, c) / self.builds.dens(self.n, k, c)
+        match self.fill_of(k, c) {
+            Some((fill, _)) => fill * WHOLE_SQUARE,
+            None => self.residents(k, c) / self.builds.dens(self.n, k, c),
+        }
     }
 
     /// What year `k`'s rent bytes were taken over: 1 in a run to 1900.
@@ -871,6 +958,14 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         if dens.len() == ny * w * h && value.len() == ny * w * h {
             builds.dens = dens;
             builds.value = value;
+        }
+    }
+    // and how much of each square is built and which is park: both or neither
+    if has("fill") && has("park") {
+        let (fill, park) = (u8s("fill")?, u8s("park")?);
+        if fill.len() == ny * w * h && park.len() == ny * w * h {
+            builds.fill = fill;
+            builds.park = park;
         }
     }
     if has("town_know") && !header.techs.is_empty() {
