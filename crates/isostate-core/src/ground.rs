@@ -25,6 +25,10 @@
 //!   cells of its centre in a straight line, or `reach_tram` where the
 //!   tramway is known and the town has `tram_people` townsfolk; `belt`, when
 //!   set, is the most cells a town may add in a year.
+//! - **Filling** (`fill`, since 21 November 2026). A square a town takes is
+//!   built whole at once, less a park (`park`), where the town's rent for it
+//!   outbids what the plough would pay for it; elsewhere it fills in with its
+//!   age as before, so a town on cheap ground still spreads in ribbons.
 //!
 //! The tramway is found here, on the island as a whole, as office computing
 //! is found (`docs/rules/computing.md`): not before `tram_after`, and then in

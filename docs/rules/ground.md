@@ -334,3 +334,127 @@ whatever the rent. The rent that clears is the closed form of that demand.
 The switch is `city.dear_room`, on under the game's rules, with
 `city.room_elasticity` (1 is this page's rule); the rule and what it does to
 the burden and to `dens` are in [city.md](city.md).
+
+## A town fills its ground (since 21 November 2026)
+
+The designer, on the pictures of the first city: dense towns should have no
+patches of farmland in them, parks yes, and the cities should be properly
+dense. The switch is `ground.fill`, with `ground.park` and `ground.outbid`:
+off by default, on under the game's rules. It acts only in the yearly steps
+after 1900 and only on squares a town takes from then on, so the played
+century is the same island to the last digit and nothing jumps in 1901.
+The code is in `ground.rs` ("filling") with hooks marked "ground" in
+`towns::update_urban`, and the record's two new layers in `record.rs`.
+
+**Why the squares were partly built.** Measured on islands 1 to 8 with the
+rule off (`examples/ground_fill.rs`, below):
+
+- A square joins its town with room for 300 people and fills in toward the
+  ceiling of 1,430 over some thirty years (`towns::room_at`), so a town that
+  grows fast stands on many squares a fifth to two thirds built: in 1925 the
+  first city's mean square was 0.72 built, and 0.15 of the ground inside its
+  outline was town ground with nothing on it.
+- A town's people are shared over all its squares by room (`towns.rs`,
+  `per_room`), so wherever room outruns the people (`dens` rising with the
+  rent, or a town that has lost people and keeps its ground) every square
+  holds fewer people, not the edge alone.
+- The picture draws a square's houses from its residents over its `dens`,
+  where each head takes the room the rent clears, more as incomes rise. So
+  in 2050 the first city's squares, which the core has built whole (0.97 of
+  its outline built, 0.003 open), are drawn with paddocks between the houses.
+  No part of a town's square is ever farmed in the core (`land.rs` takes town
+  ground from every use of the land); what is farmed inside a town's outline
+  is the squares no town holds, 0.6 per cent of the first city's in 2050.
+
+**What it does.** From 1901, when a town takes a square, it sets what it would
+pay for the whole square (its rent a unit of room as the last month ended,
+times the room of a square built whole, less the park and the works' part)
+against what the plough would pay for it (`towns::plough_rent`: farm, pasture
+and wood bidding for it as open land). Where the town pays at least
+`outbid` (1) times as much, the square is built whole at once: its room is the
+ceiling of 1900 less its park, times its `dens`, and not 300 filling in. Where
+the plough pays more, the square joins as before and fills in with its age,
+so a town on cheap ground still spreads in ribbons along its roads. Which
+square a town takes is as before: the best free neighbour by the way to
+market, the road and the water. The town takes a square only when its people
+outgrow the room it has, so its squares are full before it spreads, and once
+it can take no more (its reach, or no ground left) its rent and its `dens`
+rise, as this page's rule already has it. The town's mean rent is used, not
+the cell's share of it by `1 - distance / fringe`: that share is the old
+rule's way of dividing the bill and prices the edge at nothing by
+construction, so no edge square would ever outbid the plough under it.
+
+**Parks.** A square built whole keeps `park` (a tenth) of its ground open: the
+last of its ground to fill, which the picture can take as the end of the
+square's order of building, the ground farthest from the market by way. The
+park takes room from the square, so its rent falls on the rest. Who pays for
+a park is a later piece, with the state's public works; the wet ground by a
+river is where the fuller stage of sites and the price of land may put more.
+
+**What the record says.** A record past 1900 that keeps the ground's layers
+(`record::GROUND_LAYERS`) now has four: `dens`, `value`, `fill` (the share of
+the square its buildings stand on, by room against a square built whole, in
+250ths) and `park` (the share kept open, in 250ths). A square with a park is
+one built whole; the works' part is in `works`, as before. A live game sends
+the same bytes (`LiveLayers::fill`, `park`). On the record the picture can
+draw a filled square as filled; it does not yet (it still draws houses from
+residents, `world::town_houses`).
+
+| | | |
+|---|---|---|
+| `fill` | true under the game's rules | a square taken after 1900 is built whole where the town outbids the plough |
+| `park` | 0.1 | of a square built whole, kept open |
+| `outbid` | 1 | the town fills where its bid is at least this many times the plough's |
+
+None was tuned.
+
+**What the islands showed.** Islands 1 to 8 under the game's rules with six
+families, to 2050, the rule off and on:
+
+```bash
+cargo run --release -p isostate-core --example ground_fill -- --seeds 1-8 --years 1900,1925,1950,2000,2050 --set ground.fill=false --out off.csv
+cargo run --release -p isostate-core --example ground_fill -- --seeds 1-8 --years 1900,1925,1950,2000,2050 --out on.csv
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set ground.fill=false,true --standing --out DIR
+```
+
+The outline of a town is its squares and the land no town holds that they
+close round (a hole in the town, or a square with five of its eight
+neighbours in it). Shares are of the outline, on the mean of the islands:
+
+| the first city, off / on | 1925 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|
+| squares | 106 / 86 | 115 / 103 | 109 / 100 | 101 / 104 |
+| built | 0.768 / 0.887 | 0.885 / 0.936 | 0.947 / 0.940 | 0.966 / 0.934 |
+| park | 0 / 0.016 | 0 / 0.024 | 0 / 0.023 | 0 / 0.017 |
+| town ground left open | 0.148 / 0.025 | 0.070 / 0.009 | 0.018 / 0.003 | 0.003 / 0.009 |
+| farmed (squares no town holds) | 0.062 / 0.052 | 0.028 / 0.013 | 0.014 / 0.010 | 0.006 / 0.019 |
+| its squares under half built | 0.112 / 0 | 0 / 0 | 0.004 / 0 | 0 / 0.006 |
+| `dens` at the middle and the edge | 1.25, 1.12 / 1.30, 1.14 | 1.69, 1.39 / 1.83, 1.44 | 1.92, 1.51 / 2.07, 1.63 | 2.21, 1.83 / 2.14, 1.69 |
+
+Every town, the town ground left open: 0.136 and 0.046 in 1925, 0.084 and
+0.018 in 1950, 0.018 and 0.011 in 2050. From the sweep: town squares on the
+island 526 and 434 in 1950, 490 and 414 in 2000, 467 and 463 in 2050; the
+burden 0.171 and 0.185 in 1950, 0.216 and 0.199 in 2050 (the largest town's
+0.173 and 0.191, 0.225 and 0.208); hands on the farms 0.135 and 0.140 in
+1950, 0.143 and 0.140 in 2050; people in 2050 1.152 and 1.168 million. The
+standing check: 12 of 12 inside. The three growth asks are met on both arms:
+1.22 and 1.22 per cent a year from 1900 to 1970, 2050 over 1970 1.13 and
+1.07, the land's share of hands falling 0.103 and 0.106. No run failed. A run
+to 2050 takes as long as before (69 to 79 s on both arms, sixteen at once).
+
+So the rule does its work while towns grow: the first city stands on a fifth
+fewer squares in 1925 and a tenth fewer in 1950, and its open town ground falls from 0.15 and
+0.07 of its outline to under 0.03. By 2050 the island's towns had filled in
+by age with the rule off too, and the two arms are alike; the first city's
+farmed holes are 0.019 of its outline with the rule on, against 0.006, on a
+city that took other ground.
+
+**What is not done.** The picture still draws a square's houses from its
+residents, so it shows paddocks inside squares the core has built whole
+(the next piece). The ground of a young square on cheap ground is still
+wholly the town's in the core while the picture draws fields on its open
+part; letting the plough work it until it is built on would make that
+honest. Who pays for a park waits for the state's public works. The fuller
+stage (sites priced off the ground, the price of land) will set a square's
+bid by its own place and not the town's mean, and may put parks on the wet
+ground by the rivers.
