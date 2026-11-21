@@ -1644,8 +1644,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
         }
     }
-    // what a town's lots past 1900 are built by: two more, in a game past 1900 that builds by them
-    for (dst, src) in [(&mut r.builds.dens, &l.dens), (&mut r.builds.value, &l.value)] {
+    // what a town's lots past 1900 are built by: four more, in a game past 1900 that builds by them
+    for (dst, src) in [(&mut r.builds.dens, &l.dens), (&mut r.builds.value, &l.value), (&mut r.builds.fill, &l.fill), (&mut r.builds.park, &l.park)] {
         if let Some(src) = src {
             if dst.is_empty() {
                 *dst = vec![0; ny * n];
