@@ -589,4 +589,8 @@ pub struct State {
     /// The treasury, the rate on pay, the laws of the schools and the pension,
     /// each town's pupils, teachers and pensioners, and each year of the purse.
     pub purse: crate::purse::PurseState,
+
+    // ---------------- who works (docs/rules/who-works.md; empty while `who_works.enabled` is off)
+    /// Each town's share of its people in work this year, and each year's count by age.
+    pub who_works: crate::who_works::WhoState,
 }

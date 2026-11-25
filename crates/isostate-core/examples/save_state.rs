@@ -508,6 +508,8 @@ macro_rules! state_parts {
                 ages: Default::default(),
                 // state (docs/rules/state.md): carried across as the roads are
                 purse: Default::default(),
+                // who works (docs/rules/who-works.md): carried across as the roads are
+                who_works: Default::default(),
             }
         }
 
@@ -638,6 +640,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.linked = carry.linked.clone();
     st.ages = carry.ages.clone();
     st.purse = carry.purse.clone();
+    st.who_works = carry.who_works.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

@@ -297,7 +297,7 @@ fn acting(st: &State) -> bool {
 }
 
 /// The share of the people of one five-year group `g` aged `from` or more.
-fn above(g: usize, from: f64) -> f64 {
+pub fn above(g: usize, from: f64) -> f64 {
     let lo = 5.0 * g as f64;
     if g + 1 == crate::ages::GROUPS {
         return if from <= lo { 1.0 } else { ((lo + 5.0 - from) / 5.0).clamp(0.0, 1.0) };

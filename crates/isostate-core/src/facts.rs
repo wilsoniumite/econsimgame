@@ -731,6 +731,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::university::facts(r) {
         b.num(name, kind, v);
     }
+    // who works (docs/rules/who-works.md): the share in work, all and by age, and the
+    // hands school, the university and the pension take out of work
+    for (name, kind, v) in crate::who_works::facts(r) {
+        b.num(name, kind, v);
+    }
     // tree (docs/rules/tree.md, "After 1900: electricity"): electricity and electrical goods
     for (name, kind, v) in crate::tree::facts(r) {
         b.num(name, kind, v);
