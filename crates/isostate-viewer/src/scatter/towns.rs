@@ -1034,6 +1034,7 @@ mod tests {
             builds: Default::default(),
             land: None,
             holds: Default::default(),
+            traffic: Default::default(),
         };
         for k in 0..ny {
             for c in (0..n).filter(|&c| land(c)) {

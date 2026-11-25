@@ -87,6 +87,7 @@ pub mod tech;
 pub mod towns;
 pub mod transition;
 pub mod transport;
+pub mod traffic;
 pub mod tree;
 pub mod university;
 pub mod util;

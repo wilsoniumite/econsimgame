@@ -268,7 +268,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "card" => Step::Card(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') && !arg.contains('+') => Step::Chip(arg.to_ascii_lowercase()),
-            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill")),
+            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, traffic, plain and pill")),
             "range" => Step::Range(crate::ranges::Range::parse(arg).ok_or_else(|| format!("{part}: range:year, range:30 or range:all"))?),
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
@@ -1136,8 +1136,8 @@ mod tests {
         assert_eq!(parse("key:Nope").err().unwrap(), "key:Nope: no key called Nope");
         assert_eq!(parse("key:Shift+Nope").err().unwrap(), "key:Shift+Nope: no key called Nope");
         assert_eq!(parse("wait:long").err().unwrap(), "wait:long: the seconds must be a number");
-        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill");
-        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill");
+        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, traffic, plain and pill");
+        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, traffic, plain and pill");
         assert_eq!(parse("range:ever").err().unwrap(), "range:ever: range:year, range:30 or range:all");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island, half:goods or half:work");

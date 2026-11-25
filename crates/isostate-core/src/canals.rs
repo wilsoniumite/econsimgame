@@ -569,20 +569,20 @@ fn boat_tree(g: &tr::Graph, from: usize) -> BoatTree {
 /// water. In a town's tree a cell's predecessor is the next cell toward the
 /// town, except where the load takes a boat: then it is the cell where the boat
 /// is left, which may be far off (`transport::dijkstra_boats`).
-struct Water<'a> {
+pub(crate) struct Water<'a> {
     st: &'a State,
     trees: BTreeMap<usize, BoatTree>,
 }
 
 impl<'a> Water<'a> {
-    fn new(st: &'a State) -> Water<'a> {
+    pub(crate) fn new(st: &'a State) -> Water<'a> {
         Water { st, trees: BTreeMap::new() }
     }
 
     /// Whether the step from `n` to its predecessor `p` in town `i`'s tree is
     /// by boat: the two are not neighbours, or the step does not cost what the
     /// ground between them costs.
-    fn afloat(&self, i: usize, p: usize, n: usize) -> bool {
+    pub(crate) fn afloat(&self, i: usize, p: usize, n: usize) -> bool {
         let g = &self.st.graph;
         // a boat is boarded and left only where there is a canal
         if g.boat[p].is_empty() || g.boat[n].is_empty() {
@@ -600,6 +600,23 @@ impl<'a> Water<'a> {
     fn length(&mut self, p: usize, n: usize) -> f64 {
         let g = &self.st.graph;
         self.trees.entry(p).or_insert_with(|| boat_tree(g, p)).get(&n).map_or(0.0, |x| x.0)
+    }
+
+    /// traffic (docs/rules/traffic.md): the cells of canal from `n` to `p`,
+    /// both ends in, in the order a boat passes them going from `n` to `p`.
+    pub(crate) fn route(&mut self, p: usize, n: usize) -> Vec<usize> {
+        let g = &self.st.graph;
+        let tree = self.trees.entry(p).or_insert_with(|| boat_tree(g, p));
+        let mut out = Vec::new();
+        let mut c = n;
+        while let Some(&(_, before)) = tree.get(&c) {
+            out.push(c);
+            if c == p || out.len() > 100_000 {
+                break;
+            }
+            c = before;
+        }
+        out
     }
 
     /// Add `weight` to every cell of canal between `p` and `n`.

@@ -1011,3 +1011,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   a book of acts the island meets by itself from 1900, with three chips in the Rules tab that override it.
   With the book at `none` the run is the run without it. [state.md](state.md), `state.enabled`,
   `state.book`.
+- **traffic** (watches only): each year the carting `sim::update_roads` lays on the cheapest
+  paths is laid again on the links between neighbouring squares, by cart, boat, rail and sea, and
+  kept in two layers of the record (`way_goods`, `way_mode`) and the live year; facts of freight by
+  mode, the mean haul and the roads by class; the viewer's Traffic view and a town's partners on
+  its card. [traffic.md](traffic.md), `traffic.enabled`.

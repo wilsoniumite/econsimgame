@@ -231,6 +231,9 @@ fn same(a: &Table, b: &Table, when: &str) {
         assert!(x == y, "{when}: {name} differs");
     }
     assert!(ra.owner == rb.owner, "{when}: who owns each square differs");
+    // traffic (the core's docs/rules/traffic.md): what each way carried, and the trade between towns
+    assert!(ra.traffic.goods == rb.traffic.goods && ra.traffic.mode == rb.traffic.mode, "{when}: what the ways carried differs");
+    assert!(ra.traffic.pairs == rb.traffic.pairs, "{when}: the trade between towns differs");
     // series by series first, so that a failure says which, when and by how much
     assert_eq!((&ra.series_names, ra.series_len), (&rb.series_names, rb.series_len), "{when}: which series there are");
     let mut differ = Vec::new();
@@ -1452,4 +1455,52 @@ fn made_here_draws_every_good_that_is_made_and_the_ground_is_held_year_by_year()
     let coal = overlay::ground_map(r, k, 0).unwrap();
     assert!(coal.share_left.is_some_and(|s| s > 0.0 && s < 1.0), "{:?}", coal.share_left);
     eprintln!("{drawn} goods made in {} drew their maps; {:.1}% of the coal is left", game.last_year(), coal.share_left.unwrap() * 100.0);
+}
+
+#[test]
+fn a_games_traffic_and_trade_between_towns_are_its_recordings() {
+    // The traffic record (the core's docs/rules/traffic.md): what a game's thread
+    // hands over each year (`LiveYear::traffic` and `pairs`) is what the same game's
+    // `run.bin` holds, the one as the bytes of the record and the other summed by the
+    // viewer from the books' tables (`traffic::pairs_of_books`). Island 7 under the
+    // game's rules, which keep the traffic and the books, ten years; it leans on no
+    // history, only on both being kept.
+    let mut game = isostate_core::save::Game::new(7, 6, 0);
+    let p = &game.sim.params;
+    assert!(p.traffic.enabled && p.accounts.enabled, "the case is played with the traffic and the books kept");
+    let mut board = Board::new(&game.sim);
+    for _ in 0..10 {
+        game.year().unwrap();
+        board.year(&game.sim);
+        game.turn();
+    }
+    let s = &game.sim;
+    let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+    let rec = replay::parse("test.bin", &bytes).expect("the game's record reads");
+    let (a, b) = (&board.r.traffic, &rec.traffic);
+    let k = (game.last_year() - s.content.start_year) as usize;
+    let (n, ny) = (board.r.n, board.r.ny);
+    assert_eq!((a.goods.len(), b.goods.len(), a.mode.len()), (ny * n * 4, ny * n * 4, ny * n));
+    assert!(a.goods[..(k + 1) * n * 4] == b.goods[..(k + 1) * n * 4] && a.mode[..(k + 1) * n] == b.mode[..(k + 1) * n], "the ways' traffic differs");
+    let busy = (0..n * 4).filter(|&l| a.goods[k * n * 4 + l] > 0).count();
+    assert!(busy > 1000, "only {busy} links carried anything in the tenth year");
+    for j in 0..=k {
+        assert!(!a.pairs[j].is_empty(), "year {j}: no trade between towns");
+        // (the weight to a part in a hundred thousand: a recording's goods' weights are its
+        // header's, written to five places, and the game's are the content's own)
+        assert_eq!(a.pairs[j].len(), b.pairs[j].len(), "year {j}: pairs of towns that traded");
+        for (x, y) in a.pairs[j].iter().zip(&b.pairs[j]) {
+            assert_eq!((x.from, x.to, x.value.to_bits(), x.lead), (y.from, y.to, y.value.to_bits(), y.lead), "year {j}: the trade between towns differs");
+            assert!((x.weight - y.weight).abs() <= 1e-5 * x.weight.abs().max(1.0), "year {j}: {x:?} against {y:?}");
+        }
+    }
+    // a town's card names five partners, the largest first
+    let nt = board.r.n_towns;
+    let t = (0..nt).max_by(|&x, &y| board.r.town_urban[k * nt + x].total_cmp(&board.r.town_urban[k * nt + y])).unwrap();
+    let ps = crate::traffic::partners(&board.r, k, t, crate::traffic::PARTNERS);
+    assert_eq!(ps.len(), crate::traffic::PARTNERS);
+    assert!(ps.windows(2).all(|w| w[0].worth() >= w[1].worth()));
+    let lines = crate::traffic::trade_lines(&board.r, k, t).unwrap();
+    eprintln!("{lines}");
+    assert!(lines.starts_with("Trades most with") && lines.lines().count() == 1 + crate::traffic::PARTNERS, "{lines}");
 }

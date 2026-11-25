@@ -67,6 +67,7 @@ fn strip() -> Replay {
         builds: Default::default(),
         land: None,
         holds: Default::default(),
+        traffic: Default::default(),
     }
 }
 
@@ -96,6 +97,12 @@ fn strip_years(ny: usize) -> Replay {
     r.holds.made_towns = 2;
     r.holds.made = (0..ny).flat_map(|_| [30.0, 0.0, 12.0, 5.0]).collect();
     r.workings = (0..ny).map(|_| vec![replay::Working { cell: 3, class: 8, opened: 1750, hands: 4.0, out: 5.0, heap: 20.0, surface: 0.01 }]).collect();
+    // traffic: carts from the third square to Ashby's, by cart, and from Brill's to the third, by rail
+    let mut goods = vec![0u8; 4 * 4];
+    goods[4] = isostate_core::traffic::goods_byte(3_000.0);
+    goods[2 * 4] = isostate_core::traffic::goods_byte(90_000.0);
+    r.traffic.goods = per_year(&goods);
+    r.traffic.mode = per_year(&vec![0, 0, isostate_core::traffic::RAIL, 0]);
     r
 }
 
@@ -211,10 +218,26 @@ fn neighbouring_markets_never_share_a_tint() {
 }
 
 #[test]
+fn the_traffic_view_says_what_went_how_and_a_square_its_busiest_way() {
+    let r = strip_years(3);
+    let sc = Scaling::reckon(&r, 2, Overlay::Traffic, 0, Range::Year);
+    let w = wash(&r, 2, Overlay::Traffic, 0, None, sc);
+    assert_eq!(w.legend.title, "What the ways carried in 1752");
+    assert!(w.legend.note.contains("97% by rail, 3% by cart") && w.legend.note.contains("near Ashby"), "{}", w.legend.note);
+    let s = said(&r, 2, 2, Overlay::Traffic, 0, None).unwrap();
+    assert!(s.starts_with("Traffic: the busiest way from this square, to the east, carried ") && s.contains("by rail in the year; the next, west, ") && s.ends_with("by cart."), "{s}");
+    // a record that keeps no traffic says so
+    let mut bare = strip_years(3);
+    bare.traffic = Default::default();
+    let w = wash(&bare, 2, Overlay::Traffic, 0, None, Scaling::reckon(&bare, 2, Overlay::Traffic, 0, Range::Year));
+    assert!(w.legend.note.starts_with("This record does not keep what the ways carry") && w.legend.range.is_none());
+}
+
+#[test]
 fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
     let mut ov = MapOverlay::new(None, 0);
     let mut seen = Vec::new();
-    for _ in 0..10 {
+    for _ in 0..11 {
         ov.step(false);
         seen.push(ov.kind);
     }
@@ -223,9 +246,9 @@ fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
     assert_eq!(seen, all);
     // backwards from the plain map is the last of them, and the pill remembers it
     ov.step(true);
-    assert_eq!(ov.kind, Some(Overlay::Deposits));
+    assert_eq!(ov.kind, Some(Overlay::Traffic));
     ov.set(None);
-    assert_eq!(ov.last, Overlay::Deposits);
+    assert_eq!(ov.last, Overlay::Traffic);
 }
 
 #[test]
