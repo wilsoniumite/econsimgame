@@ -109,12 +109,21 @@ impl Pattern {
         match self {
             Pattern::ByLaw => (0.42, 0.12),
             Pattern::Garden => (0.55, 0.16),
-            Pattern::Loop => (0.55, 0.26),
+            Pattern::Loop => (LOOP_CULS, 0.26),
             Pattern::Closes => (0.22, 0.26),
             Pattern::Blocks => (0.2, 0.13),
         }
     }
 }
+
+/// How far the garden suburb's streets along the way bow out and back, in a
+/// wave of 1.1 along it.
+const GARDEN_WAVE: f32 = 0.05;
+
+/// How far apart the culs-de-sac off a loop's first distributor are: a third
+/// of the way between its link roads (0.55), so that a link road stands where
+/// a cul-de-sac would, and the faces of a distributor end at both.
+const LOOP_CULS: f32 = 0.55 / 3.0;
 
 /// The land value (times its town's of 1900, in the year an estate was laid
 /// out) from which its frontages are thrown together into street walls: half
@@ -191,6 +200,10 @@ pub(crate) struct Laid {
     pub n: Vec2,
     /// a cul-de-sac or its stub, with a turning circle at its far end
     pub circle: bool,
+    /// a back street along the line where the ground of this street's way
+    /// meets that of this other way (step 4), laid where the two are near
+    /// enough equally far
+    pub between: Option<i32>,
 }
 
 impl Laid {
@@ -204,11 +217,30 @@ impl Laid {
     /// street between two cross streets, and within it, on cheap ground,
     /// pairs of plots (semis) or single plots (detached houses).
     pub fn row(&self, kind: u8, p: Vec2, index: i32) -> i32 {
+        if self.between.is_some() {
+            // a back street runs across its ways' faces: walls of four plots, or pairs, or single plots
+            let own = index.rem_euclid(1 << 20);
+            return match self.pattern {
+                _ if self.walls => own / 4,
+                Pattern::ByLaw | Pattern::Blocks => own / 4,
+                Pattern::Garden | Pattern::Loop => own / 2,
+                Pattern::Closes => own,
+            };
+        }
         let (u, v) = self.frame(p);
         let (along, out) = self.pattern.every();
         // the faces of a street along the way end at its cross streets, which stand at the
-        // middle of each `along`; those of a street out from it at the streets along it
-        let face = if kind == 6 { (u / along - 0.5).floor() as i32 } else { (v.abs() / out).floor() as i32 };
+        // middle of each `along`; those of a street out from it at the streets along it (the
+        // loop's distributors from 0.2 out, the garden suburb's in their wave)
+        let face = if kind == 6 {
+            (u / along - 0.5).floor() as i32
+        } else {
+            match self.pattern {
+                Pattern::Loop => ((v - 0.2) / out).floor() as i32,
+                Pattern::Garden => ((v - GARDEN_WAVE * (u * std::f32::consts::TAU / 1.1).sin()) / out).floor() as i32,
+                _ => (v / out).floor() as i32,
+            }
+        };
         let face = face.clamp(-4000, 4000) * 512;
         let own = index.rem_euclid(512);
         match self.pattern {
@@ -283,10 +315,12 @@ pub(super) fn streets(r: &Replay, estates: &HashMap<u32, Estate>, mains: &[(Vec2
         // which way each spot of the square is nearest, and how far along and out from it the
         // spots of each way lie: (way, side) -> least and most along, most out
         let mut reach: std::collections::BTreeMap<(i32, i8), (usize, f32, f32, f32)> = Default::default();
+        let mut owner: Vec<usize> = Vec::with_capacity((SAMPLES + 1) * (SAMPLES + 1));
         for sy in 0..=SAMPLES {
             for sx in 0..=SAMPLES {
                 let p = Vec2::new(cx as f32 + sx as f32 / SAMPLES as f32, cy as f32 + sy as f32 / SAMPLES as f32);
                 let Some(&i) = near.iter().min_by(|&&i, &&j| off_line(p, mains[i].0, mains[i].1).total_cmp(&off_line(p, mains[j].0, mains[j].1)).then(mains[i].2.cmp(&mains[j].2))) else { continue };
+                owner.push(i);
                 let (a, b, id, ..) = mains[i];
                 let u = (b - a).normalize_or_zero();
                 let n = Vec2::new(-u.y, u.x);
@@ -309,7 +343,7 @@ pub(super) fn streets(r: &Replay, estates: &HashMap<u32, Estate>, mains: &[(Vec2
             // a little past the last spot each way, so that the street reaches the square's edge
             let pad = 1.0 / SAMPLES as f32;
             let (u0, u1, v1) = (u0 - pad, u1 + pad, v1 + pad);
-            let laid = Laid { cell: c, pattern: e.pattern, walls: e.walls, year: e.year, o: a, u, n, circle: false };
+            let laid = Laid { cell: c, pattern: e.pattern, walls: e.walls, year: e.year, o: a, u, n, circle: false, between: None };
             let mut own = if side > 0 { 0 } else { 512 };
             let at = |along: f32, out: f32| a + u * along + n * out;
             // a street starts at the edge of the widest the way comes to be, so that a road
@@ -375,7 +409,7 @@ pub(super) fn streets(r: &Replay, estates: &HashMap<u32, Estate>, mains: &[(Vec2
                     }
                 }
                 Pattern::Garden => {
-                    along_way(0.16, 0.16, 0.018, 0.05, &mut push);
+                    along_way(0.16, 0.16, 0.018, GARDEN_WAVE, &mut push);
                     across(0.55, 0.275, edge, v1, 0.018, false, &mut push);
                 }
                 Pattern::Loop => {
@@ -386,7 +420,7 @@ pub(super) fn streets(r: &Replay, estates: &HashMap<u32, Estate>, mains: &[(Vec2
                     while 0.2 + 0.52 * m <= v1 {
                         let (d1, d2) = (0.2 + 0.52 * m, 0.46 + 0.52 * m);
                         push(at(u0, d1), at(u1, d1), 0.022, 6, false);
-                        across(0.18, 0.09, d1 + 0.011, d1 + 0.13, 0.016, true, &mut push);
+                        across(LOOP_CULS, LOOP_CULS * 0.5, d1 + 0.011, d1 + 0.13, 0.016, true, &mut push);
                         last = d1;
                         if d2 <= v1 {
                             push(at(u0, d2), at(u1, d2), 0.022, 6, false);
@@ -418,8 +452,63 @@ pub(super) fn streets(r: &Replay, estates: &HashMap<u32, Estate>, mains: &[(Vec2
                 }
             }
         }
+        // step 4: where the ground of two ways that share no meeting place comes together, a
+        // back street along the line between them closes the blocks of both. (Between two ways
+        // that meet at a junction nothing is laid on that line: it would be a spoke from every
+        // crossroads.) The line is the one through the spots between two samples of the square
+        // nearest the two, a straight street as long as they reach and a little more.
+        let meet = |i: usize, j: usize| {
+            let (a, b) = ((mains[i].0, mains[i].1), (mains[j].0, mains[j].1));
+            [a.0, a.1].iter().any(|p| p.distance(b.0) < 1e-3 || p.distance(b.1) < 1e-3)
+        };
+        let mut seams: std::collections::BTreeMap<(i32, i32), (usize, Vec<Vec2>)> = Default::default();
+        if owner.len() == (SAMPLES + 1) * (SAMPLES + 1) {
+            for sy in 0..=SAMPLES {
+                for sx in 0..=SAMPLES {
+                    let here = owner[sy * (SAMPLES + 1) + sx];
+                    for (nx, ny) in [(sx + 1, sy), (sx, sy + 1)] {
+                        if nx > SAMPLES || ny > SAMPLES {
+                            continue;
+                        }
+                        let there = owner[ny * (SAMPLES + 1) + nx];
+                        if here == there || meet(here, there) {
+                            continue;
+                        }
+                        let (lo, hi) = if mains[here].2 < mains[there].2 { (here, there) } else { (there, here) };
+                        let mid = Vec2::new(cx as f32 + (sx + nx) as f32 * 0.5 / SAMPLES as f32, cy as f32 + (sy + ny) as f32 * 0.5 / SAMPLES as f32);
+                        seams.entry((mains[lo].2, mains[hi].2)).or_insert((lo, Vec::new())).1.push(mid);
+                    }
+                }
+            }
+        }
+        for (q, (&(id, other), (i, points))) in seams.iter().enumerate() {
+            if points.len() < 3 {
+                continue;
+            }
+            // the line through them: their middle and the way they spread most
+            let mid = points.iter().copied().sum::<Vec2>() / points.len() as f32;
+            let (mut xx, mut xy, mut yy) = (0.0f32, 0.0f32, 0.0f32);
+            for p in points {
+                let d = *p - mid;
+                (xx, xy, yy) = (xx + d.x * d.x, xy + d.x * d.y, yy + d.y * d.y);
+            }
+            let d = Vec2::from_angle(0.5 * (2.0 * xy).atan2(xx - yy));
+            let (t0, t1) = points.iter().map(|p| (*p - mid).dot(d)).fold((f32::MAX, f32::MIN), |(lo, hi), t| (lo.min(t), hi.max(t)));
+            let pad = 1.0 / SAMPLES as f32;
+            let (a, b, ..) = mains[*i];
+            let u = (b - a).normalize_or_zero();
+            let laid = Laid { cell: c, pattern: e.pattern, walls: e.walls, year: e.year, o: a, u, n: Vec2::new(-u.y, u.x), circle: false, between: Some(other) };
+            out.push(Way { a: mid + d * (t0 - pad), b: mid + d * (t1 + pad), width: 0.016, id: id_of(c, slot_of(&reach, id), 1000 + q.min(23)), road: false, kind: 6, main: id, since: e.since, estate: Some(laid) });
+        }
     }
     (out, blocks)
+}
+
+/// A way's place among the ways a square is laid from, in the order of their numbers (`id_of`).
+fn slot_of(reach: &std::collections::BTreeMap<(i32, i8), (usize, f32, f32, f32)>, id: i32) -> usize {
+    let mut ids: Vec<i32> = reach.keys().map(|k| k.0).collect();
+    ids.dedup();
+    ids.iter().position(|&s| s == id).unwrap_or(0)
 }
 
 /// `ISOSTATE_LOTS=NAME`: say of the town of that name in year `k` how its

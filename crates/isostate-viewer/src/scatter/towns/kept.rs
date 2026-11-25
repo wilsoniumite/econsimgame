@@ -776,6 +776,11 @@ struct Laying<'a> {
     old: u32,
 }
 
+/// How near equally far from two ways a back street between their ground is
+/// laid (`Laying::on_seam`): it runs on while the line where they meet bends
+/// no more than this off its own.
+const SEAM: f32 = 0.06;
+
 /// How far from a cell's edge the ways are looked up by it
 /// (`Laying::mains_by_cell`): far enough to find the nearest way to every
 /// spot of an estate (`estates.rs`). (A lane, never further than `FAR_LANE`
@@ -850,6 +855,23 @@ impl Laying<'_> {
     /// moves no house.
     fn gives_way(&self, s: &Street, p: Vec2) -> bool {
         self.nearer_way(s.way.main, s.way.since, p)
+    }
+
+    /// Whether a spot lies on the line where the ground of ways `a` and `b`
+    /// (there by year `since`) meets: the two are within `SEAM` of equally
+    /// far, and no other way that stood then is nearer than both.
+    fn on_seam(&self, a: i32, b: i32, since: u32, p: Vec2) -> bool {
+        let (Some(&ia), Some(&ib)) = (self.main_at.get(&a), self.main_at.get(&b)) else { return false };
+        let off = |i: u32| {
+            let (a, b, _, _) = self.mains[i as usize];
+            off_line(p, a, b)
+        };
+        let (da, db) = (off(ia), off(ib));
+        if (da - db).abs() > SEAM {
+            return false;
+        }
+        let both = da.min(db);
+        !self.mains_by_cell.get(&(p.x.floor() as i32, p.y.floor() as i32)).is_some_and(|near| near.iter().any(|&j| j != ia && j != ib && self.mains[j as usize].3 <= since && off(j) < both - 1e-3))
     }
 
     /// Whether a way other than way `main`, there by year `since`, is nearer a spot.
@@ -927,7 +949,16 @@ impl Laying<'_> {
     /// keeps it out); else not laid (1).
     fn estate_step(&self, s: &Street, e: &estates::Laid, p: Vec2, at: Option<(u32, u16, bool)>) -> u8 {
         let Some((cell, _, built)) = at else { return 1 };
-        if cell != e.cell || !built || world::water_dist(self.g, p.x, p.y) < 0.02 || self.gives_way(s, p) {
+        if cell != e.cell || !built || world::water_dist(self.g, p.x, p.y) < 0.02 {
+            return 1;
+        }
+        // a back street between the ground of two ways, where the two are near enough equally
+        // far and no other way is nearer than either; any other street where its own way is nearest
+        let nearest = match e.between {
+            Some(other) => self.on_seam(s.way.main, other, s.way.since, p),
+            None => !self.gives_way(s, p),
+        };
+        if !nearest {
             return 1;
         }
         if (self.near_plot)(p.x, p.y) || self.in_square(p) {
@@ -2298,7 +2329,7 @@ mod tests {
                     assert_eq!((e.cell, e.pattern, w.since), (c, pattern, 1));
                     // along the way or out from it, square to it
                     let d = (w.b - w.a).normalize();
-                    assert!(w.kind == 6 && d.y.abs() < 0.35 || w.kind == 7 && (d.x.abs() < 1e-3 || e.circle), "{pattern:?}: {:?} {d}", w.kind);
+                    assert!(w.kind == 6 && (d.y.abs() < 0.35 || e.between.is_some()) || w.kind == 7 && (d.x.abs() < 1e-3 || e.circle), "{pattern:?}: {:?} {d}", w.kind);
                 }
                 let circles = mine.iter().filter(|w| w.estate.unwrap().circle).count();
                 assert_eq!(circles > 0, matches!(pattern, Pattern::Loop | Pattern::Closes), "{pattern:?}");
