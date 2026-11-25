@@ -118,10 +118,21 @@ year:
 - The weight leaving each land square as this rule counts it equals
   `update_roads`' own, to the bit (worst relative difference 0): the two
   walks are one walk.
-- The walk: 6.2 ms a year on the mean before it was quickened, 9.7 at the
-  longest, against about 250 ms a year of simulation to 2050 (2.5 per cent);
-  the two whole runs side by side took 75.7 s with it and 76.1 s without.
-  [After: see the build notes' last measure.]
+- The walk by itself, timed each year: 6.2 ms on the mean (9.7 at the
+  longest) on one night's machine, 8.5 ms (13.1) on a busier hour, which is
+  2.5 per cent of a year of the simulation to 2050 in both. It walks the same
+  trees as `update_roads` and costs about what that does.
+- The whole run with it and without, side by side on two threads, to 1900,
+  three times (`TRAFFIC_PROBE_UNTIMED=1`, which leaves the walk out of the run
+  that has the rule off): 34.7 s against 34.0, 32.7 against 32.1, 28.1
+  against 30.4. The difference is inside the machine's noise; the walk's own
+  2.5 per cent is the honest figure.
+- The viewer: the ribbons are laid in 2 to 10 ms (dev profile) when the year,
+  the scale or the zoom's step changes. With the view open at Fast on island
+  7 from 1840 (`ISOSTATE_FRAMES_PLAN`, 773 frames), the frames' work had a
+  middle of 13.6 ms, a 99th of 31.7 and a longest of 39.5, against 13.4, 24.2
+  and 29.5 on the plain map over the same years; three frames over 34 ms one
+  after another, 0.1 s in all. The view does not wait.
 
 ## Measured
 
@@ -134,15 +145,71 @@ level as the year's wear left them (`isostate-core sweep --seeds 1-8 --rules
 game --families 6`, facts `freight_*`, `haul_km_*`, `trade_haul_km_*`,
 `track_km_*`, `made_road_km_*`, `turnpike_km_*`).
 
-[the table]
+| | cart | boat | rail | sea | mean haul, km | the trade's, km | track km | made road km | turnpike km |
+|---|---|---|---|---|---|---|---|---|---|
+| 1750 | 88 [80 .. 100] | 47 [34 .. 69] | 0 | 18 [9 .. 25] | 20.4 | 99 | 3,904 | 1,238 | 835 |
+| 1800 | 129 [94 .. 158] | 277 [203 .. 350] | 0 | 6.6 | 20.4 | 102 | 4,404 | 1,352 | 1,144 |
+| 1850 | 126 [85 .. 215] | 82 [13 .. 479] | 1,163 [261 .. 1,451] | 0.4 | 22.7 | 98 | 4,545 | 1,719 | 2,160 |
+| 1900 | 260 [238 .. 290] | 19 [9 .. 45] | 4,183 [3,771 .. 4,559] | 0.3 | 17.8 [15.1 .. 22.3] | 86 | 3,546 | 2,886 | 3,368 |
+| 1950 | 1,099 [919 .. 1,370] | 63 | 12,659 [11,447 .. 15,057] | 0.6 | 15.7 | 88 | 2,688 | 2,735 | 4,711 |
+| 2000 | 1,574 [959 .. 2,108] | 66 | 15,974 [12,771 .. 19,258] | 0.2 | 15.9 | 88 | 2,062 | 1,680 | 4,526 |
+| 2050 | 1,970 [1,315 .. 2,791] | 83 [53 .. 153] | 19,693 [16,339 .. 24,266] | 0.1 | 16.4 [14.9 .. 18.3] | 90 | 1,911 | 1,325 [900 .. 2,282] | 4,420 [3,910 .. 5,206] |
+
+(`isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050`;
+the kilometres of road are those the ways' page measured with a probe of its
+own, to the kilometre, which says the two count the same squares.)
 
 Read:
 
-[reading]
+- **The canal's half-century, then the railway's.** In 1800 boats carry two
+  thirds of the weight-kilometres (277 million on the mean, against 129 by
+  cart); by 1850 the railway carries five sixths, and from 1900 nine tenths
+  and more, to 2050. Nothing changes after 1900 but the amount: freight grows
+  four and a half times from 1900 to 2050, and the cart's share stays near a
+  tenth, because there is no lorry.
+- **The haul is short and gets shorter.** Most of what is carted is a
+  district's produce going a few squares to its market, so the mean haul is
+  about 20 km to 1850 and 16 km after, as towns fill their districts. The
+  trade between towns goes 86 to 102 km on the mean, and hardly changes in
+  three centuries: the island is no bigger, and the railway made the far
+  towns cheaper without making them nearer.
+- **The sea is a coaster's trade of the first decades only**: 18 million
+  weight-kilometres in 1750, under one by 1850, as canals and railways open.
 
 ## Where the busiest ways are
 
-[island 7]
+Island 7 (`traffic_probe`, 1900 and 2050, `probe-7-2050*.txt` in the night's
+notes):
+
+- **The ten busiest links in 1900 and in 2050 are all railways**, every one
+  with a turnpike on both squares too: in 1900 the line through Dunheath (43,
+  65 to 44, 65), 29.9 million a year, then Glenwick's four (21.0 million),
+  Dunheath's westward pair, Melness's two and Granness's; in 2050 Dunheath's
+  six links (216 million at the most), Mallowbrook's, Garrigg's two and
+  Granness's. Nothing but a railway, and in Dunheath a canal beside it.
+- **The busiest by cart** are the turnpikes that run from a town's market
+  square to its station: in 1900 2.5 million a year at the most (Dunheath,
+  Glenwick, Melness, Garrigg); in 2050 15.8 million (Granness, Dunheath,
+  Melness, Mallowbrook). Every one of the fifty busiest links by cart, in both
+  years, runs between two turnpike squares.
+- **Agreement with the roads' wear.** Of the fifty squares `update_roads`
+  counts busiest, 49 (1900) and 50 (2050) are an end of one of the hundred
+  busiest links. Across all 5,800 land links that carry anything, a link's
+  weight ranks with the lesser road level of its two squares at 0.93
+  (Spearman), and with its squares' own traffic at 0.65 (1900) and 0.78
+  (2050): lower, since a square's count is every link through it.
+- **Where they do not agree: the railway wears the roads.** `update_roads`
+  wears a square with all the weight that passes it, by any mode, so a square
+  a railway runs through is worn by the train's freight and made a turnpike.
+  Of island 7's 1,743 turnpike squares in 1900, 1,322 carry less by cart than
+  the turnpike's threshold of 40,000 a year, 1,020 of them squares with a
+  railway; in 2050, 1,120 of 2,092 (814 with a railway). (A turnpike falls
+  back only after six years under a fifth of its threshold, so some of the
+  rest are kept by carting between 8,000 and 40,000.) The thousand with a
+  railway are turnpikes the trains' weight made or keeps: much of the "main
+  road everywhere and therefore nowhere" the ways' page found. The rule is the
+  port's and is not changed here; the traffic record is what a mend would
+  read (wear a road with its links' weight by cart alone).
 
 ## The viewer
 
