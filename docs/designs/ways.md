@@ -154,7 +154,7 @@ This part is built first, tonight, in the viewer alone. It reads only the record
 
 **What must not change.** Nothing on a square built by 1900, in any year (its streets, plots, houses and their years); every picture of 1900 or before. A lot that is not rebuilt keeps its building. A street once laid is never moved. Ways between squares are as today. A record made before the ground's layers is drawn as today.
 
-**What the record must newly carry.** Nothing: the year a square joined (two-year steps past 1900), whether it was filled (its `park`), its land value and `dens` are there since 21 November. The streets of step 4 of part 4 (a bypass) will need the record to say where a built way runs, which is stage 4's.
+**What the record must newly carry.** Nothing: the year a square joined (two-year steps past 1900), whether it was filled (its `park`), its land value and `dens` are there since 21 November. A bypass (part 4), a way that is not between two squares' meeting places, will need the record to say where it runs; that is stage 4's.
 
 **Its tests.** (a) On island 7, every plot of a square built by 1900 is the same, with its year, in 1900, 1950 and 2050, rule on and off (`ISOSTATE_STREETS=old` draws as today, for pictures side by side, as `ISOSTATE_LOOK=plain` does). (b) The same record drawn at 2050 cold and after drawing 1950 gives the same streets and plots. (c) On made-up ground, a filled square of each era between two parallel ways gets streets of its pattern, joined to both, and none over a park close or a river's line. (d) A plot standing in year k stands in k+1 unless `lots.rs` rebuilt it.
 
