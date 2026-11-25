@@ -470,6 +470,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         crate::roads::begin(st, C, P, year);
     }
     update_roads(st, C, P);
+    // traffic (docs/rules/traffic.md): the same carting once more, link by link; it only watches
+    crate::traffic::year(st, P, year, warm);
     crate::roads::yearly(st, C, P, year, warm);
     // crossings (docs/rules/crossings.md): the year's traffic over water, and the bridges it pays for
     crate::crossings::yearly(st, C, P, year, warm);

@@ -1232,6 +1232,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::longrun::facts(r, g) {
         b.num(name, kind, v);
     }
+    // traffic (docs/rules/traffic.md): freight by mode, the mean haul and the roads by class, at the marks
+    for (name, kind, v) in crate::traffic::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
