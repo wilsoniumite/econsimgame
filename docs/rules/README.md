@@ -962,6 +962,14 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   1960 on an island that has made 5.4 electrical goods a head, made of
   electrical goods and run on electricity, a twentieth better each year. No
   computing good stands behind it yet. [computing.md](computing.md), `tasks.computing`.
+- **tending** (off under the game's rules too, turned on by hand): the moving
+  line, the automatic machine, the robot and the line that runs itself take
+  tending tasks in the works, each found once the island finds its idea of the
+  tree (from 1908, 1952, 1978 and 2030) with draws of its own. On islands 1 to
+  8 it holds half of tending by 1986 and lifts the wage of 2050 over 1970's
+  from 1.07 to 1.13, but the hands it frees go to the carts and the fields and
+  the towns' share falls seven points, so it stands off. [tending.md](tending.md),
+  `tasks.tending`.
 - **woods**: managed woodland, an invention of the tree's stage 6 found from
   1895 and spreading as every invention does, grows the woods back three times
   as fast where it is known, so that the island no longer runs out of timber

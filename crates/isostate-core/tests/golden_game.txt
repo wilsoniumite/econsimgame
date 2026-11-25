@@ -249,6 +249,10 @@
 # Taken: traffic (docs/rules/traffic.md): run.bin gains way_goods and
 # way_mode, what each link between two squares carried each year and how; it
 # only watches, so the economy, the books and the news of both eras held
+# Taken: 1901-2050 run.bin alone: the content's list of ideas has four more,
+# those the machines that tend wait on (docs/rules/tending.md); the rule
+# stands off under the game's rules, so the economy, the books and the news
+# held in both eras
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
