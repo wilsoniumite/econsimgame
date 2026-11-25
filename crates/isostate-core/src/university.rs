@@ -561,6 +561,7 @@ pub fn take_hands(st: &mut State, P: &Params, supply: &mut [f64]) {
         return;
     }
     let T = supply.len();
+    let held_part = crate::who_works::students_held(st, P);
     let u = &mut st.purse.uni;
     u.staff.resize(T, 0.0);
     u.held.resize(T, 0.0);
@@ -584,6 +585,12 @@ pub fn take_hands(st: &mut State, P: &Params, supply: &mut [f64]) {
         };
         let most = (HANDS_MOST * supply[t]).max(0.0);
         let held = (s * rate).min(most);
+        // who works (docs/rules/who-works.md): the count by age has the students
+        // out of work already, so only the part still reckoned as the half is held
+        let held = match held_part {
+            Some(k) => (k * s * rate).min(most),
+            None => held,
+        };
         let staff = want.min(most - held).max(0.0);
         supply[t] -= held + staff;
         u.held[t] = held;

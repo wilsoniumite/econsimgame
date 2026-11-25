@@ -585,7 +585,10 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // history after 1900 founds a saw pit in 1960 in a town whose clerking
     // target office computing has already raised, and it means to hold it. And
     // with the state's purse off (docs/rules/state.md), which came after: its
-    // history after 1900 founds such a saw pit too (in 1971)
+    // history after 1900 founds such a saw pit too (in 1971). And with who works by
+    // age off (docs/rules/who-works.md), which came after: with the purse off it
+    // still counts the hands by age from 1901, and its history founds such a saw pit
+    // in 1971 too
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
@@ -595,6 +598,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
         P.city.gather = false;
         P.city.dear_room = false;
         P.state = Default::default();
+        P.who_works = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end
@@ -885,7 +889,10 @@ fn models_stand_behind_their_switch() {
 /// their ground island 7 has another history after 1900, in which one works
 /// (5581, January 2026) meant 0.093 of its judging and held none, against the
 /// second check below. That is a fault of the models' holding on that history,
-/// listed for mending, not of the ground.
+/// listed for mending, not of the ground. Played too with who works by age off
+/// (docs/rules/who-works.md, 25 November 2026), which came after: with it island
+/// 7's history has the same fault in January 2026 (works 7606 meant 0.093 and held
+/// none).
 #[test]
 fn models_off_is_off_and_held_from_the_first_month() {
     const TO: i64 = 2030;
@@ -897,6 +904,7 @@ fn models_off_is_off_and_held_from_the_first_month() {
         P.tasks.land = true;
         P.tasks.computing = true;
         P.tasks.models = on;
+        P.who_works = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 2021 and at the end

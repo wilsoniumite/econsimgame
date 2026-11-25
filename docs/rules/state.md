@@ -94,6 +94,12 @@ more; it reaches the working ages as its cohorts grow up.
 **Pensions.** Each person over the pension's age is paid a share of their town's wage each month, into the
 household purse of the town they live in. The pensioners are counted from the ages' rows.
 
+**What they cost in work** (since 25 November 2026, [who-works.md](who-works.md)). From 1901 a town's hands are
+counted by age (`who_works.enabled`): a child at school, a student at the university and a person the pension
+reaches are out of work. So the three programmes cost the island hands as well as money: on islands 1 to 16 in
+2050 school takes 31,400 hands, the university 16,700 and the pension 109,600, of 502,000 in work, and the rate
+on pay that balances the budget on the fewer workers is 0.164 where it was 0.142.
+
 **The book the game runs.** The acts the island meets by itself, the design's default book for these two
 programmes and no others. Each is checked at the end of every year from 1900, met by the island and not
 ordered by anybody, and is news in the January it comes into force:

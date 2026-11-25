@@ -1024,3 +1024,7 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   kept in two layers of the record (`way_goods`, `way_mode`) and the live year; facts of freight by
   mode, the mean haul and the roads by class; the viewer's Traffic view and a town's partners on
   its card. [traffic.md](traffic.md), `traffic.enabled`.
+- **who works** (acts only from 1901, coming in over ten years): a town's hands are counted from its
+  people by age, not half of them, so that children at school, the university's students and the old a
+  pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.
+  The island's share in work falls to 0.42 by 2050. [who-works.md](who-works.md), `who_works.enabled`.

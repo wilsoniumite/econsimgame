@@ -594,4 +594,8 @@ pub struct State {
     /// What each link between two squares carried last year, by which way,
     /// and each year's sums. The observer's alone.
     pub tf: crate::traffic::TrafficState,
+
+    // ---------------- who works (docs/rules/who-works.md; empty while `who_works.enabled` is off)
+    /// Each town's share of its people in work this year, and each year's count by age.
+    pub who_works: crate::who_works::WhoState,
 }
