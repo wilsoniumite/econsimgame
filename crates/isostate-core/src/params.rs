@@ -398,9 +398,9 @@ pub struct Params {
     /// Python; see docs/rules/who-works.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub who_works: crate::who_works::WhoWorksParams,
-    /// Works that ask for their plant over a builder's year, not a quarter of
-    /// it a month (not in the Python; off under both sets of rules, a cure on
-    /// trial; see docs/rules/pace.md).
+    /// Works that ask each month for a twelfth of the plant still to come, not
+    /// a quarter, so that it comes in over a year on the mean (not in the
+    /// Python; on under the game's rules from 1901; see docs/rules/pace.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub pace: crate::pace::PaceParams,
 }
@@ -704,8 +704,11 @@ pub fn game_params() -> Params {
     // who works (docs/rules/who-works.md): from 1901 the hands are counted by age,
     // so that school, the university and the pension take hands out of work
     P.who_works = crate::who_works::WhoWorksParams::game();
-    // pace (docs/rules/pace.md): left off, a cure on trial for the timber-and-brick
-    // cycle (docs/probes/tr-timber.md); `--set pace.enabled=true` tries it
+    // pace (docs/rules/pace.md): from 1901 a works asks each month for a twelfth of
+    // the plant still to come, not a quarter, so that it comes in over a year on the
+    // mean; the cure of the timber-and-brick cycle (docs/probes/tr-timber.md), on
+    // since its check
+    P.pace = crate::pace::PaceParams::on();
     P
 }
 

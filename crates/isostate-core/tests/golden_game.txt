@@ -263,10 +263,15 @@
 # second era; run.bin moves with it, with the traffic record's two layers
 # (way_goods, way_mode) and the four tending ideas in the content's list
 # (tasks.tending stands off); 1750-1900 held
+# Taken: 1901-2050 all four: pace (docs/rules/pace.md) switched on under the
+# game's rules after its check (night/g-timber-check): from 1901 a works asks
+# each month for a twelfth of the plant still to come, not a quarter, so it
+# comes in over a year on the mean and the timber-and-brick cycle is damped;
+# 1750-1900 held, since the rule acts from 1901
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x2f6d88876f1de4d8
-1901-2050 books    0xb3f1368510121418
-1901-2050 news     0x7f84c447b382fb6e
-1901-2050 run.bin  0xc84551beff51707f
+1901-2050 economy  0x2ea077e11528a4b7
+1901-2050 books    0x63ba1063cc3ebefc
+1901-2050 news     0xd44a5faf6b6e6e87
+1901-2050 run.bin  0x037ccbc96e49fc8c
