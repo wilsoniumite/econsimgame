@@ -458,6 +458,12 @@ impl LiveCursor {
     pub fn new(C: &Content) -> LiveCursor {
         LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new() }
     }
+
+    /// How many works, towns and items of news have been sent, for a viewer
+    /// that is to forget what came after (an edit taken back by hand).
+    pub fn sent(&self) -> (usize, usize, usize) {
+        (self.firms, self.towns, self.events)
+    }
 }
 
 /// The year just simulated, and what changed since the previous call. Call once
