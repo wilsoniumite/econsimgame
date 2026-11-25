@@ -2157,6 +2157,162 @@ mod tests {
         }
     }
 
+    /// The made-up town moved on past 1900 as `past_1900` moves it, in the
+    /// second layout of the town bytes that a record past 1900 keeps, with its
+    /// newest square (north of the market place, town ground from the fifth
+    /// year, 1902) joined in 1901 and filled whole with a park from then: an
+    /// estate (`estates.rs`). The rest keep the ground they had by 1900.
+    fn with_an_estate() -> (Replay, u32) {
+        let mut r = past_1900(|_| 1.0, |k| if k < 4 { 1.0 } else { 2.0 });
+        let n = r.n;
+        let node = r.header.towns[0].node;
+        let estate = node - r.w;
+        r.header.meta.town_bytes = 2;
+        r.builds.fill = vec![0; r.ny * n];
+        r.builds.park = vec![0; r.ny * n];
+        for k in 0..r.ny {
+            for c in 0..n {
+                let o = k * n + c;
+                if r.built[o] > 0 {
+                    // (the same year to a year, in steps of two, and the same people in sixteens)
+                    let year = replay::BUILT_YEAR0 + r.built[o] as i32;
+                    r.built[o] = ((year - replay::BUILT_YEAR0) / 2) as u8;
+                    r.res[o] = (r.res[o] as f32 / 2.0).round() as u8;
+                }
+            }
+            if r.built[k * n + estate] > 0 {
+                r.built[k * n + estate] = ((1901 - replay::BUILT_YEAR0) / 2) as u8;
+                (r.builds.fill[k * n + estate], r.builds.park[k * n + estate]) = (225, 25);
+            }
+        }
+        assert_eq!(r.joined(r.ny - 1, estate), Some(1901));
+        (r, estate as u32)
+    }
+
+    /// A layout of the estate's record with the estates (`streets`) or without them.
+    fn with_streets(r: &Replay, g: &Ground, k: usize, streets: bool) -> Layout {
+        estates::OLD_IN_TEST.with(|o| o.set(Some(!streets)));
+        let l = laid(r, g, k, &|_, _| false);
+        estates::OLD_IN_TEST.with(|o| o.set(None));
+        l
+    }
+
+    /// Nothing built by 1900 changes when the estates are laid out: every
+    /// house standing on ground that was town ground by 1900 stands where it
+    /// stood, of the year it was, and is the same house, in 1900 and after,
+    /// with the estates' streets or without them; and 1900 itself is laid
+    /// out the same to the last house.
+    #[test]
+    fn the_ground_built_by_1900_is_the_same_with_the_estates_or_without() {
+        let (r, estate) = with_an_estate();
+        let g = world::build_ground(&r);
+        let old = |l: &Layout| -> std::collections::BTreeMap<((i32, u8), i32), (u32, [u32; 2], i32, What)> {
+            l.standing.iter().zip(&l.whats).filter(|(s, _)| s.lot.cell != estate && s.year <= lots::FROM).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), (s.lot.cell, [s.lot.pl.p.x.to_bits(), s.lot.pl.p.y.to_bits()], s.year, *w))).collect()
+        };
+        for k in [2, 4, 6] {
+            let (with, without) = (with_streets(&r, &g, k, true), with_streets(&r, &g, k, false));
+            let (a, b) = (old(&with), old(&without));
+            assert!(a.len() > 80, "year {k}: {} houses of 1900", a.len());
+            assert_eq!(a, b, "year {k}");
+            assert_eq!(with.estates.is_empty(), k < 4, "year {k}: {:?}", with.estates);
+        }
+        let (with, without) = (with_streets(&r, &g, 2, true), with_streets(&r, &g, 2, false));
+        let all = |l: &Layout| l.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), s.year)).collect::<Vec<_>>();
+        assert_eq!(all(&with), all(&without));
+        assert_eq!(with.lanes, without.lanes);
+    }
+
+    /// An estate has streets of its own, of the pattern of its year, laid on
+    /// its own square's built-up ground and never over its park; its plots
+    /// front them and are all built the year it was laid out; and once laid,
+    /// its streets and houses stand as they were in every later year, however
+    /// the years are laid out.
+    #[test]
+    fn an_estate_has_streets_of_its_own_and_keeps_them() {
+        let (r, estate) = with_an_estate();
+        let g = world::build_ground(&r);
+        let first = with_streets(&r, &g, 4, true);
+        let e = first.estates[&estate];
+        assert_eq!((e.year, e.pattern, e.walls), (1902, estates::Pattern::ByLaw, true), "{e:?}");
+        // its streets: drawn, on its square's ground (its parcels, which keep the field
+        // system's lines and not the map's) but for the half step they reach past their last,
+        // and none over its park
+        let land = world::year_land(&r, &g, 4);
+        let mut closes = world::CloseLookup::new(&g);
+        let (mut points, mut outside) = (0, 0);
+        for ((line, _), of) in first.lanes.iter().zip(&first.lane_of).filter(|(_, of)| of.estate.is_some()) {
+            assert_eq!(of.estate, Some((estates::Pattern::ByLaw, 1902)));
+            for (i, &p) in line.iter().enumerate() {
+                let (parcel, sub) = closes.at(p.x, p.y);
+                let end = i == 0 || i + 1 == line.len();
+                points += 1;
+                outside += (g.land.wcell[parcel as usize] != estate && !end) as usize;
+                assert!(!land.town.park_at(parcel, sub) || end, "a street over the park at {p}");
+            }
+        }
+        assert!(points > 60 && outside == 0, "{points} points of street, {outside} off the square's ground");
+        // its plots: many, all of 1902, each fronting an estate street
+        let plots: Vec<&Stood> = first.standing.iter().filter(|s| s.lot.estate.is_some()).collect();
+        assert!(plots.len() > 40, "{} plots on the estate", plots.len());
+        assert!(plots.iter().all(|s| s.year == 1902 && s.lot.cell == estate && matches!(s.lot.kind, 6 | 7)));
+        // the same in the years after, laid out in any order
+        let key = |l: &Layout| -> (Vec<(Vec<[u32; 2]>, u32)>, Vec<(((i32, u8), i32), i32)>) {
+            let lanes = l.lanes.iter().zip(&l.lane_of).filter(|(_, of)| of.estate.is_some()).map(|((line, w), _)| (line.iter().map(|p| [p.x.to_bits(), p.y.to_bits()]).collect(), w.to_bits())).collect();
+            let mut plots: Vec<_> = l.standing.iter().filter(|s| s.lot.estate.is_some()).map(|s| ((s.lot.pl.run, s.lot.pl.index), s.year)).collect();
+            plots.sort();
+            (lanes, plots)
+        };
+        let was = key(&first);
+        for k in [6, 5, 4] {
+            assert_eq!(key(&with_streets(&r, &g, k, true)), was, "year {k}");
+        }
+        let g = world::build_ground(&r);
+        assert_eq!(key(&with_streets(&r, &g, 6, true)), was, "year 6 on new ground");
+    }
+
+    /// The patterns by year and land value, and the streets of each between
+    /// two parallel ways: laid from each way in its own frame, along it and
+    /// out from it, with their turning circles where they are culs-de-sac.
+    #[test]
+    fn each_era_lays_its_own_pattern_from_each_way() {
+        use estates::Pattern;
+        assert_eq!(Pattern::of(1905, 0.6), Pattern::ByLaw);
+        assert_eq!(Pattern::of(1930, 1.3), Pattern::Garden);
+        assert_eq!(Pattern::of(1960, 2.4), Pattern::Loop);
+        assert_eq!(Pattern::of(1980, 1.5), Pattern::Closes);
+        assert_eq!(Pattern::of(1925, lots::BLOCK_VALUE), Pattern::Blocks);
+        let r = made_up(true);
+        let c = (5 * r.w + 8) as u32;
+        // two ways along the map's rows, one through the square's middle and one beside it
+        let mains = [(Vec2::new(7.5, 5.5), Vec2::new(9.5, 5.5), 100, 0), (Vec2::new(7.5, 6.3), Vec2::new(9.5, 6.3), 200, 0)];
+        for (year, value) in [(1905, 0.6), (1930, 1.3), (1960, 2.4), (1980, 1.5), (1925, 3.5)] {
+            let pattern = Pattern::of(year, value);
+            let mut one: HashMap<u32, estates::Estate> = HashMap::default();
+            one.insert(c, estates::Estate { since: 1, year, pattern, value, walls: value >= estates::WALLS });
+            let (streets, blocks) = estates::streets(&r, &one, &mains);
+            for main in [100, 200] {
+                let mine: Vec<&Way> = streets.iter().filter(|w| w.main == main).collect();
+                assert!(!mine.is_empty(), "{pattern:?}: no street from way {main}");
+                for w in &mine {
+                    let e = w.estate.unwrap();
+                    assert_eq!((e.cell, e.pattern, w.since), (c, pattern, 1));
+                    // along the way or out from it, square to it
+                    let d = (w.b - w.a).normalize();
+                    assert!(w.kind == 6 && d.y.abs() < 0.35 || w.kind == 7 && (d.x.abs() < 1e-3 || e.circle), "{pattern:?}: {:?} {d}", w.kind);
+                }
+                let circles = mine.iter().filter(|w| w.estate.unwrap().circle).count();
+                assert_eq!(circles > 0, matches!(pattern, Pattern::Loop | Pattern::Closes), "{pattern:?}");
+            }
+            assert_eq!(!blocks.is_empty(), pattern == Pattern::Blocks, "{pattern:?}");
+            // every street's number its own
+            let mut ids: Vec<i32> = streets.iter().map(|w| w.id).chain(blocks.iter().map(|b| b.id)).collect();
+            ids.sort();
+            let all = ids.len();
+            ids.dedup();
+            assert_eq!(ids.len(), all, "{pattern:?}");
+        }
+    }
+
     #[test]
     fn the_layout_is_the_same_however_it_is_come_by() {
         let r = made_up(true);
