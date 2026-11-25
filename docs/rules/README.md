@@ -1019,3 +1019,7 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   a book of acts the island meets by itself from 1900, with three chips in the Rules tab that override it.
   With the book at `none` the run is the run without it. [state.md](state.md), `state.enabled`,
   `state.book`.
+- **who works** (acts only from 1901, coming in over ten years): a town's hands are counted from its
+  people by age, not half of them, so that children at school, the university's students and the old a
+  pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.
+  The island's share in work falls to 0.42 by 2050. [who-works.md](who-works.md), `who_works.enabled`.

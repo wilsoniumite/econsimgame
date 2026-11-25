@@ -248,10 +248,10 @@ pub fn count(wp: &WhoWorksParams, row: &[f64; GROUPS], years: f64, students: f64
         } else if g == CHILDREN {
             c.at_school += schooled;
             c.school += wp.child * schooled;
-            (wp.child, n - schooled)
+            (wp.child, (n - schooled).max(0.0))
         } else if g < OLD.start {
             c.school += wp.working * schooled;
-            (wp.working, n - schooled)
+            (wp.working, (n - schooled).max(0.0))
         } else {
             (wp.old, n)
         };

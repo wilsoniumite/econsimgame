@@ -8,6 +8,11 @@
 //! rules since 20 November 2026 holds; a run without them draws nothing here.
 //! Their figures are a whole year's, written when the year closes, so in the
 //! months of a year still open the pyramid is the last year's.
+//!
+//! Beneath them, "Who works" (docs/rules/who-works.md): the share of the
+//! people in work, of all and of each age, from `work_share` and the four
+//! series by age, which are nought until the rule acts in 1901 and are drawn
+//! from there; a run without them draws nothing.
 
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
@@ -156,7 +161,66 @@ pub fn spawn(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets
             chart::spawn_lines(col, f, images, &c, &pct);
         }
         col.spawn(text(f, "Reckoned beneath the people the island plays: births are what its totals need once the deaths by age are counted (docs/rules/ages.md).", 12.5, MUTED));
+        // who works, by age (docs/rules/who-works.md), beside the people by age
+        spawn_work(col, f, images, r, k);
     });
+}
+
+/// The share of people in work, of all and of each age, year by year from the
+/// first year the rule acts (its series are nought before), or None in a run
+/// without it: all, under 15, 15 to 24, 25 to 64, 65 and over.
+pub fn work(r: &Replay) -> Option<[Vec<f32>; 5]> {
+    let all = replay::yearly(r, "work_share");
+    let first = all.iter().position(|v| v.is_finite() && *v > 0.0)?;
+    let cut = |v: Vec<f32>| -> Vec<f32> { v.into_iter().enumerate().map(|(y, x)| if y < first { f32::NAN } else { x }).collect() };
+    Some([cut(all), cut(replay::yearly(r, "work_under15")), cut(replay::yearly(r, "work_15_24")), cut(replay::yearly(r, "work_25_64")), cut(replay::yearly(r, "work_over64"))])
+}
+
+/// The five lines' words and colours: all in ink, the young warm, the working
+/// ages cool (the youngest of them paler), the old green, as the pyramid has them.
+const WORK_LINES: [&str; 5] = ["all", "under 15", "15 to 24", "25 to 64", "over 64"];
+fn work_colour(i: usize) -> [u8; 3] {
+    match i {
+        0 => u8s(INK),
+        1 => colour(0),
+        2 => [120, 170, 214],
+        3 => colour(isostate_core::ages::WORKING.start),
+        _ => colour(GROUPS - 1),
+    }
+}
+
+/// What the print of a script says of who works at the year `k` on the clock
+/// (`who works: YEAR | all .. | under 15 .. | ...`), or None before the rule acts.
+pub fn said_work(r: &Replay, k: usize) -> Option<String> {
+    let w = work(r)?;
+    let v = |i: usize| w[i].get(k).copied().filter(|x| x.is_finite());
+    v(0)?;
+    let parts: Vec<String> = (0..5).map(|i| format!("{} {:.4}", WORK_LINES[i], v(i).unwrap_or(f32::NAN))).collect();
+    Some(format!("who works: {} | {}", r.y0 + k as i32, parts.join(" | ")))
+}
+
+/// The chart "Who works": the share in work by age, year by year, under the people by age.
+fn spawn_work(col: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize) {
+    let Some(w) = work(r) else { return };
+    col.spawn(Node { margin: UiRect::top(Val::Px(10.0)), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, padding: UiRect::right(Val::Px(4.0)), ..default() }).with_children(|row| {
+        row.spawn(text(f, "Who works", 15.0, INK));
+        row.spawn(text(f, "share in work, by age", 13.0, MUTED));
+    });
+    col.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(12.0), padding: UiRect::left(Val::Px(4.0)), ..default() }).with_children(|keys| {
+        for (i, words) in WORK_LINES.iter().enumerate() {
+            let c = work_colour(i);
+            let at = w[i].get(k).copied().filter(|x| x.is_finite());
+            let said = match at {
+                Some(v) => format!("{words} {}", pct(v)),
+                None => (*words).to_string(),
+            };
+            keys.spawn(text(f, &said, 13.0, Color::srgb_u8(c[0], c[1], c[2])));
+        }
+    });
+    let lines: Vec<(&[f32], [u8; 3])> = (0..5).map(|i| (&w[i][..], work_colour(i))).collect();
+    let c = Lines { width: CHART_W, height: 90.0, lines: &lines, mark: k, years: w[0].len(), first_year: r.y0, from_zero: true };
+    chart::spawn_lines(col, f, images, &c, &pct);
+    col.spawn(text(f, "From 1901 a town's hands are counted by age: children at school, students at the university and the old a pension reaches are out of work. To 1900 they are half its people (docs/rules/who-works.md).", 12.5, MUTED));
 }
 
 #[cfg(test)]
