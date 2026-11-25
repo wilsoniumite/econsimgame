@@ -387,6 +387,11 @@ pub struct Params {
     /// docs/rules/state.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub state: crate::purse::StateParams,
+    /// Works that ask for their plant over a builder's year, not a quarter of
+    /// it a month (not in the Python; off under both sets of rules, a cure on
+    /// trial; see docs/rules/pace.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pace: crate::pace::PaceParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -609,6 +614,7 @@ pub fn default_params() -> Params {
         city: crate::city::CityParams::default(),
         ages: crate::ages::AgesParams::default(),
         state: crate::purse::StateParams::default(),
+        pace: crate::pace::PaceParams::default(),
     }
 }
 
@@ -679,6 +685,8 @@ pub fn game_params() -> Params {
     // state (docs/rules/state.md): the treasury, a rate on pay, schools and
     // pensions, on the default book, which enacts nothing before 1900
     P.state = crate::purse::StateParams::game();
+    // pace (docs/rules/pace.md): left off, a cure on trial for the timber-and-brick
+    // cycle (docs/probes/tr-timber.md); `--set pace.enabled=true` tries it
     P
 }
 
