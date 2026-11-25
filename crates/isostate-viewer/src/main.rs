@@ -48,6 +48,7 @@ mod script;
 mod shots;
 mod terrain;
 mod town_ideas;
+mod traffic;
 mod trains;
 mod ui;
 mod work_charts;
@@ -1083,6 +1084,7 @@ fn main() {
         .add_plugins(town_ideas::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(overlay::plugin)
+        .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
@@ -2427,7 +2429,13 @@ fn describe(r: &Replay, what: Pick, k: usize, trades: &[Option<isostate_core::fa
             let town = &r.header.towns[t];
             let i = k * r.n_towns + t;
             let since = if town.founded < r.y0 { format!("a market town before {}", r.y0) } else { format!("founded {}", town.founded) };
-            format!("{}\n{}\n{} people in its market area, {} in the town, in {}.", town.name, since, fmt_pop(r.town_pop[i]), fmt_pop(r.town_urban[i]), year)
+            let mut s = format!("{}\n{}\n{} people in its market area, {} in the town, in {}.", town.name, since, fmt_pop(r.town_pop[i]), fmt_pop(r.town_urban[i]), year);
+            // traffic (the core's docs/rules/traffic.md): its five largest partners, from the books
+            if let Some(lines) = traffic::trade_lines(r, k, t) {
+                s.push_str("\n\n");
+                s.push_str(&lines);
+            }
+            s
         }
         Pick::Cell(c) => {
             let off = k * r.n + c;

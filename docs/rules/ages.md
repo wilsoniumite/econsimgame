@@ -165,6 +165,10 @@ of the seventeen groups in three colours (under 15, 15 to 64, over 64, with thei
 shares under 15 and over 64 year by year, both marked as reckoned (`crates/isostate-viewer/src/ages_chart.rs`).
 A town's card does not yet say its ages: the record keeps the island's groups, not each town's.
 
+Since 25 November 2026 the ages are read by a rule that plays: from 1901 a town's hands are counted from its
+rows, by age, school and pension (`who_works.enabled`, [who-works.md](who-works.md)). The rows themselves are
+reckoned as before; what is played is who of them works.
+
 ## What the full rule will change
 
 The full rule for ages, a later piece, makes births a town's own: a number of children a woman that falls as

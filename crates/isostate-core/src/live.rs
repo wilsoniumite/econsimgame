@@ -335,6 +335,22 @@ pub struct LiveYear {
     /// (docs/rules/owners.md; None while the rule is off), handed over as
     /// `tasks` is.
     pub owners: Option<crate::owners::OwnersYear>,
+    /// traffic (docs/rules/traffic.md): the year's `way_goods` and `way_mode`,
+    /// the same bytes as in `run.bin` (None while the rule is off).
+    pub traffic: Option<LiveTraffic>,
+    /// The year's trade between each pair of towns, from the books
+    /// (`traffic::year_pairs`; empty without them). A recorded run has the
+    /// same in its books' tables, which the viewer sums the same way.
+    pub pairs: Vec<crate::traffic::Pair>,
+}
+
+/// traffic: what each link carried in the year, as the record keeps it.
+#[derive(Clone, Debug, Serialize)]
+pub struct LiveTraffic {
+    /// `[cell * 4 + slot]`: `traffic::goods_byte` of the weight over the link.
+    pub goods: Vec<u8>,
+    /// `[cell]`: the way most of each link's weight went, two bits a slot.
+    pub mode: Vec<u8>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -560,5 +576,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         gauges: crate::gauges::gauge_year(st).filter(|y| y.year == year),
         tasks: st.tasks.years.last().filter(|y| y.year == year).cloned(),
         owners: st.owners.years.last().filter(|y| y.year == year).cloned(),
+        traffic: crate::traffic::layers(st, P).map(|(goods, mode)| LiveTraffic { goods, mode }),
+        pairs: crate::traffic::year_pairs(st, C, year),
     }
 }

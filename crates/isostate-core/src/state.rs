@@ -589,4 +589,13 @@ pub struct State {
     /// The treasury, the rate on pay, the laws of the schools and the pension,
     /// each town's pupils, teachers and pensioners, and each year of the purse.
     pub purse: crate::purse::PurseState,
+
+    // ---------------- traffic (docs/rules/traffic.md; empty while `traffic.enabled` is off)
+    /// What each link between two squares carried last year, by which way,
+    /// and each year's sums. The observer's alone.
+    pub tf: crate::traffic::TrafficState,
+
+    // ---------------- who works (docs/rules/who-works.md; empty while `who_works.enabled` is off)
+    /// Each town's share of its people in work this year, and each year's count by age.
+    pub who_works: crate::who_works::WhoState,
 }

@@ -319,6 +319,9 @@ pub struct Replay {
     /// how densely each square is built, its land value, and what each town
     /// knows. Empty where the run does not keep them.
     pub builds: Builds,
+    /// What each way carried and how, and each year's trade between pairs
+    /// of towns (`traffic.rs`); empty where the run does not keep them.
+    pub traffic: crate::traffic::Traffic,
 }
 
 /// `ISOSTATE_LOOK=plain`: draw a town after 1900 as it was drawn before the
@@ -743,7 +746,7 @@ pub fn load(path: &str) -> Result<Replay, String> {
 }
 
 /// Read a run from the bytes of its file; `path` is for the messages.
-fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
+pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     if buf.len() < 8 {
         return Err(format!("{path} is too short to be a run"));
     }
@@ -990,7 +993,33 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         universities: Vec<UniRecord>,
     }
     let unis = serde_json::from_slice::<UniOnly>(&buf[4..base]).ok().and_then(|u| u.university).map_or_else(Vec::new, |u| u.universities);
+    // traffic (the core's docs/rules/traffic.md): what each link carried and how, both or
+    // neither; and the books' trade between towns summed a pair at a time, from the
+    // books' first year (read from the header a second time, as the sectors are)
+    let mut traffic = crate::traffic::Traffic::default();
+    if has("way_goods") && has("way_mode") {
+        let (goods, mode) = (u8s("way_goods")?, u8s("way_mode")?);
+        if goods.len() == ny * w * h * 4 && mode.len() == ny * w * h {
+            traffic.goods = goods;
+            traffic.mode = mode;
+        }
+    }
+    if has("acct_trade_off") && has("acct_trade_key") && has("acct_trade_val") {
+        #[derive(Deserialize)]
+        struct BooksOnly {
+            accounts: Option<BooksStart>,
+        }
+        #[derive(Deserialize)]
+        struct BooksStart {
+            start_year: i32,
+        }
+        let start = serde_json::from_slice::<BooksOnly>(&buf[4..base]).ok().and_then(|b| b.accounts).map_or(header.meta.start_year, |b| b.start_year);
+        let weight: Vec<f64> = header.goods.iter().map(|g| g.weight.unwrap_or(0.0) as f64).collect();
+        let first = (start - header.meta.start_year).max(0) as usize;
+        traffic.pairs = crate::traffic::pairs_of_books(&i32s("acct_trade_off")?, &i32s("acct_trade_key")?, &f32s("acct_trade_val")?, &weight, first, ny);
+    }
     let mut r = Replay {
+        traffic,
         builds,
         w,
         h,

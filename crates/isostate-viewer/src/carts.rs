@@ -112,9 +112,12 @@ fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Opt
     // a cart asked for at a spot, for a picture: the first of the round nearest it, held still there
     let spots = pinned_spots();
     let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.0, at)).collect();
+    // traffic (the core's docs/rules/traffic.md): where the run keeps what each way carried,
+    // a round's carts follow the carting along it (`traffic::carts_by_weight`)
+    let by_traffic = r.traffic.kept().then(|| crate::traffic::carts_by_weight(&roads.0.iter().map(|p| crate::traffic::cart_weight_along(r, k, p)).collect::<Vec<f32>>()));
     for (pi, p) in roads.0.iter().enumerate() {
-        // one or two carts on each carter's round
-        let count = 1 + (world::hash2(pi as i32, 7, 43) < 0.35) as usize;
+        // one or two carts on each carter's round, or one to three by its carting
+        let count = by_traffic.as_ref().map_or(1 + (world::hash2(pi as i32, 7, 43) < 0.35) as usize, |c| c[pi]);
         for i in 0..count {
             let u = world::hash2(pi as i32, i as i32, 41);
             let mut s = p.len * (i as f32 + u) / count as f32;

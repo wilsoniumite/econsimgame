@@ -117,6 +117,7 @@ pub const SWITCHES: &[&str] = &[
     "owners.enabled",
     "tasks.enabled",
     "woods.enabled",
+    "who_works.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -138,7 +139,11 @@ pub const SWITCHES: &[&str] = &[
 /// night/g-batch-2, where they met the Rules tab; both came through, tasks
 /// tried a third time from 1905, after island 7 finds its first machine.
 /// The woods' rule (`woods.enabled`, docs/rules/woods.md) joined both on
-/// night/g-woods-managed and came through as they did.
+/// night/g-woods-managed and came through as they did. Who works by age
+/// (`who_works.enabled`, docs/rules/who-works.md) joined both on
+/// night/g-who-works: it acts only from 1901, so the trial to 1790 throws it
+/// where it does nothing; thrown on after 1900 it counts from the next year's
+/// end, and thrown off the hands are half the people from the next month.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -159,6 +164,7 @@ pub const SWITCHABLE: &[&str] = &[
     "owners.enabled",
     "tasks.enabled",
     "woods.enabled",
+    "who_works.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",

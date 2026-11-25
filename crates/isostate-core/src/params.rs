@@ -387,6 +387,17 @@ pub struct Params {
     /// docs/rules/state.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub state: crate::purse::StateParams,
+    // traffic (night/g-traffic-record): the field, its default and its game's line, at the end
+    /// The traffic record: what each way between two squares carried each
+    /// year, by cart, boat, rail and sea (not in the Python; it only watches;
+    /// see docs/rules/traffic.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub traffic: crate::traffic::TrafficParams,
+    /// Who works, by age: from 1901 school, the university and the pension take
+    /// hands out of work, where the port's hands are half the people (not in the
+    /// Python; see docs/rules/who-works.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub who_works: crate::who_works::WhoWorksParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -609,6 +620,9 @@ pub fn default_params() -> Params {
         city: crate::city::CityParams::default(),
         ages: crate::ages::AgesParams::default(),
         state: crate::purse::StateParams::default(),
+        // traffic (docs/rules/traffic.md): off
+        traffic: crate::traffic::TrafficParams::default(),
+        who_works: crate::who_works::WhoWorksParams::default(),
     }
 }
 
@@ -679,6 +693,11 @@ pub fn game_params() -> Params {
     // state (docs/rules/state.md): the treasury, a rate on pay, schools and
     // pensions, on the default book, which enacts nothing before 1900
     P.state = crate::purse::StateParams::game();
+    // traffic (docs/rules/traffic.md): watches only, what each way carries a year
+    P.traffic = crate::traffic::TrafficParams::game();
+    // who works (docs/rules/who-works.md): from 1901 the hands are counted by age,
+    // so that school, the university and the pension take hands out of work
+    P.who_works = crate::who_works::WhoWorksParams::game();
     P
 }
 

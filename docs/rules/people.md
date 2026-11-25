@@ -262,6 +262,15 @@ a total that leaves out incomes on their way, and goes negative when a
 month's incomes outgrow the stock; nothing near the game's numbers comes
 within sight of it.
 
+### Who works
+
+Under the port, and under these rules to 1900, a town's hands for hire are half its people
+(`participation`, 0.5), whatever their ages, and the townsfolk are counted against that half. Under the
+game's rules that no longer stands after 1900: from 1901 a town's hands are counted from its people by age,
+so that children at school, the university's students and the old a pension reaches are out of work, coming
+in over ten years (`who_works.enabled`, [who-works.md](who-works.md)). The island's share in work falls from
+the half in 1900 to 0.42 by 2050 on islands 1 to 16.
+
 ## Where it touches the rest
 
 - `people::growth` and `people::migration` each call in with one line when

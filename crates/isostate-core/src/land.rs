@@ -187,7 +187,8 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         if !st.town_active[i] {
             continue;
         }
-        let share = 0.04 + 0.8 * st.ind_labor[i] / (P.participation * st.pop[i]).max(1.0);
+        // (who works, docs/rules/who-works.md: from 1901 the town's people in work)
+        let share = 0.04 + 0.8 * st.ind_labor[i] / crate::who_works::hands(st, P, i).max(1.0);
         let U = st.pop[i] * share.clamp(0.06, 0.95);
         let n = 1usize.max((U / density).ceil() as usize);
         let node = st.town_node[i];

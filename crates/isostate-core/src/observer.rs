@@ -177,6 +177,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::ages::add_series(&mut reg, P, n_months);
     // state (docs/rules/state.md): the rate on pay, and what the treasury pays out
     crate::purse::add_series(&mut reg, P, n_months);
+    // who works (docs/rules/who-works.md): the share in work, all and by age, from 1901
+    crate::who_works::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
@@ -288,6 +290,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     crate::linked::record_month(st, C, P, &mut s, t, wage, &P_nat);
     // state (docs/rules/state.md): nothing while the purse is off
     crate::purse::record_month(st, P, &mut s, t, gdp);
+    // who works (docs/rules/who-works.md): nought until it acts
+    crate::who_works::record_month(st, P, &mut s, t);
     st.series = s;
 }
 

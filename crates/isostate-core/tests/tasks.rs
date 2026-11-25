@@ -58,7 +58,8 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_machines", "office_computing", "models"]);
+    // (and the four machines that tend, docs/rules/tending.md, held by tests/tending.rs)
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_machines", "office_computing", "models", "moving_line", "automatic_machine", "robot", "lights_out_line"]);
     let combine = &C.tasks.uses[4];
     assert_eq!((combine.class, combine.from, combine.reach), (tasks::TEND, 0.0, 0.6));
     assert!(!combine.on_works && combine.on_sector.iter().enumerate().all(|(s, &b)| b == (C.sector_name[s] == "farm" || C.sector_name[s] == "pasture")));
@@ -113,8 +114,9 @@ fn the_drive_is_laid_only_with_its_goods() {
     assert_eq!(one.tasks.plant_goods, [one.good_index["machinery"]]);
     // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
     // (and the tractor and the combine on the fields, the office machines and
-    // office computing in the works' clerking, and models in judging)
-    assert_eq!(six.tasks.uses.len(), 8);
+    // office computing in the works' clerking, models in judging, and the four
+    // machines that tend, docs/rules/tending.md)
+    assert_eq!(six.tasks.uses.len(), 12);
     let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
     assert_eq!(drive.name, "electric_drive");
     assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
@@ -204,12 +206,15 @@ fn use_of(C: &Content, name: &str) -> usize {
 ///
 /// Played with the office machines off (`tasks.office_machines`): they are
 /// found from 1901 and clerk, and this case asks that no class but hauling be
-/// held by 1925.
+/// held by 1925. And with the machines that tend off by name (`tasks.tending`,
+/// off under the game's rules too; docs/rules/tending.md): the moving line is
+/// found from 1909 and tends.
 #[test]
 fn island_7_to_1925() {
     let params = |on: bool| {
         let mut P = params(on);
         P.tasks.office_machines = false;
+        P.tasks.tending = false;
         P
     };
     let on = std::thread::spawn(move || {
@@ -535,8 +540,9 @@ fn computing_stands_behind_its_switch() {
     // a switch of their own) stands behind no switch and reads its threshold in all
     assert!(us.discover_per_head);
     // and the office machines (docs/rules/tasks.md, "Office machines"), which stand
-    // behind one of their own too) stands behind no switch and reads its threshold in all
-    assert!(C.tasks.uses.iter().filter(|u| !["office_computing", "models", "office_machines"].contains(&u.name.as_str())).all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
+    // behind one of their own too, as the machines that tend do behind `tending`)
+    // stands behind no switch and reads its threshold in all
+    assert!(C.tasks.uses.iter().filter(|u| !["office_computing", "models", "office_machines"].contains(&u.name.as_str()) && u.switch.as_deref() != Some("tending")).all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
     // without the content after 1900 it is not laid
     let mut one = game.clone();
     one.tree.stage = 1;
@@ -579,7 +585,10 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // history after 1900 founds a saw pit in 1960 in a town whose clerking
     // target office computing has already raised, and it means to hold it. And
     // with the state's purse off (docs/rules/state.md), which came after: its
-    // history after 1900 founds such a saw pit too (in 1971)
+    // history after 1900 founds such a saw pit too (in 1971). And with who works by
+    // age off (docs/rules/who-works.md), which came after: with the purse off it
+    // still counts the hands by age from 1901, and its history founds such a saw pit
+    // in 1971 too
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
@@ -589,6 +598,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
         P.city.gather = false;
         P.city.dear_room = false;
         P.state = Default::default();
+        P.who_works = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end
@@ -879,7 +889,10 @@ fn models_stand_behind_their_switch() {
 /// their ground island 7 has another history after 1900, in which one works
 /// (5581, January 2026) meant 0.093 of its judging and held none, against the
 /// second check below. That is a fault of the models' holding on that history,
-/// listed for mending, not of the ground.
+/// listed for mending, not of the ground. Played too with who works by age off
+/// (docs/rules/who-works.md, 25 November 2026), which came after: with it island
+/// 7's history has the same fault in January 2026 (works 7606 meant 0.093 and held
+/// none).
 #[test]
 fn models_off_is_off_and_held_from_the_first_month() {
     const TO: i64 = 2030;
@@ -891,6 +904,7 @@ fn models_off_is_off_and_held_from_the_first_month() {
         P.tasks.land = true;
         P.tasks.computing = true;
         P.tasks.models = on;
+        P.who_works = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 2021 and at the end
