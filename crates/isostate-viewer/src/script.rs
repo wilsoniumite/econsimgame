@@ -51,6 +51,9 @@
 //!     rule:NAME=WORD  in a sandbox, press the chip WORD on the Rules tab's row
 //!                     NAME (rule:money.growth=None), opening the tab and the
 //!                     rule first if it must: many rows share None and Double
+//!     back            take the last edit by hand back (back.rs), with the
+//!                     clock stopped; settle waits for the answer. For checks
+//!                     and pictures: on screen it is the sandbox's to offer
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -125,6 +128,8 @@ enum Step {
     Map(String),
     /// the Rules tab's chip: a name and the word on its chip
     Rule(String, String),
+    /// take the last edit by hand back
+    Back,
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -244,6 +249,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "wait" => Step::Wait(num("the seconds")?),
             "frames" => Step::Frames(num("the frames")? as u32),
             "settle" => Step::Settle,
+            "back" => Step::Back,
             "sample" => Step::Sample(num("the seconds")?, false),
             "run" => Step::Sample(num("the seconds")?, true),
             "until" => match num("how far through the year")? {
@@ -959,6 +965,17 @@ fn step(world: &mut World, sc: &mut Script) {
             }
             Step::Goto(year) => {
                 goto(world, year);
+                frame = true;
+            }
+            Step::Back => {
+                if stepping(world) || world.resource::<Game>().busy {
+                    println!("script: no take back: a month or an order is out (settle first)");
+                } else {
+                    // (the clock stops first: a month asked for after the take back would be played on the island taken back)
+                    world.resource_mut::<Timeline>().playing = false;
+                    world.resource::<Live>().send(crate::live::Cmd::TakeBack);
+                    world.resource_mut::<Game>().busy = true;
+                }
                 frame = true;
             }
             Step::Print(note) => print_state(world, &note),

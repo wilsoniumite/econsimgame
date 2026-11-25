@@ -631,6 +631,14 @@ pub struct Shown {
     last: Option<(bool, usize, f32)>,
 }
 
+impl Shown {
+    /// An edit taken back (back.rs): what is on screen was built from a run
+    /// that is gone, and the year on the clock is built again whole.
+    pub fn forget(&mut self) {
+        (self.whole, self.clock) = (None, None);
+    }
+}
+
 /// Build a year's scenery: the meshes `table` lists (the game's is `MESHES`).
 #[allow(clippy::too_many_arguments)]
 fn build_scenery(table: &[YearMesh], r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {

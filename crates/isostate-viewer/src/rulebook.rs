@@ -67,6 +67,12 @@ pub struct Known {
 }
 
 impl Known {
+    /// An edit taken back (back.rs): the rules are asked for again.
+    pub fn forget(&mut self) {
+        (self.now, self.waiting, self.out) = (None, false, false);
+        self.version += 1;
+    }
+
     /// Keep an answer (`game::pump`). The version is raised only when it differs.
     pub fn keep(&mut self, now: RulesNow) {
         self.out = false;

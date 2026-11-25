@@ -74,6 +74,12 @@ pub struct Pending {
 }
 
 impl Pending {
+    /// An edit taken back (back.rs): no edit is waiting for its news.
+    pub fn forget(&mut self) {
+        self.rows.clear();
+        (self.out, self.last) = (false, None);
+    }
+
     /// An edit's line, dated `when`, listed until its news is among the
     /// `in_news` items of the hand's news there are now and one more.
     pub fn add(&mut self, when: f32, line: &str, in_news: usize) {

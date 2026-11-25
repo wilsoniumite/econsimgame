@@ -1122,6 +1122,25 @@ pub fn firm_flag(r: &Replay, g: &Ground, slots: &Slots, f: usize, k: usize, lk: 
     Some(at)
 }
 
+impl Slots {
+    /// An edit taken back (back.rs): the works from `firms` on are forgotten,
+    /// and give up their ground and their plans. A works kept that was found
+    /// new ground in a year now forgotten (it outgrew its own, or a church came
+    /// to it) keeps the new ground: what it stood on before is not kept.
+    pub fn forget(&mut self, firms: usize) {
+        self.firm_pos.truncate(firms);
+        self.firm_cap.truncate(firms);
+        self.firm_water.truncate(firms);
+        self.firm_plot.truncate(firms);
+        self.firm_level.truncate(firms);
+        self.firm_rung.truncate(firms);
+        self.firm_room.truncate(firms);
+        if let Ok(mut plans) = self.plans.lock() {
+            plans.plans.retain(|&(f, _), _| f < firms);
+        }
+    }
+}
+
 /// Give every works its ground. A live game calls this each year as firms are
 /// founded and grow: only the cells where a works is new, or has outgrown
 /// the ground set aside for it, are laid out again, and in those every works

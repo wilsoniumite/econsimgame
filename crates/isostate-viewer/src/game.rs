@@ -72,6 +72,9 @@ pub struct Game {
     /// the welcome card is up: decisions wait behind it
     welcoming: bool,
     card_drawn: Option<(Option<u64>, u64, bool)>,
+    /// an edit taken back, as the thread answered it, for `back::taken_back` to
+    /// do what it asks (`pump` keeps it here and does nothing else with it)
+    pub(crate) taken_back: Option<Box<live::TakenBack>>,
 }
 
 impl Game {
@@ -83,6 +86,22 @@ impl Game {
 
     pub fn modal(&self) -> bool {
         self.welcoming || self.open.is_some() || self.end_open
+    }
+
+    /// An edit was taken back (back.rs): what was asked and answered about
+    /// the island as it stood after it is let go, the stakes are those that
+    /// stood then (`pegs`), the end of the game has not been reached, and the
+    /// months that came and wait to go into the run are handed over, for the
+    /// caller to keep those from before the copy.
+    pub(crate) fn forget(&mut self, pegs: &[usize]) -> Vec<Box<isostate_core::LiveMonth>> {
+        (self.site, self.site_stale, self.asked) = (None, true, None);
+        (self.busy, self.last_order, self.follow) = (false, None, None);
+        self.answered += 1;
+        self.version += 1;
+        self.pending = pegs.to_vec();
+        (self.ended, self.end_open) = (false, false);
+        (self.drawn, self.marks, self.card_drawn) = (None, None, None);
+        std::mem::take(&mut self.held)
     }
 
     /// For the scripted runs: which cards are up and how the last order went.
@@ -239,6 +258,26 @@ pub fn year_families(view: &mut FamilyView, reports: &[FamilyReport], year: i32)
     view.live = true;
 }
 
+/// An edit taken back (back.rs): every family as it stood then, with its
+/// worth over the `years` played then, and the player's as it has been told
+/// to stand (`player`).
+pub fn families_back(view: &mut FamilyView, reports: &[FamilyReport], player: Option<&FamilyReport>, year: i32, years: usize) {
+    let old = std::mem::take(&mut view.families);
+    view.families = reports
+        .iter()
+        .map(|rep| {
+            let mut h = old.get(rep.index).map(|r| r.history.clone()).unwrap_or_default();
+            h.truncate(years);
+            row_of(rep, h)
+        })
+        .collect();
+    view.year = year;
+    view.player = reports.iter().position(|r| r.player);
+    if let Some(rep) = player {
+        player_family(view, rep);
+    }
+}
+
 /// The player's family after an order, between years.
 pub fn player_family(view: &mut FamilyView, rep: &FamilyReport) {
     if let Some(row) = view.families.get_mut(rep.index) {
@@ -386,8 +425,9 @@ pub(crate) fn pump(
             },
         };
         // a year waits, and nothing after it is read, while the year before is still on its way
-        // into the run: each year's works are laid out on the island as it stood that year
-        if matches!(msg, Msg::Year(_)) && !in_run && data.arriving.is_some() {
+        // into the run: each year's works are laid out on the island as it stood that year. So does
+        // an edit taken back, which forgets what that year brings
+        if matches!(msg, Msg::Year(_) | Msg::TakenBack(_)) && !in_run && data.arriving.is_some() {
             game.next_year = Some(msg);
             break;
         }
@@ -533,6 +573,11 @@ pub(crate) fn pump(
                 if let Some(rules) = rules.as_mut() {
                     rules.keep(*now);
                 }
+            }
+            // an edit taken back: back::taken_back does what it asks, before anything after it is read
+            Msg::TakenBack(to) => {
+                game.taken_back = Some(to);
+                break;
             }
             Msg::Failed(e) => {
                 live.failed();
