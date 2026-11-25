@@ -119,6 +119,43 @@ fn look(st: &State, year: i64, top: usize) -> String {
     s.push_str(&format!("of the 50 busiest links by cart, {both3} run between two turnpike squares; of the 50 squares the roads count busiest, {touch} are an end of one of the 100 busiest links\n"));
     let by_mode: Vec<String> = (0..4).map(|m| format!("{} {}", traffic::MODES[m], links.iter().take(top).filter(|l| tf.mode[l.0 * 4 + l.1] == m as u8).count())).collect();
     s.push_str(&format!("modes among the top {top}: {}\n", by_mode.join(", ")));
+    // the busiest by cart alone
+    s.push_str(&format!("\nthe {top} busiest links by cart\n\nrank | from (x, y) | to (x, y) | weight a year | ways at the two ends | town\n---|---|---|---|---|---\n"));
+    for (i, l) in links.iter().filter(|l| tf.mode[l.0 * 4 + l.1] == traffic::CART).take(top).enumerate() {
+        let b = traffic::other_end(W, H, l.0, l.1).unwrap();
+        s.push_str(&format!("{} | {}, {} | {}, {} | {:.0} | {} / {} | {}\n", i + 1, l.0 % W, l.0 / W, b % W, b / W, l.2, ways_at(st, l.0), ways_at(st, b), town_near(st, l.0)));
+    }
+    // what wears the turnpikes: each turnpike square's links' weight by cart and by everything
+    // else; one worn by the railway's freight is one whose links by cart alone carry less than
+    // the turnpike's threshold (the weight `update_roads` wears a square with counts every mode)
+    let (mut pikes, mut by_rail, mut beside_rail) = (0usize, 0usize, 0usize);
+    let t3 = 40_000.0f32;
+    for c in 0..N {
+        if !st.world.land[c] || st.road[c] < 3 {
+            continue;
+        }
+        pikes += 1;
+        let mut cart = 0.0f32;
+        for k in 0..4 {
+            if tf.mode[c * 4 + k] == traffic::CART {
+                cart += tf.goods[c * 4 + k];
+            }
+            let (dx, dy) = traffic::SLOTS[k];
+            let (x, y) = ((c % W) as isize - dx, (c / W) as isize - dy);
+            if x >= 0 && y >= 0 && (x as usize) < W && (y as usize) < H {
+                let o = y as usize * W + x as usize;
+                if tf.mode[o * 4 + k] == traffic::CART {
+                    cart += tf.goods[o * 4 + k];
+                }
+            }
+        }
+        // a square's own traffic is about half the weight on its links (in and out)
+        if 0.5 * cart < t3 {
+            by_rail += 1;
+            beside_rail += (st.rail.get(c).copied().unwrap_or(0) > 0) as usize;
+        }
+    }
+    s.push_str(&format!("\nturnpike squares {pikes}: {by_rail} carry less than the turnpike's 40,000 a year by cart ({beside_rail} of them have a railway), so their wear is the other modes' weight\n"));
     s
 }
 

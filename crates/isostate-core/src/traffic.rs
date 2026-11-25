@@ -163,6 +163,17 @@ pub struct TrafficState {
     pub years: Vec<TrafficYear>,
 }
 
+/// The direction (`world::NEIGH8`'s place, the cost graph's edge) from square
+/// `p` to square `n`, if they are neighbours.
+fn direction(W: usize, p: usize, n: usize) -> Option<usize> {
+    let dy = (n / W) as isize - (p / W) as isize;
+    let dx = (n % W) as isize - (p % W) as isize;
+    if dx.abs() > 1 || dy.abs() > 1 || (dx == 0 && dy == 0) {
+        return None;
+    }
+    crate::world::NEIGH8.iter().position(|&d| d == (dy, dx))
+}
+
 /// The mode of the step from `p` to its neighbour `n` (direction `k` from `p`)
 /// in the cost graph the paths were found on.
 fn step_mode(st: &State, p: usize, k: usize, n: usize) -> u8 {
@@ -186,7 +197,7 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
     if !P.traffic.enabled || warm {
         return;
     }
-    let (N, W, H, T) = (st.N, st.world.W, st.world.H, st.T_max);
+    let (N, W, T) = (st.N, st.world.W, st.T_max);
     let mut by = vec![[0.0f64; 4]; N * 4];
     let mut through = vec![0.0f64; N];
     let mut y = TrafficYear { year, ..TrafficYear::default() };
@@ -209,7 +220,7 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
                     }
                 }
                 y.weight_squares[BOAT as usize] += f * squares;
-            } else if let Some(k) = (0..8).find(|&k| tr::neighbour(H, W, p, k) == Some(n)) {
+            } else if let Some(k) = direction(W, p, n) {
                 let m = step_mode(st, p, k, n);
                 if let Some((c, s)) = link(W, p, n) {
                     by[c * 4 + s][m as usize] += f;
@@ -408,6 +419,13 @@ mod tests {
         }
         assert_eq!(link(W, 0, 2), None);
         assert_eq!(link(W, 7, 7), None);
+        // and the cost graph's direction between two squares is the one its neighbour table gives
+        for a in 0..W * H {
+            for b in 0..W * H {
+                let k = (0..8).find(|&k| tr::neighbour(H, W, a, k) == Some(b));
+                assert_eq!(direction(W, a, b), k, "{a} to {b}");
+            }
+        }
     }
 
     #[test]
