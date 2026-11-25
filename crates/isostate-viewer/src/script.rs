@@ -51,6 +51,10 @@
 //!     rule:NAME=WORD  in a sandbox, press the chip WORD on the Rules tab's row
 //!                     NAME (rule:money.growth=None), opening the tab and the
 //!                     rule first if it must: many rows share None and Double
+//!     point:NAME      in a sandbox's Making panel (town_flow.rs), rest the
+//!                     pointer on the box whose name starts so, or on the
+//!                     ribbon GOOD>BOX (point:coal>households); point:none
+//!                     gives the pointer back to the mouse
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -125,6 +129,8 @@ enum Step {
     Map(String),
     /// the Rules tab's chip: a name and the word on its chip
     Rule(String, String),
+    /// MAKING: the Making panel's pointer, on a box or a ribbon by name (town_flow.rs)
+    Point(String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -283,6 +289,8 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
                 _ => return Err(format!("{part}: half:island, half:goods or half:work")),
             },
             "map" => Step::Map(arg.to_string()),
+            // MAKING: the Making panel's pointer (town_flow.rs)
+            "point" if !arg.is_empty() => Step::Point(arg.to_string()),
             "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
                 Some((name, word)) if !name.is_empty() && !word.is_empty() => Step::Rule(name.to_string(), word.to_string()),
                 _ => return Err(format!("{part}: rule takes a name and a chip's word, as rule:money.growth=None")),
@@ -1060,6 +1068,13 @@ fn step(world: &mut World, sc: &mut Script) {
                     let (shown, all) = crate::trees_showing(world);
                     println!("script:   trees: {shown} of {all} meshes showing");
                 }
+            }
+            // MAKING: the Making panel's pointer (town_flow.rs)
+            Step::Point(words) => {
+                if let Some(mut flow) = world.get_resource_mut::<crate::town_flow::Flow>() {
+                    flow.point = (!words.eq_ignore_ascii_case("none")).then(|| words.clone());
+                }
+                frame = true;
             }
             Step::Rule(name, word) => {
                 if !sc.begun {

@@ -51,6 +51,10 @@ pub enum Thing {
     /// A square of land, by its index (`y * W + x`).
     Cell(usize),
     Island,
+    /// MAKING (making.rs): a town's making in the last year its books
+    /// closed, by the town's slot, for the panel that draws it as a chart.
+    /// Asked for only while the panel is open.
+    Making(usize),
 }
 
 /// What the simulation knows of a thing: a title, the month it stands at, and
@@ -64,6 +68,8 @@ pub struct Told {
     /// A town's ideas, every one of the data's in one of three states
     /// (`town_ideas`); None for anything that is not a town.
     pub ideas: Option<Ideas>,
+    /// MAKING (making.rs): a town's making, for `Thing::Making` alone.
+    pub making: Option<crate::making::Making>,
 }
 
 /// A group of rows under a heading: each row a name and a figure in words.
@@ -97,17 +103,23 @@ pub fn tell(sim: &Sim, thing: Thing) -> Result<Told, String> {
 /// viewer's thread keeps one and asks with it; without one the card dates
 /// only what the state itself holds (where and when each idea was found).
 pub fn tell_with(sim: &Sim, thing: Thing, learnt: Option<&Learnt>) -> Result<Told, String> {
+    // MAKING (making.rs): a town's making is a chart, not rows
+    if let Thing::Making(t) = thing {
+        let m = crate::making::town_making(sim, t)?;
+        return Ok(Told { title: m.name.clone(), as_of: as_of(sim), groups: Vec::new(), ideas: None, making: Some(m) });
+    }
     let (title, groups) = match thing {
         Thing::Town(t) => town(sim, t)?,
         Thing::Works(f) => works(sim, f)?,
         Thing::Cell(c) => cell(sim, c)?,
         Thing::Island => island(sim),
+        Thing::Making(_) => unreachable!("told above"),
     };
     let ideas = match thing {
         Thing::Town(t) => Some(town_ideas(sim, t, learnt)?),
         _ => None,
     };
-    Ok(Told { title, as_of: as_of(sim), groups, ideas })
+    Ok(Told { title, as_of: as_of(sim), groups, ideas, making: None })
 }
 
 /// The month about to be played, from the months played so far.
@@ -118,13 +130,13 @@ pub fn as_of(sim: &Sim) -> String {
 // ---------------------------------------------------------------- figures in words
 
 /// A count or a large sum of money, in whole units with thousands marked.
-fn whole(x: f64) -> String {
+pub(crate) fn whole(x: f64) -> String {
     fmt_thousands_f0(x)
 }
 
 /// A price, a wage or a rent: whole units from a hundred up, two places from
 /// one, three below it, so that a price of grain near one reads 0.581.
-fn amount(x: f64) -> String {
+pub(crate) fn amount(x: f64) -> String {
     if x.abs() >= 100.0 {
         fmt_thousands_f0(x)
     } else if x.abs() >= 1.0 {
@@ -138,7 +150,7 @@ fn amount(x: f64) -> String {
 /// below, so that a millwright's plant of a third of a unit of machinery a
 /// month does not read as nothing (the tree's dearer goods come in small
 /// numbers).
-fn qty(x: f64) -> String {
+pub(crate) fn qty(x: f64) -> String {
     if x.abs() >= 10.0 {
         fmt_thousands_f0(x)
     } else if x == 0.0 {
@@ -164,7 +176,7 @@ fn months(n: usize) -> String {
 }
 
 /// A list of words as a sentence would put it: "a", "a and b", "a, b and c".
-fn and_list(items: &[String]) -> String {
+pub(crate) fn and_list(items: &[String]) -> String {
     match items.len() {
         0 => String::new(),
         1 => items[0].clone(),
@@ -172,7 +184,7 @@ fn and_list(items: &[String]) -> String {
     }
 }
 
-fn lower(s: &str) -> String {
+pub(crate) fn lower(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
