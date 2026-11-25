@@ -1011,3 +1011,7 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   a book of acts the island meets by itself from 1900, with three chips in the Rules tab that override it.
   With the book at `none` the run is the run without it. [state.md](state.md), `state.enabled`,
   `state.book`.
+- **pace** (off under both sets of rules: a cure on trial; acts only from 1901): a works asks
+  for its plant over a builder's year, a twelfth of what is to come each month and not a
+  quarter, which takes a quarter off timber's swing and nearly half off bricks' after 1900
+  ([tr-timber.md](../probes/tr-timber.md)). [pace.md](pace.md), `pace.enabled`.
