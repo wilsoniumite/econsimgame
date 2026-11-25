@@ -184,8 +184,9 @@ fn play(P: Params, C: Content, years: Vec<i64>, top: usize, on: bool) -> Run {
             if years.contains(&year) {
                 seen.push(look(st, year, top));
             }
-        } else {
-            // the walk timed on the run with the rule off: the same sizes, nothing it does is read
+        } else if std::env::var_os("TRAFFIC_PROBE_UNTIMED").is_none() {
+            // the walk timed on the run with the rule off: the same sizes, nothing it does is
+            // read (with TRAFFIC_PROBE_UNTIMED set it is not, and the two runs' seconds compare)
             let t = Instant::now();
             traffic::year(&mut sim.st, &Pon, year, false);
             walk_ms.push(t.elapsed().as_secs_f64() * 1e3);
