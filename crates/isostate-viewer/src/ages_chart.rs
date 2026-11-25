@@ -217,9 +217,13 @@ fn spawn_work(col: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Ass
             keys.spawn(text(f, &said, 13.0, Color::srgb_u8(c[0], c[1], c[2])));
         }
     });
-    let lines: Vec<(&[f32], [u8; 3])> = (0..5).map(|i| (&w[i][..], work_colour(i))).collect();
-    let c = Lines { width: CHART_W, height: 90.0, lines: &lines, mark: k, years: w[0].len(), first_year: r.y0, from_zero: true };
-    chart::spawn_lines(col, f, images, &c, &pct);
+    // drawn from the year before the rule's first, as the purse's chart is from 1900
+    let from = w[0].iter().position(|v| v.is_finite()).unwrap_or(0).saturating_sub(1);
+    if k >= from {
+        let lines: Vec<(&[f32], [u8; 3])> = (0..5).map(|i| (&w[i][from..], work_colour(i))).collect();
+        let c = Lines { width: CHART_W, height: 90.0, lines: &lines, mark: k - from, years: w[0].len() - from, first_year: r.y0 + from as i32, from_zero: true };
+        chart::spawn_lines(col, f, images, &c, &pct);
+    }
     col.spawn(text(f, "From 1901 a town's hands are counted by age: children at school, students at the university and the old a pension reaches are out of work. To 1900 they are half its people (docs/rules/who-works.md).", 12.5, MUTED));
 }
 

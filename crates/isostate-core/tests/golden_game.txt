@@ -250,10 +250,14 @@
 # those the machines that tend wait on (docs/rules/tending.md); the rule
 # stands off under the game's rules, so the economy, the books and the news
 # held in both eras
+# Taken: 1901-2050: who works by age (who_works.enabled,
+# docs/rules/who-works.md): from 1901 a town's hands are counted by age, so
+# school, the university and the pension take hands out of work; to 1900
+# nothing moves
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x7e1280e0984a7577
-1901-2050 books    0x56f5db4e3c158b18
-1901-2050 news     0x9706d5be7ce3fd07
-1901-2050 run.bin  0xdf609faa993acf8c
+1901-2050 economy  0x2f6d88876f1de4d8
+1901-2050 books    0xb3f1368510121418
+1901-2050 news     0x7f84c447b382fb6e
+1901-2050 run.bin  0xd06cb17392816cf4
