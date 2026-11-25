@@ -557,6 +557,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // ---------------- labour market: one wage per town clears supply and demand
     let mut supply: Vec<f64> = st.pop.iter().map(|&p| P.participation * p).collect();
+    // who works (docs/rules/who-works.md): from 1901 the people in work, counted by age
+    crate::who_works::supply(st, P, &mut supply);
     // carting (docs/rules/carting.md): the hands that carted last month's goods are not for hire
     crate::carting::take_carters(st, P, &mut supply);
     // mines (docs/rules/mines.md): nor are the hands sinking new workings

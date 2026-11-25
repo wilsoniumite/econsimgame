@@ -272,6 +272,10 @@ pub struct Record {
     /// ground: the `GROUND_LAYERS`, laid out as `layers` is (empty unless
     /// `ground_kept`).
     pub ground_layers: Vec<Vec<u8>>,
+    /// traffic (docs/rules/traffic.md): `way_goods`, a byte a link `[year][cell][4]`,
+    /// and `way_mode`, a byte a square `[year][cell]` (empty unless `traffic.enabled`).
+    pub way_goods: Vec<u8>,
+    pub way_mode: Vec<u8>,
 }
 
 /// Whether a record keeps the `GROUND_LAYERS`: one past 1900 of a run whose
@@ -315,6 +319,8 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         town_bytes: TownBytes::of(C.end_year),
         rent_scale: if TownBytes::of(C.end_year).second() { vec![1.0; n_years] } else { Vec::new() },
         ground_layers: if ground_kept(P, TownBytes::of(C.end_year)) { (0..GROUND_LAYERS.len()).map(|_| vec![0u8; n_years * N]).collect() } else { Vec::new() },
+        way_goods: if P.traffic.enabled { vec![0u8; n_years * N * 4] } else { Vec::new() },
+        way_mode: if P.traffic.enabled { vec![0u8; n_years * N] } else { Vec::new() },
     }
 }
 
@@ -438,6 +444,13 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
     if !rec.ground_layers.is_empty() {
         for (dst, src) in rec.ground_layers.iter_mut().zip(ground_layers(st, C, P, rec.town_bytes, C.start_year + k as i64).unwrap_or_default()) {
             dst[base..base + N].copy_from_slice(&src);
+        }
+    }
+    // traffic: what each link carried, and how
+    if !rec.way_goods.is_empty() {
+        if let Some((goods, mode)) = crate::traffic::layers(st, P) {
+            rec.way_goods[base * 4..(base + N) * 4].copy_from_slice(&goods);
+            rec.way_mode[base..base + N].copy_from_slice(&mode);
         }
     }
     for t in 0..T {
@@ -608,6 +621,11 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         // longrun: what each year's rent byte was taken over, in a record past 1900
         if !rec.rent_scale.is_empty() {
             arrays.push(f32_array("rent_scale", vec![n_years], &rec.rent_scale));
+        }
+        // traffic (docs/rules/traffic.md): two more, only in a run that keeps them
+        if !rec.way_goods.is_empty() {
+            arrays.push(u8_array("way_goods", vec![n_years, N, 4], rec.way_goods.clone()));
+            arrays.push(u8_array("way_mode", vec![n_years, N], rec.way_mode.clone()));
         }
     }
     let T = rec.T;

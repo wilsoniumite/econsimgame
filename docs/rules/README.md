@@ -962,6 +962,14 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   1960 on an island that has made 5.4 electrical goods a head, made of
   electrical goods and run on electricity, a twentieth better each year. No
   computing good stands behind it yet. [computing.md](computing.md), `tasks.computing`.
+- **tending** (off under the game's rules too, turned on by hand): the moving
+  line, the automatic machine, the robot and the line that runs itself take
+  tending tasks in the works, each found once the island finds its idea of the
+  tree (from 1908, 1952, 1978 and 2030) with draws of its own. On islands 1 to
+  8 it holds half of tending by 1986 and lifts the wage of 2050 over 1970's
+  from 1.07 to 1.13, but the hands it frees go to the carts and the fields and
+  the towns' share falls seven points, so it stands off. [tending.md](tending.md),
+  `tasks.tending`.
 - **woods**: managed woodland, an invention of the tree's stage 6 found from
   1895 and spreading as every invention does, grows the woods back three times
   as fast where it is known, so that the island no longer runs out of timber
@@ -1011,6 +1019,15 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   a book of acts the island meets by itself from 1900, with three chips in the Rules tab that override it.
   With the book at `none` the run is the run without it. [state.md](state.md), `state.enabled`,
   `state.book`.
+- **traffic** (watches only): each year the carting `sim::update_roads` lays on the cheapest
+  paths is laid again on the links between neighbouring squares, by cart, boat, rail and sea, and
+  kept in two layers of the record (`way_goods`, `way_mode`) and the live year; facts of freight by
+  mode, the mean haul and the roads by class; the viewer's Traffic view and a town's partners on
+  its card. [traffic.md](traffic.md), `traffic.enabled`.
+- **who works** (acts only from 1901, coming in over ten years): a town's hands are counted from its
+  people by age, not half of them, so that children at school, the university's students and the old a
+  pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.
+  The island's share in work falls to 0.42 by 2050. [who-works.md](who-works.md), `who_works.enabled`.
 - **pace** (off under both sets of rules: a cure on trial; acts only from 1901): a works asks
   for its plant over a builder's year, a twelfth of what is to come each month and not a
   quarter, which takes a quarter off timber's swing and nearly half off bricks' after 1900

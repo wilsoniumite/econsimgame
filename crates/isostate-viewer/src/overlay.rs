@@ -55,10 +55,12 @@ pub enum Overlay {
     Residents,
     /// what the ground holds: the deposits, the standing timber, the soil
     Deposits,
+    /// what each way between two squares carried, drawn as ribbons (`traffic.rs`)
+    Traffic,
 }
 
 impl Overlay {
-    pub const ALL: [Overlay; 9] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Made, Overlay::Wages, Overlay::Growth, Overlay::Residents, Overlay::Deposits];
+    pub const ALL: [Overlay; 10] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Made, Overlay::Wages, Overlay::Growth, Overlay::Residents, Overlay::Deposits, Overlay::Traffic];
 
     /// The word on its chip.
     fn chip(self) -> &'static str {
@@ -72,6 +74,7 @@ impl Overlay {
             Overlay::Growth => "Town growth",
             Overlay::Residents => "Residents",
             Overlay::Deposits => "Deposits",
+            Overlay::Traffic => "Traffic",
         }
     }
 
@@ -87,6 +90,7 @@ impl Overlay {
             Overlay::Growth => "growth",
             Overlay::Residents => "residents",
             Overlay::Deposits => "deposits",
+            Overlay::Traffic => "traffic",
         }
     }
 
@@ -110,7 +114,7 @@ impl Overlay {
     /// the view's nature sets it.
     fn spec(self) -> Spec {
         match self {
-            Overlay::Rent | Overlay::Residents | Overlay::Made => Spec { log: true, pinned: None },
+            Overlay::Rent | Overlay::Residents | Overlay::Made | Overlay::Traffic => Spec { log: true, pinned: None },
             Overlay::Reach | Overlay::Deposits => Spec { log: false, pinned: Some(0.0) },
             _ => Spec { log: false, pinned: None },
         }
@@ -227,7 +231,7 @@ pub fn complaint_among(word: &str, goods: &[replay::Good]) -> Option<String> {
 }
 
 /// The words a map view takes, for the messages that refuse one.
-pub const VIEWS_WORDS: &str = "use rent, areas, reach, price, price:GOOD, made, made:GOOD, wages, growth, residents, deposits, deposits:KIND or plain, each with +year, +30 or +all after it for its range if wanted";
+pub const VIEWS_WORDS: &str = "use rent, areas, reach, price, price:GOOD, made, made:GOOD, wages, growth, residents, deposits, deposits:KIND, traffic or plain, each with +year, +30 or +all after it for its range if wanted";
 
 /// Whether a word of a `--view` names an overlay (before the run is loaded).
 pub fn is_word(word: &str) -> bool {
@@ -284,11 +288,14 @@ pub struct MapOverlay {
     version: u64,
     card: Option<u64>,
     ends: EndsCache,
+    /// the scale the view was last painted on, where it colours by a number:
+    /// the traffic's ribbons are laid on it (`traffic.rs`)
+    pub scale: Option<Scale>,
 }
 
 impl MapOverlay {
     pub fn new(kind: Option<Overlay>, good: usize) -> MapOverlay {
-        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default() }
+        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None }
     }
 
     /// The view a `Choice` names, with its good, kind of ground and range.
@@ -337,7 +344,7 @@ impl MapOverlay {
 
     /// The overlay goes by market towns, so the map should name them all.
     pub fn names_towns(&self) -> bool {
-        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Made | Overlay::Wages | Overlay::Growth | Overlay::Residents))
+        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Made | Overlay::Wages | Overlay::Growth | Overlay::Residents | Overlay::Traffic))
     }
 
     /// The month whose prices or wages the map shows in place of the year's, if it shows one.
@@ -513,6 +520,7 @@ fn tick_words(kind: Overlay, v: f32) -> String {
             s.strip_suffix('.').map_or(s.to_string(), |w| w.to_string())
         }
         Overlay::Areas => String::new(),
+        Overlay::Traffic => amount(v),
     }
 }
 
@@ -786,6 +794,13 @@ fn sample(r: &Replay, k: usize, kind: Overlay, which: usize) -> Option<Vec<f32>>
         Overlay::Growth => lands.filter_map(|c| r.joined(k, c)).map(|y| y as f32).collect(),
         Overlay::Residents => lands.filter(|&c| r.joined(k, c).is_some()).map(|c| r.residents(k, c)).filter(|&v| v > 0.0).collect(),
         Overlay::Deposits => ground_map(r, k, which)?.cells.into_iter().filter(|&v| v > 0.0).collect(),
+        Overlay::Traffic => {
+            if !r.traffic.kept() || k >= r.filled.min(r.ny) {
+                return None;
+            }
+            let t = &r.traffic;
+            (0..r.n * 4).map(|l| t.weight(r.n, k, l / 4, l % 4)).filter(|&v| v > 0.0).collect()
+        }
     };
     (!v.is_empty()).then_some(v)
 }
@@ -1113,8 +1128,53 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             };
             Wash { cells, legend: legend(title, note, &kd.stops, &sc, Some("none")), soft: 0.5, lines: is_deposit }
         }
+        Overlay::Traffic => {
+            // the land as plain paper, so that the ribbons laid over it (`traffic.rs`) read
+            let title = format!("What the ways carried in {year}");
+            for c in lands {
+                put(c, rgb(TRAFFIC_PAPER));
+            }
+            if !r.traffic.kept() {
+                return Wash { cells, legend: none(title, "This record does not keep what the ways carry: the traffic is kept under the game's rules from 25 November 2026.".into()), soft: 0.5, lines: false };
+            }
+            let Some(sc) = scale else {
+                return Wash { cells, legend: none(title, format!("Nothing was carried over the ways in {year}.")), soft: 0.5, lines: false };
+            };
+            let t = &r.traffic;
+            // what each way carried, weight times length, and the busiest link
+            let (mut by, mut top) = ([0.0f64; 4], (0.0f32, 0usize, 0usize));
+            for c in 0..r.n {
+                for s in 0..4 {
+                    let w = t.weight(r.n, k, c, s);
+                    if w > 0.0 {
+                        by[t.mode(r.n, k, c, s) as usize & 3] += w as f64 * isostate_core::traffic::slot_len(s);
+                        if w > top.0 {
+                            top = (w, c, s);
+                        }
+                    }
+                }
+            }
+            let all: f64 = by.iter().sum();
+            let words = ["by cart", "by boat", "by rail", "by sea"];
+            let mut shares: Vec<(f64, &str)> = by.iter().zip(words).map(|(&v, w)| (v / all.max(1e-9), w)).filter(|s| s.0 >= 0.005).collect();
+            shares.sort_by(|a, b| b.0.total_cmp(&a.0));
+            let shares: Vec<String> = shares.iter().map(|(v, w)| format!("{:.0}% {w}", v * 100.0)).collect();
+            let busiest = match market(r, k, top.1) {
+                Some(town) => format!(" The busiest way, near {}, carried {} {}.", town_name(r, town), amount(top.0), words[t.mode(r.n, k, top.1, top.2) as usize & 3]),
+                None => format!(" The busiest way carried {} {}.", amount(top.0), words[t.mode(r.n, k, top.1, top.2) as usize & 3]),
+            };
+            let note = format!(
+                "Each way between two squares is drawn as wide as the weight carried over it in the year, both ways together, in the goods' units: brown by cart, blue by river or canal, black by rail, pale blue by sea. Of the weight carried, times how far: {}.{busiest}",
+                shares.join(", ")
+            );
+            Wash { cells, legend: legend(title, note, &TRAFFIC_INK, &sc, None), soft: 0.5, lines: false }
+        }
     }
 }
+
+/// The paper the Traffic view lays its ribbons on, and its scale's ink (the ribbons' own by cart).
+const TRAFFIC_PAPER: u32 = 0xe9e1d0;
+const TRAFFIC_INK: [u32; 5] = [0xe6dccb, 0xd1b496, 0xb58763, 0x9e6640, 0x8a4f2a];
 
 /// What the overlay says of square `c` in year index `k`, as a sentence for the
 /// inspector. None where it has nothing to say (the sea, or no record).
@@ -1209,6 +1269,35 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: 
                 _ if g.cells[c] <= 0.0 && first.is_none_or(|f| f <= 0.0) => format!("{name}: none."),
                 _ if g.worked[c] => format!("{name}: {:.2} now, of {:.2} when the island was made; it has been worked.", g.cells[c], first.unwrap_or(0.0)),
                 _ => format!("{name}: {:.2}, on the scale of the richest ground.", g.cells[c]),
+            }
+        }
+        Overlay::Traffic => {
+            let t = &r.traffic;
+            if !t.kept() {
+                return None;
+            }
+            // the square's eight ways: its own four links and its neighbours' four that end here
+            let dirs = ["east", "south", "south-east", "south-west"];
+            let back = ["west", "north", "north-west", "north-east"];
+            let words = ["by cart", "by boat", "by rail", "by sea"];
+            let mut ways: Vec<(f32, &str, u8)> = Vec::new();
+            for s in 0..4 {
+                ways.push((t.weight(r.n, k, c, s), dirs[s], t.mode(r.n, k, c, s)));
+                let (dx, dy) = isostate_core::traffic::SLOTS[s];
+                let (x, y) = ((c % r.w) as isize - dx, (c / r.w) as isize - dy);
+                if x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h {
+                    let o = y as usize * r.w + x as usize;
+                    ways.push((t.weight(r.n, k, o, s), back[s], t.mode(r.n, k, o, s)));
+                }
+            }
+            ways.retain(|w| w.0 > 0.0);
+            ways.sort_by(|a, b| b.0.total_cmp(&a.0));
+            match ways.first() {
+                None => "Traffic: nothing was carried to or from this square.".to_string(),
+                Some(&(w, d, m)) => {
+                    let more = ways.get(1).map_or(String::new(), |&(w2, d2, m2)| format!("; the next, {}, {} {}", d2, amount(w2), words[m2 as usize & 3]));
+                    format!("Traffic: the busiest way from this square, to the {d}, carried {} {} in the year{more}.", amount(w), words[m as usize & 3])
+                }
             }
         }
     })
@@ -1384,7 +1473,7 @@ fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which:
 /// Write the chosen overlay for the year on the clock into the ground's
 /// texture, and turn the wash on or off. Runs only when one of them changes.
 #[allow(clippy::too_many_arguments)]
-fn paint(
+pub(crate) fn paint(
     mut ov: ResMut<MapOverlay>,
     tl: Res<Timeline>,
     data: Res<Data>,
@@ -1426,10 +1515,17 @@ fn paint(
     let w = match (ov.kind, range) {
         (Some(kind), Some(range)) => {
             let scaling = scaling_for(&mut ov, &data, k, kind, which, range, stills.is_some());
+            ov.scale = scaling.ends.map(|e| Scale::of(e, kind.spec().log));
             Some(wash(r, k, kind, which, month.as_ref(), scaling))
         }
-        (Some(kind), None) => Some(wash(r, k, kind, which, month.as_ref(), Scaling { range: Range::Year, ends: None })),
-        _ => None,
+        (Some(kind), None) => {
+            ov.scale = None;
+            Some(wash(r, k, kind, which, month.as_ref(), Scaling { range: Range::Year, ends: None }))
+        }
+        _ => {
+            ov.scale = None;
+            None
+        }
     };
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {

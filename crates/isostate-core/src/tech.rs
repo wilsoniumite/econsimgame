@@ -20,12 +20,28 @@ pub const FIRST_NAMES: &[&str] = &[
     "Obadiah", "Richard", "Samuel", "Sarah", "Thomas", "William", "Zachariah", "Eliza",
 ];
 
-pub fn discovery(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, events: &mut Vec<Event>) -> Vec<usize> {
+pub fn discovery(st: &mut State, C: &Content, P: &Params, tech_rng: &mut Rng, year: i64, events: &mut Vec<Event>) -> Vec<usize> {
     let mut found = Vec::new();
     for t in 0..C.NT {
         if st.tech_year[t] >= 0 {
             continue;
         }
+        // an idea a machine for tasks waits on (the tending machines,
+        // docs/rules/tending.md; not in the Python) is sought only while a use
+        // that names it may be found, and draws its year's numbers afresh from
+        // the seed, its name and the year, so that the tree's own stream, and
+        // every other idea's find, stand as they were
+        let own = crate::tasks::idea_of_use(C, t);
+        if own && !crate::tasks::idea_sought(C, P, t) {
+            continue;
+        }
+        let mut drawn;
+        let rng: &mut Rng = if own {
+            drawn = crate::rng::idea_stream(P.seed, &C.tech_name[t], year);
+            &mut drawn
+        } else {
+            &mut *tech_rng
+        };
         // a pin by hand (edits::Pin; not in the Python): held back, or found in
         // its year with no draw of its own. A run with no edits has no pins,
         // and then this is the Python's loop, draw for draw

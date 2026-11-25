@@ -131,6 +131,9 @@ pub(crate) struct Group {
     /// or a group of a road's or a market place's frontage however many of
     /// its plots stand yet (so that its form does not change as they come)
     pub joined: bool,
+    /// an estate's whole block between four streets (`estates.rs`): built
+    /// and rebuilt as a form on a whole block
+    pub block: bool,
 }
 
 /// One year of a square's history: the year, how densely the square is
@@ -184,7 +187,7 @@ pub(crate) fn walk_with(groups: &[Group], partners: &[Vec<usize>], years: &[Year
     let mut cap = vec![1.0f32; n];
     let mut since: Vec<i32> = groups.iter().map(|g| g.built).collect();
     let ask = |g: &Group, y: &Year, block: bool| {
-        let lot = if block { FormLot::Block } else if g.joined { FormLot::Joined } else { FormLot::House };
+        let lot = if block || g.block { FormLot::Block } else if g.joined { FormLot::Joined } else { FormLot::House };
         forms::choose(&forms::Ask { knows: y.knows, year: y.year, storeys: storeys_for(y.value, y.knows), lot, use_: Use::Dwellings, pick: g.pick })
     };
     for y in years {
@@ -344,7 +347,7 @@ pub(super) struct Lots {
 /// the roads.
 fn block_ground(g: &Ground, standing: &[Stood], range: &std::ops::Range<usize>, clear: &dyn Fn(f32, f32) -> bool, roads: &[(Vec2, Vec2)]) -> Option<Footprint> {
     let s = &standing[range.start];
-    if s.lot.kind != 0 || s.lot.pl.row.is_some() || range.len() < 3 {
+    if s.lot.kind != 0 || s.lot.pl.row.is_some() || range.len() < 3 || s.lot.on_estate {
         return None;
     }
     let (a, z) = (&s.lot.pl, &standing[range.end - 1].lot.pl);
@@ -406,7 +409,8 @@ fn drawn_with(r: &Replay, k: usize, standing: &[Stood], ground: Option<(&Ground,
             .map(|&u| {
                 let range = &units[u];
                 let s = &standing[range.start];
-                Group { plots: range.len(), built: range.clone().map(|i| standing[i].year).min().unwrap_or(s.year), front: s.lot.road || s.lot.kind == 9, pick: s.lot.pl.u, joined: range.len() > 1 || s.lot.pl.row.is_none() }
+                let block = s.lot.estate.is_some_and(|e| e.block);
+                Group { plots: range.len(), built: range.clone().map(|i| standing[i].year).min().unwrap_or(s.year), front: s.lot.road || s.lot.kind == 9, pick: s.lot.pl.u, joined: range.len() > 1 || s.lot.pl.row.is_none() || block, block }
             })
             .collect();
         // the ground each group's block would take, and the groups whose plots stand on it
@@ -688,11 +692,12 @@ const INFILL_CLEAR: f32 = 0.055;
 /// value then asked, on lots thrown together, its front to the nearest road.
 /// It is worked out afresh each year from the record, as the lots are: the
 /// same record draws the same buildings, and a square filled once is not
-/// built over again. Returns how many stand.
+/// built over again. Returns the ground of each that stands.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround, standing: &[Stood], blocks: &[(Footprint, usize)], lanes: &[(Vec<Vec2>, f32)], clear: &dyn Fn(f32, f32) -> bool, lk: &Look, into: &mut Into) -> usize {
+pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround, standing: &[Stood], blocks: &[(Footprint, usize)], lanes: &[(Vec<Vec2>, f32)], clear: &dyn Fn(f32, f32) -> bool, lk: &Look, into: &mut Into) -> Vec<Footprint> {
+    let mut out = Vec::new();
     if plain() || !r.builds.kept() || r.y0 + k as i32 <= FROM {
-        return 0;
+        return out;
     }
     // what stands, in buckets a tenth of a square across: the plots, and the streets as points
     let bucket = |p: Vec2| ((p.x * 10.0).floor() as i32, (p.y * 10.0).floor() as i32);
@@ -718,7 +723,6 @@ pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround,
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let mut cells: Vec<(&u32, &world::TownCell)> = town.cells.iter().filter(|(_, c)| c.filled).collect();
     cells.sort_by_key(|c| *c.0);
-    let mut count = 0;
     for (&c, cell) in cells {
         // the year it was first filled, and what was built there then
         let mut y = k;
@@ -759,33 +763,37 @@ pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround,
             // (and it is taken: the next close keeps its distance from it)
             near.entry(bucket(at)).or_default().push(at);
             note_tall(at, yaw, a.storeys, c);
-            count += 1;
+            out.push(Footprint { at, along: side, front, half: (ground.0 * 0.5, ground.1 * 0.5) });
         }
     }
-    count
+    out
 }
 
 /// Draw a group of plots built as a form: as many of the form as its
 /// frontage holds, side by side, each with its front on the street's line.
-pub(super) fn draw(g: &Ground, standing: &[Stood], first: usize, plots: usize, b: &Built, lk: &Look, into: &mut Into) {
+/// Returns the ground each stands on.
+pub(super) fn draw(g: &Ground, standing: &[Stood], first: usize, plots: usize, b: &Built, lk: &Look, into: &mut Into) -> Vec<Footprint> {
+    let mut out = Vec::new();
     let (a, z) = (&standing[first].lot.pl, &standing[first + plots - 1].lot.pl);
     let spec = forms::spec(b.shape);
     let dir = Vec2::new(a.yaw.sin(), a.yaw.cos());
     let (mid, run) = ((a.p + z.p) * 0.5, z.p - a.p);
     let along = if run.length() > 1e-4 { run.normalize() } else { Vec2::new(dir.y, -dir.x) };
     let width = run.length() + a.width;
-    // a whole block is one building over the whole of its frontage, back to the lane behind
+    // a whole block is one building over the whole of its frontage, back to the lane behind;
+    // an estate's whole block over the whole of its block between four streets
     let block = spec.lot == FormLot::Block;
     let count = if block { 1 } else { ((width / spec.ground.0).round() as usize).max(1) };
-    let depth = if block { BLOCK_DEPTH } else { spec.ground.1 };
+    let depth = if standing[first].lot.estate.is_some_and(|e| e.block) { a.depth } else if block { BLOCK_DEPTH } else { spec.ground.1 };
     // its front on the plots' front line
     let back = dir * ((depth - a.depth) * 0.5).max(0.0);
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let id = a.run.0 * 4 + a.run.1 as i32;
+    let id = a.run.0.wrapping_mul(4) + a.run.1 as i32;
     for i in 0..count {
         let at = mid + along * (((i as f32 + 0.5) / count as f32 - 0.5) * width) - back;
         let seed = Seed::new(world::hash2(id, a.index + i as i32, 41), world::hash2(id, a.index + i as i32, 42));
         let f = forms::Form { shape: b.shape, storeys: b.storeys, built: b.year, ground: (width / count as f32 * 0.96, depth), detail: into.lod.at(at.x, at.y), seed };
+        out.push(Footprint { at, along, front: dir, half: (width / count as f32 * 0.48, depth * 0.5) });
         let leaves = leaf_group(seed.pick(43));
         let mut m = Model { solid: std::mem::take(into.houses), smoke: std::mem::take(into.smoke), green: std::mem::take(&mut into.trees[leaves]), flat: Builder::default() };
         forms::form(&mut m, &Site::on(ground(g, at.x, at.y), a.yaw, &height), &f, lk);
@@ -796,6 +804,7 @@ pub(super) fn draw(g: &Ground, standing: &[Stood], first: usize, plots: usize, b
         *into.smoke = smoke;
         into.trees[leaves] = green;
     }
+    out
 }
 
 #[cfg(test)]
@@ -809,8 +818,8 @@ mod tests {
     /// A square of forty plots built by 1900: ten pairs on its road, and four
     /// rows of five behind.
     fn old_square() -> Vec<Group> {
-        let mut g: Vec<Group> = (0..10).map(|i| Group { plots: 2, built: 1820 + i, front: true, pick: i as f32 / 10.0, joined: true }).collect();
-        g.extend((0..4).map(|i| Group { plots: 5, built: 1850 + i, front: false, pick: 0.05 + i as f32 / 4.0, joined: true }));
+        let mut g: Vec<Group> = (0..10).map(|i| Group { plots: 2, built: 1820 + i, front: true, pick: i as f32 / 10.0, joined: true, block: false }).collect();
+        g.extend((0..4).map(|i| Group { plots: 5, built: 1850 + i, front: false, pick: 0.05 + i as f32 / 4.0, joined: true, block: false }));
         g
     }
 
@@ -879,9 +888,9 @@ mod tests {
     fn a_dear_frontage_is_rebuilt_as_a_whole_block() {
         // a way's frontage of four plots, and two rows of the back lane on the block's ground
         let g = [
-            Group { plots: 4, built: 1850, front: true, pick: 0.2, joined: true },
-            Group { plots: 4, built: 1860, front: false, pick: 0.4, joined: true },
-            Group { plots: 3, built: 1990, front: false, pick: 0.6, joined: true },
+            Group { plots: 4, built: 1850, front: true, pick: 0.2, joined: true, block: false },
+            Group { plots: 4, built: 1860, front: false, pick: 0.4, joined: true, block: false },
+            Group { plots: 3, built: 1990, front: false, pick: 0.6, joined: true, block: false },
         ];
         let partners = vec![vec![1, 2], Vec::new(), Vec::new()];
         let dens = |y: i32| if y < 1950 { 1.0 } else { 3.0 };
@@ -919,7 +928,7 @@ mod tests {
     /// detached house, and in 1965 on dear ground flats.
     #[test]
     fn a_new_lot_is_built_in_the_form_of_its_year() {
-        let g = [Group { plots: 2, built: 1930, front: false, pick: 0.3, joined: true }, Group { plots: 1, built: 1930, front: false, pick: 0.3, joined: false }, Group { plots: 2, built: 1965, front: true, pick: 0.3, joined: true }];
+        let g = [Group { plots: 2, built: 1930, front: false, pick: 0.3, joined: true, block: false }, Group { plots: 1, built: 1930, front: false, pick: 0.3, joined: false, block: false }, Group { plots: 2, built: 1965, front: true, pick: 0.3, joined: true, block: false }];
         let built = walk(&g, &years(1901, 1970, |_| 1.0, |y| if y < 1960 { 1.0 } else { 4.0 }));
         assert_eq!(built[0].map(|b| b.shape), Some(Shape::SemisInterwar));
         assert_eq!(built[1].map(|b| b.shape), Some(Shape::DetachedInterwar));

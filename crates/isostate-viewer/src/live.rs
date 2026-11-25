@@ -1461,6 +1461,8 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
             fields: stat.field_names.iter().cloned().zip(stat.fields.iter().cloned()).filter(|f| f.1.len() == n).collect(),
             ..Default::default()
         },
+        // traffic: what each link carried, by the year (`apply_year`)
+        traffic: Default::default(),
     }
 }
 
@@ -1662,6 +1664,15 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             r.builds.know_towns = nt_know;
         }
         r.builds.know[k * nt_know * techs..(k + 1) * nt_know * techs].copy_from_slice(&y.towns.know);
+    }
+
+    // traffic (the core's docs/rules/traffic.md): what each link carried, as a recording
+    // keeps it, and the year's trade between towns, which a recording's books hold
+    if let Some(t) = &y.traffic {
+        r.traffic.take_year(ny, n, k, &t.goods, &t.mode);
+    }
+    if !y.pairs.is_empty() {
+        r.traffic.take_pairs(ny, k, y.pairs.clone());
     }
 
     // towns: the slots are fixed for the run, so the arrays are made on the first year

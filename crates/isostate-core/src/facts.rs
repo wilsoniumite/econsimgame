@@ -731,6 +731,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::university::facts(r) {
         b.num(name, kind, v);
     }
+    // who works (docs/rules/who-works.md): the share in work, all and by age, and the
+    // hands school, the university and the pension take out of work
+    for (name, kind, v) in crate::who_works::facts(r) {
+        b.num(name, kind, v);
+    }
     // tree (docs/rules/tree.md, "After 1900: electricity"): electricity and electrical goods
     for (name, kind, v) in crate::tree::facts(r) {
         b.num(name, kind, v);
@@ -1230,6 +1235,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("hungry_months_after_new_cells".into(), Kind::Count, if g.months.town_months > 0 { g.months.hungry_after_new_cells as f64 } else { f64::NAN });
     // longrun (docs/rules/longrun.md): prices and the wage at a bound, and the anchors
     for (name, kind, v) in crate::longrun::facts(r, g) {
+        b.num(name, kind, v);
+    }
+    // traffic (docs/rules/traffic.md): freight by mode, the mean haul and the roads by class, at the marks
+    for (name, kind, v) in crate::traffic::facts(r) {
         b.num(name, kind, v);
     }
 

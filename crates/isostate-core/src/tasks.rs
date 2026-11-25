@@ -125,6 +125,15 @@ pub struct TasksParams {
     /// while off, as `computing` is.
     #[serde(skip_serializing_if = "is_false")]
     pub office_machines: bool,
+    /// Machines that tend take tending tasks in the works after 1900
+    /// (`docs/rules/tending.md`): the moving line, the automatic machine, the
+    /// robot and the line that runs itself, the uses of the file with
+    /// `switch = "tending"`, each found once the island has found its idea of
+    /// the tree. Off under both sets of rules: it lifted the century after
+    /// 1970 too little for what it does to the towns. Left out of the params'
+    /// file while off, as `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub tending: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -134,12 +143,14 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false }
     }
 }
 
 impl TasksParams {
-    /// The game's.
+    /// The game's. The machines that tend (`tending`) stand off under the
+    /// game's rules too (docs/rules/tending.md, "Why it stands off"): a hand
+    /// turns them on, on the Rules tab or with `--set tasks.tending=true`.
     pub fn game() -> TasksParams {
         TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, ..TasksParams::default() }
     }
@@ -151,6 +162,7 @@ impl TasksParams {
             "computing" => self.computing,
             "models" => self.models,
             "office_machines" => self.office_machines,
+            "tending" => self.tending,
             _ => false,
         }
     }
@@ -158,7 +170,7 @@ impl TasksParams {
 
 /// The switches of `TasksParams` a `[[use]]` of the file may stand behind
 /// (`switch = "computing"`): a use behind one that is off is never found.
-pub const USE_SWITCHES: [&str; 3] = ["computing", "models", "office_machines"];
+pub const USE_SWITCHES: [&str; 4] = ["computing", "models", "office_machines", "tending"];
 
 /// The year from which the ceiling on yield is in force, and before which the
 /// best years it reads are kept.
@@ -209,6 +221,12 @@ pub struct Use {
     /// [`USE_SWITCHES`]): while that is off it is never found, and has no
     /// cost, no part, no order and no plant. None: it stands behind none.
     pub switch: Option<String>,
+    /// The idea of the tree it waits on (`idea`, a `[[tech]]` of the content,
+    /// by its place): found only once the island has found that idea, by the
+    /// tree's own rules (`tech::discovery`). None: it waits on none.
+    pub idea: Option<usize>,
+    /// The uses that must have been found before it (`needs`, by place).
+    pub needs: Vec<usize>,
 }
 
 impl Use {
@@ -319,6 +337,13 @@ struct RawUse {
     /// The switch of `TasksParams` the use stands behind, by name.
     #[serde(default)]
     switch: Option<String>,
+    /// The idea of the tree it waits on, by name: a use whose idea the content
+    /// lacks is not laid.
+    #[serde(default)]
+    idea: Option<String>,
+    /// Uses, by name, that must have been found before it.
+    #[serde(default)]
+    needs: Vec<String>,
 }
 
 /// The table of `text` for content `C`: methods and sectors by name (a name the
@@ -396,6 +421,19 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
         let (Some(plant), Some(run), Some(discover)) = (goods(&u.plant), goods(&u.run), goods(&u.discover)) else {
             continue;
         };
+        // the idea it waits on: not laid where the content lacks it, as a good of a later stage
+        let idea = match &u.idea {
+            Some(n) => match (C.M..C.NT).find(|&t| &C.tech_name[t] == n) {
+                Some(t) => Some(t),
+                None => continue,
+            },
+            None => None,
+        };
+        for n in &u.needs {
+            if n == &u.name || !raw.uses.iter().any(|v| &v.name == n) {
+                return Err(format!("tasks: {:?} needs {n:?}, which is not another use of the file", u.name));
+            }
+        }
         let k = class(&u.class)?;
         if t.closed[k] {
             return Err(format!("tasks: {:?} works in {:?}, which is closed to machines", u.name, u.class));
@@ -434,10 +472,27 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             scale: u.scale,
             replaces: u.replaces.clone(),
             switch: u.switch.clone(),
+            idea,
+            needs: Vec::new(),
         });
         if let Some(r) = &u.replaces {
             replaces.push((t.uses.len() - 1, r.clone()));
         }
+    }
+    // the uses each needs, by place; one that needs a use not laid is not laid either
+    loop {
+        let gone = t.uses.iter().position(|us| raw.uses.iter().find(|r| r.name == us.name).is_some_and(|r| r.needs.iter().any(|n| !t.uses.iter().any(|v| &v.name == n))));
+        match gone {
+            Some(i) => {
+                t.uses.remove(i);
+                replaces = replaces.into_iter().filter(|&(by, _)| by != i).map(|(by, n)| (if by > i { by - 1 } else { by }, n)).collect();
+            }
+            None => break,
+        }
+    }
+    for i in 0..t.uses.len() {
+        let r = raw.uses.iter().find(|r| r.name == t.uses[i].name).expect("a use laid is a use of the file");
+        t.uses[i].needs = r.needs.iter().filter_map(|n| t.uses.iter().position(|v| &v.name == n)).collect();
     }
     // the use replaced no longer reaches the places its replacement is on
     // (nothing where it is not laid itself)
@@ -456,6 +511,21 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
     pg.dedup();
     t.plant_goods = pg;
     Ok(t)
+}
+
+/// Whether idea `t` of the tree is one a use of the table waits on (`Use::idea`):
+/// then `tech::discovery` seeks it only while [`idea_sought`] says so, with draws
+/// of its own (`rng::idea_stream`).
+pub fn idea_of_use(C: &Content, t: usize) -> bool {
+    C.tasks.uses.iter().any(|u| u.idea == Some(t))
+}
+
+/// Whether idea `t`, which a use waits on, may be sought: the rule is on and
+/// some use that waits on it stands behind no switch, or behind one that is
+/// on. With `tasks.tending` off the tending machines' ideas draw nothing and
+/// are never found, and the run is the run without them.
+pub fn idea_sought(C: &Content, P: &Params, t: usize) -> bool {
+    P.tasks.enabled && C.tasks.uses.iter().any(|u| u.idea == Some(t) && u.allowed(P))
 }
 
 /// The game's table, from the file built in, laid on `C` (`content::game_content`,
@@ -1884,7 +1954,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         if st.tasks.found[u] < 0 {
             // a use behind a switch that is off is never found
             let made = |g: usize| if us.discover_per_head { st.cumprod[g] / people } else { st.cumprod[g] };
-            let found = us.allowed(P) && next >= us.found_after && us.discover.iter().all(|&(g, x)| made(g) >= x);
+            // and the idea it waits on found, and the uses it needs (the tending machines)
+            let waits = us.idea.is_some_and(|t| st.tech_year.get(t).is_none_or(|&y| y < 0)) || us.needs.iter().any(|&v| st.tasks.found[v] < 0);
+            let found = us.allowed(P) && next >= us.found_after && !waits && us.discover.iter().all(|&(g, x)| made(g) >= x);
             // a pin by hand (edits::Pin): held back, or found in its year whatever was made
             let found = match crate::edits::pin_says(st, crate::edits::Idea::Use(u), next) {
                 crate::edits::Pinned::Free => found,

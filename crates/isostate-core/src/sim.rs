@@ -470,6 +470,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         crate::roads::begin(st, C, P, year);
     }
     update_roads(st, C, P);
+    // traffic (docs/rules/traffic.md): the same carting once more, link by link; it only watches
+    crate::traffic::year(st, P, year, warm);
     crate::roads::yearly(st, C, P, year, warm);
     // crossings (docs/rules/crossings.md): the year's traffic over water, and the bridges it pays for
     crate::crossings::yearly(st, C, P, year, warm);
@@ -797,6 +799,9 @@ pub fn end_year(sim: &mut Sim) {
     // state (docs/rules/state.md): the year put away, the book read, and next
     // year's laws, teachers, pensioners and rate on pay, on the ages just closed
     crate::purse::close_year(st, C, P, year);
+    // who works (docs/rules/who-works.md): each town's people in work for next
+    // year, counted by age on the ages, the schools and the pension just set
+    crate::who_works::close_year(st, P, year);
     observer::yearly(st, C, P, year, events);
     // engel: the date the lean reads in next year's months, whatever the switches
     st.engel.year_now = year + 1;

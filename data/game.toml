@@ -1183,3 +1183,68 @@ found_after = 1895
 stage = 6
 headline = "Woods planted in rotation at {town}"
 story = "{who} fences the cut-over hills about {town} and plants them in rows of larch and oak, thinned every few years and felled a block at a time. Where the old woods were cut and left to the scrub, these are cut and grown again."
+
+# ====================================================================================================
+# Stage 6, machines that tend (docs/rules/tending.md): four ideas of the works after 1900, each the idea a
+# machine for tending tasks waits on (`idea` in data/tasks.toml). Not works: an idea known as an invention
+# is, found by the tree's hazard on what the island has made since 1750 and spread between towns as every
+# idea is. Each draws its numbers afresh from the seed, its name and the year (`rng::idea_stream`), not
+# from the tree's stream, so that every other idea is found when it was; and each is sought only while the
+# rule is on (`tasks.tending`), so that with it off the island is the island without them. Each has a
+# floor (`found_after`) after 1900, so the played century cannot move. The thresholds were set by hand on
+# main's sweep of islands 1 to 16 to 2050 on 25 November 2026 (what each island had made of the goods named
+# by the floor year), so that the clock has run out on most islands by the floor and the hazard, near its
+# most, finds the idea some five years on, about history's year.
+# ====================================================================================================
+
+# The moving line: work brought to the hands on a powered conveyor, the task cut small and timed. Found on
+# machinery and electricity made: islands 1 to 8 had made 2.3 to 10.4 million units of machinery by 1910
+# and 0 to 8.6 million of electricity; at 6 million and 1 million the clock runs out between 1905 and 1925.
+[[tech]]
+name = "moving_line"
+label = "The moving line"
+discover = { machinery = 6000000.0, electricity = 1000000.0 }
+target = 1913
+found_after = 1908
+stage = 6
+headline = "A moving line at {town}"
+story = "{who} sets the work on a powered belt at {town} and has each hand do one small task as it passes, timed by the clock. A chassis that took a dozen men half a day is now put together in an hour and a half."
+
+# The automatic machine: the transfer line and the machine tool that sets itself from a punched tape. Found
+# on machinery and electrical goods made: islands 1 to 8 had made 39 to 62 million units of machinery by
+# 1950 and 1.7 to 12.3 million electrical goods.
+[[tech]]
+name = "automatic_machine"
+label = "The automatic machine"
+discover = { machinery = 50000000.0, electricals = 5000000.0 }
+target = 1958
+found_after = 1952
+stage = 6
+headline = "Machines that run themselves at {town}"
+story = "{who} links the presses at {town} with transfer gear and sets the lathes by punched tape. A cylinder block goes from casting to finished part with no hand on it, and one setter minds a row of machines that once kept twenty busy."
+
+# The industrial robot: an arm that welds, paints and lifts, told what to do by a computer. Found on
+# electrical goods made: islands 1 to 8 had made 11.2 to 22.1 million by 1980. Its machine needs office
+# computing as well (`needs` in data/tasks.toml): the arm is worked by the island's own computers.
+[[tech]]
+name = "industrial_robot"
+label = "The industrial robot"
+discover = { electricals = 14000000.0 }
+target = 1982
+found_after = 1978
+stage = 6
+headline = "Robots on the line at {town}"
+story = "{who} puts a row of jointed steel arms on the body line at {town}, each told by a computer where to weld and where to paint. They work through the night, and the welders who are left watch over them."
+
+# The line that runs itself: a works with its lights out, the line watched and mended by models and the
+# robots of the 2030s. Found on electrical goods made: islands 1 to 8 had made 29 to 42 million by 2030.
+# Its machine needs models as well (`needs` in data/tasks.toml).
+[[tech]]
+name = "lights_out_line"
+label = "The line that runs itself"
+discover = { electricals = 30000000.0 }
+target = 2035
+found_after = 2030
+stage = 6
+headline = "A works with its lights out at {town}"
+story = "{who} opens a works at {town} that runs in the dark: the line is fed, watched and mended by machines, and the few who work there come by day to see to what the machines cannot."

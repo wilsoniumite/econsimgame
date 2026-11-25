@@ -246,10 +246,27 @@
 # moved, by a town that fills its ground before it spreads (ground.fill), as
 # meant; 1750-1900 held, since the rule acts from 1901 and on new building
 # only; the look of a filled square is the viewer's and moves none
+# Taken: traffic (docs/rules/traffic.md): run.bin gains way_goods and
+# way_mode, what each link between two squares carried each year and how; it
+# only watches, so the economy, the books and the news of both eras held
+# Taken: 1901-2050 run.bin alone: the content's list of ideas has four more,
+# those the machines that tend wait on (docs/rules/tending.md); the rule
+# stands off under the game's rules, so the economy, the books and the news
+# held in both eras
+# Taken: 1901-2050: who works by age (who_works.enabled,
+# docs/rules/who-works.md): from 1901 a town's hands are counted by age, so
+# school, the university and the pension take hands out of work; to 1900
+# nothing moves
+# Taken: 1901-2050 economy, books, news and run.bin, on the batch of the ways'
+# page, town streets, the traffic record, machines that tend and who works by
+# age: who works by age (on) moves the economy, the books and the news of the
+# second era; run.bin moves with it, with the traffic record's two layers
+# (way_goods, way_mode) and the four tending ideas in the content's list
+# (tasks.tending stands off); 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x7e1280e0984a7577
-1901-2050 books    0x56f5db4e3c158b18
-1901-2050 news     0x9706d5be7ce3fd07
-1901-2050 run.bin  0x711c8d3167fc342a
+1901-2050 economy  0x2f6d88876f1de4d8
+1901-2050 books    0xb3f1368510121418
+1901-2050 news     0x7f84c447b382fb6e
+1901-2050 run.bin  0xc84551beff51707f

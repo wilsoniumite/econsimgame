@@ -121,6 +121,23 @@ pub fn land_stream(seed: u64) -> Rng {
     Rng::from_seed(bytes)
 }
 
+/// The draws of one year's search for one idea that a machine for tasks waits
+/// on (`tasks::Use::idea`, docs/rules/tending.md; not in the Python): made
+/// afresh from the seed, the idea's name and the year, so that they keep no
+/// state to save and take nothing from the tree's own stream, whose draws for
+/// every other idea stand as they were.
+pub fn idea_stream(seed: u64, idea: &str, year: i64) -> Rng {
+    let mut x = seed ^ 13u64.wrapping_mul(0xD1B5_4A32_D192_ED03);
+    for b in idea.bytes().chain(year.to_le_bytes()) {
+        x = splitmix64(&mut x) ^ b as u64;
+    }
+    let mut bytes = [0u8; 32];
+    for chunk in bytes.chunks_exact_mut(8) {
+        chunk.copy_from_slice(&splitmix64(&mut x).to_le_bytes());
+    }
+    Rng::from_seed(bytes)
+}
+
 /// `rng.random()`: uniform on [0, 1) with 53 random bits, as numpy.
 pub fn random(rng: &mut Rng) -> f64 {
     match rng.next_replayed() {

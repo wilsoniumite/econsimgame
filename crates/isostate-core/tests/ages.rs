@@ -20,6 +20,9 @@ fn params(rules: Rules, seed: u64, end_year: i64, watch: bool) -> Params {
     // ages for its pupils and pensioners and gives cohorts their schooling: the
     // ages are a watcher only without it, and its series come after theirs
     P.state.enabled = false;
+    // and with who works by age off (docs/rules/who-works.md), which counts the
+    // hands from the ages after 1900 and adds its series after theirs
+    P.who_works.enabled = false;
     P
 }
 

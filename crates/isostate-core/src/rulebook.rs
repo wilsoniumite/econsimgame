@@ -203,6 +203,8 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "city" => to_json(&P.city),
         "ages" => to_json(&P.ages),
         "state" => to_json(&P.state),
+        "traffic" => to_json(&P.traffic),
+        "who_works" => to_json(&P.who_works),
         "pace" => to_json(&P.pace),
         _ => None,
     }
@@ -211,10 +213,12 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
 /// The numbers inside a rule that its own serialiser leaves out while they
 /// stand at their default, read from the fields themselves: the tasks stage's
 /// lesser switch for the land, and its ceiling on yield and its freeze year,
-/// which are nothing (`null`, "none" on the tab) unless a sweep sets them.
+/// which are nothing (`null`, "none" on the tab) unless a sweep sets them; and
+/// the machines that tend (`tasks.tending`, docs/rules/tending.md), which stand
+/// off under the game's rules and are turned on here by hand.
 fn skipped_inside(P: &Params, rule: &str) -> Vec<(&'static str, Value)> {
     match rule {
-        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from))],
+        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from)), ("tending", json!(P.tasks.tending))],
         _ => Vec::new(),
     }
 }

@@ -314,7 +314,7 @@ bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
@@ -508,6 +508,10 @@ macro_rules! state_parts {
                 ages: Default::default(),
                 // state (docs/rules/state.md): carried across as the roads are
                 purse: Default::default(),
+                // traffic (docs/rules/traffic.md): carried across as the roads are
+                tf: Default::default(),
+                // who works (docs/rules/who-works.md): carried across as the roads are
+                who_works: Default::default(),
             }
         }
 
@@ -638,6 +642,8 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.linked = carry.linked.clone();
     st.ages = carry.ages.clone();
     st.purse = carry.purse.clone();
+    st.tf = carry.tf.clone();
+    st.who_works = carry.who_works.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);
