@@ -7,7 +7,7 @@ switched on if it lifted the wage of 2050 over 1970's to 1.20 on islands 1 to 8,
 and it lifts it from 1.07 to 1.13, while the hands it frees go to the carts and
 the fields and the towns' share of people falls by seven points ("Why it stands
 off", below). A hand can turn it on in a sandbox, on the Rules tab's row
-`tasks.tending`, and a sweep with `--set tasks.tending=true`. It works through
+`tasks.tending`, and a sweep can with `--set tasks.tending=true`. It works through
 the rule for machines and tasks as it stands ([tasks.md](tasks.md)) and adds no
 good, no method and nothing drawn.
 
@@ -16,7 +16,8 @@ class of the works' hours, 0.37 of them in 1900 and 0.44 in 2050 on main
 (islands 1 to 8), and the one no machine took in the works before this rule.
 The drive took hauling from 1901, the office machines, office computing and
 models took clerking and judging, and the hands they freed went to tending: by
-2050 tenders were half of all hands ([pay.md](pay.md)). In a real country the
+2050 tenders were two fifths of all hands, the works' and the land's together
+([pay.md](pay.md) counts half, with the machines' minders and presence). In a real country the
 moving line, the automatic machine and the robot multiplied what one tender
 makes. This rule is that history.
 
@@ -35,7 +36,8 @@ standing check: 12 of 12 inside (0 moved, 0 OUTSIDE, 0 without a value): tasks.t
 and the two arms are the same island to the end of 1907, which
 `tests/tending.rs` holds on island 7. With the switch off the four ideas are
 never sought and draw nothing, and the run is the island without the rule: set
-against main before it, a sweep to 2050 with the switch off differs in no fact.
+against main before it, a sweep of islands 1 to 16 to 2050 with the switch off
+differs in none of the 4,060 facts both have.
 
 ## What it is
 
@@ -147,7 +149,7 @@ eight are higher with the switch on; islands 9 to 16 say the same unless noted.
 | work's share of income, 2050 | 0.61 | 0.51 (lower on 8 of 8) |
 | hands on the land, 1970 / 2050 | 0.116 / 0.140 | 0.121 / 0.152 |
 | carters' share of hands, 2050 | 0.088 | 0.130 (8 of 8) |
-| share living in towns, 2050 | 0.54 | 0.47 (lower on 8 of 8, and on 8 of 8 of islands 9 to 16) |
+| share living in towns, 2050 | 0.54 | 0.47 (lower on every island of sixteen) |
 | people, 2050 | 1.168 M | 1.167 M |
 | a works' size, median / ninetieth centile, 2050 | 4.9 / 37.3 | 5.1 / 35.4 |
 | slumps in the news (verdicts) | 13.4 | 17.4 (7 of 8) |
@@ -192,10 +194,10 @@ works gain most: work's share of income is nine points lower in 2050.
 **Where the tenders go.** Not into other works. The works' hands with the rule
 are 304 thousand in 2050 on the mean island against 350 without; the land's,
 with its minders, are 155 thousand against 130, and the carters 76 thousand
-against 51 (the probe's counts, islands 1 to 8). No machine reaches the carters, and the
-land's machines are the tractor, the combine and the cutter of 1915 to 1935, so
-the hands the works no longer want go where hands are still wanted by hand:
-the carts and the fields. That is what empties the towns.
+against 51 (the probe's counts, islands 1 to 8). No machine reaches the
+carters, and the land's machines are the tractor, the combine and the cutter
+of 1915 to 1935, so the hands the works no longer want go where hands are
+still wanted by hand: the carts and the fields. That is what empties the towns.
 
 ## Why it stands off
 
@@ -212,6 +214,14 @@ lacking a machine for the carts (the design's motor lorry, 1910) and trades
 in the towns that take the freed hands (the design's schools, infirmaries and
 travel), not faults of this rule; and with them it would be a different
 island. So it waits for them, behind its switch, and the Rules tab offers it.
+
+**Nor does it lean on the methods' learning.** The step back of 20 November
+found the ceilings after 1970 complements. Tending is not one of them: lifting
+the cap on the methods' learning from 1970 (`isostate-core lab --rule
+learn_cap=16@1970`, islands 1 to 8) adds 1.49 to the linked wage of 2050
+with the rule off and 0.32 with it on, and the rule adds 1.84 with the cap as
+it is and 0.66 with it lifted. The two are substitutes: both save hands in the
+works, and once machines hold the tending there are fewer to save.
 
 ## The probe
 
