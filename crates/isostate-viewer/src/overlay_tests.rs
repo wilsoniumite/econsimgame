@@ -67,6 +67,7 @@ fn strip() -> Replay {
         builds: Default::default(),
         land: None,
         holds: Default::default(),
+        traffic: Default::default(),
     }
 }
 

@@ -1919,6 +1919,7 @@ pub(crate) mod tests {
             builds: Default::default(),
             land: None,
             holds: Default::default(),
+            traffic: Default::default(),
         };
         for c in (0..n).filter(|&c| land(c)) {
             (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = if c % w < 7 { (FARM, WOOD, 153) } else { (PASTURE, HEATH, 102) };
