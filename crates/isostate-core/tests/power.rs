@@ -127,6 +127,9 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // and with the state's purse off (docs/rules/state.md), which came after: its series
     // are in the fingerprint, though they are nothing to 1900
     P.state = Default::default();
+    // and with who works by age off (docs/rules/who-works.md), which came after: its
+    // series are in the fingerprint, though they are nothing to 1900
+    P.who_works = Default::default();
     let mut s = sim::start(&P, game_content());
     while s.year <= 1900 {
         sim::run_year(&mut s).unwrap();
