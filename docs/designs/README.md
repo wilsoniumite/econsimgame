@@ -33,3 +33,10 @@ partly. Each says at its head what it is for and where it stands.
   its last section. By 13 November A1 (a golden test under the game's rules),
   A2's mends, A3's tests and A4 (with the towns' second pass) had landed, and
   B1 came with the new island's first stage.
+- `ways.md`: the roads, streets and highways, from who builds them and why,
+  made on 25 November 2026: today's ways measured on eight islands to 2050,
+  the principle (traffic makes ways, every costly thing is a work with a
+  builder and a year, land decides shape), what a way carries, who builds
+  each kind of way by era, the streets inside towns written to be built from,
+  the motor age, the hand, and seven stages. Its first stage, town streets,
+  is built the same night.
