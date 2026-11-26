@@ -77,7 +77,9 @@ fn main() {
                 }
             }
             None => {
-                // a year turned: keep the months of the towns that went short in it
+                // a year turned: the towns' making is counted afresh from January
+                last_prod.iter_mut().for_each(|v| *v = 0.0);
+                // keep the months of the towns that went short in it
                 let worst: std::collections::BTreeMap<usize, f64> = year_rows.iter().fold(Default::default(), |mut a, (t, f, _)| {
                     let e = a.entry(*t).or_insert(9.0);
                     *e = e.min(*f);
