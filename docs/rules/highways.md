@@ -131,8 +131,9 @@ islands 1 to 8, both switches on (off in brackets where it differs):
   7 the same island to 1909 with the switches on and off, series by series to the bit. The gate's sweep to 1900
   against the merged reference: of 1,210 facts, 3 differ (`state_seat_*_1900`, +0.0, as before this rule).
 - **What it takes**: on island 7 to 2050 with both on, a month 16.5 to 19.0 ms and a year's end 191 to 219 ms of
-  processor time (the example above, two runs on a busy machine), against 16.2 ms and 178 ms with haulage alone
-  in its own notes; the year's end pays for ten searches of the ground a year and the walk of the through traffic.
+  processor time (the example above, two runs on a busy machine), against 15.8 ms and 177 ms with both off
+  (`-- 7 2050 --off`, one run); the year's end pays for ten searches of the ground a year and the walk of the
+  through traffic, and a month only the treasury's payments to the works.
 
 ## What is not built
 
