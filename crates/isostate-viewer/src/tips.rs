@@ -211,8 +211,8 @@ pub fn spawn_pieces(p: &mut ChildSpawnerCommands, font: &Handle<Font>, pieces: &
                     t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(colour)));
                 }
                 Piece::Link(l @ Link::Wiki(_), s) => {
-                    // the arrow is drawn from the font's own glyphs: the type has no ↗
-                    t.spawn((TextSpan::new(format!("{s} \u{2197}")), tf.clone(), TextColor(link_colour(l))));
+                    // (its arrow is an icon after the text, drawn by `spawn_card`: the type has no ↗)
+                    t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(link_colour(l))));
                 }
                 Piece::Link(l, s) => {
                     t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(link_colour(l)), Underline, UnderlineColor(link_colour(l).with_alpha(0.75))));
@@ -397,7 +397,7 @@ fn body_of(c: &Cand, g: &Glossary, data: &Data, k: usize, fam: Option<&crate::fa
 }
 
 /// Open a tooltip's card, hidden until it is placed.
-fn spawn_card(commands: &mut Commands, font: &Handle<Font>, body: &TipBody, level: usize) -> Entity {
+fn spawn_card(commands: &mut Commands, font: &Handle<Font>, out: Option<&Handle<Image>>, body: &TipBody, level: usize) -> Entity {
     commands
         .spawn((
             Node {
@@ -465,7 +465,12 @@ fn spawn_card(commands: &mut Commands, font: &Handle<Font>, body: &TipBody, leve
                 p.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(2.0)), ..default() }, BackgroundColor(RULE)));
                 p.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(12.0), row_gap: Val::Px(2.0), ..default() }).with_children(|l| {
                     for (link, name) in &body.links {
-                        spawn_pieces(l, font, &[Piece::Link(link.clone(), name.clone())], ROW_SIZE, INK, Some(level), Node::default());
+                        l.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(2.0), ..default() }).with_children(|w| {
+                            spawn_pieces(w, font, &[Piece::Link(link.clone(), name.clone())], ROW_SIZE, INK, Some(level), Node::default());
+                            if let (Link::Wiki(_), Some(h)) = (link, out) {
+                                w.spawn(crate::icons::icon(h, 9.0, WIKI_PLUM));
+                            }
+                        });
                     }
                 });
             }
@@ -565,7 +570,7 @@ fn update(
     mut commands: Commands,
     mut tips: ResMut<Tips>,
     time: Res<Time<Real>>,
-    (font, data, tl, fam): (Res<UiFont>, Res<Data>, Res<Timeline>, Option<Res<crate::family::FamilyView>>),
+    (font, data, tl, fam, icons): (Res<UiFont>, Res<Data>, Res<Timeline>, Option<Res<crate::family::FamilyView>>, Option<Res<crate::icons::Icons>>),
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cams: Query<&Camera, With<MainCam>>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -586,7 +591,11 @@ fn update(
     let pointer = match &tips.aim {
         Some(label) => {
             let l = label.to_lowercase();
-            cands.iter().filter(|c| c.label.trim().to_lowercase() == l).max_by_key(|c| (c.level, c.src.section != WHOLE)).map(|c| c.rect.center())
+            // the topmost, and of those the first on the screen
+            let named: Vec<&Cand> = cands.iter().filter(|c| c.label.trim().to_lowercase() == l).collect();
+            let top = named.iter().map(|c| c.level).max();
+            // (a link before the row it stands in, as the pointer finds it)
+            named.into_iter().filter(|c| Some(c.level) == top).min_by(|a, b| (a.src.section == WHOLE).cmp(&(b.src.section == WHOLE)).then(a.rect.min.y.total_cmp(&b.rect.min.y))).map(|c| c.rect.center())
         }
         None => window.and_then(|w| w.physical_cursor_position()),
     };
@@ -640,7 +649,7 @@ fn update(
             if let Some(body) = body_of(c, words::glossary(), &data, k, fam.as_deref()) {
                 let from = slot.min(tips.stack.len());
                 tips.close_from(&mut commands, from);
-                let card = spawn_card(&mut commands, &font.0, &body, slot);
+                let card = spawn_card(&mut commands, &font.0, icons.as_ref().map(|i| &i.out), &body, slot);
                 let rect = Rect { min: c.rect.min * c.inv, max: c.rect.max * c.inv };
                 tips.stack.push(Open { source: c.src, card, locked: false, away: None, rect, placed: false, words: body.words() });
             }

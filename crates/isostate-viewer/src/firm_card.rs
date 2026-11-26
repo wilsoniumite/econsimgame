@@ -306,7 +306,7 @@ pub fn plan(r: &Replay, f: usize, k: usize, fam: Option<&FamilyView>, told: Opti
             rrows.push((vec![Piece::Link(Link::Term("ground_rent".into()), "Ground rent".into()), Piece::Text("/yr".into())], plain(money(-12.0 * rent))));
             rrows.push(row("Cost to build", money((year_margin - 12.0 * rent) / roi)));
         }
-        first.push(line(g, "", term_label(g, "return"), None, plain(format!("{:.0}%/yr", roi * 100.0)), "return", rrows));
+        first.push(line(g, "", term_label(g, "return"), None, plain(format!("{}{:.0}%/yr", if roi < -0.005 { "\u{2212}" } else { "" }, roi.abs() * 100.0)), "return", rrows));
 
         // a unit's sums: the price, each cost as an amount times a price, the margin
         let per = format!("Per {good_l}");
