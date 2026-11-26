@@ -101,7 +101,9 @@ fn check(sim: &Sim, as_of: &str) {
         let told = tell(sim, Thing::Works(f)).unwrap_or_else(|e| panic!("works {f}: {e}"));
         sound(&told, &st.f_name[f]);
         assert_eq!(told.title, st.f_name[f]);
-        assert_eq!(row(&told, "Money", "cash"), fmt_thousands_f0(st.f_cash[f]));
+        // a works' rows are labels of the glossary and figures with their units (docs/designs/words.md)
+        assert_eq!(row(&told, as_of, "Cash"), isostate_core::inspect::money(st.f_cash[f]));
+        assert!(row(&told, as_of, "Ground rent").ends_with("/mo"));
         n += 1;
     }
     assert_eq!(n, standing.len().min(40));
@@ -153,10 +155,10 @@ fn every_thing_is_told_and_what_is_not_there_is_refused() {
         g.month().unwrap();
     }
     check(&g.sim, "June 1790");
-    // five months of the year played: a works' profit so far says so
+    // five months of the year played: a works' profit so far stands under them
     let f = (0..g.sim.st.F_count).find(|&f| g.sim.st.f_alive[f]).unwrap();
     let told = tell(&g.sim, Thing::Works(f)).unwrap();
-    assert!(row(&told, "Money", "profit so far this year").ends_with("in 5 months"));
+    assert!(row(&told, "January to May 1790", "Profit").starts_with(['\u{a3}', '\u{2212}']));
 }
 
 #[test]

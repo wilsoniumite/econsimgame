@@ -1697,16 +1697,17 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     crate::rails::standing(&rail_year, lod, lk, &mut works_b, &mut smoke);
     // (both found in network.rs, where a cart on the road reads them too)
     for (c, m, lv) in crate::network::drawn_links(r, &g.worn, k) {
-        let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
-        // crossings (the core's docs/rules/crossings.md): a bridge only where the run built one, else a ford or a ferry
+        // crossings (the core's docs/rules/crossings.md): a bridge only where the run built one, else a
+        // ford or a ferry, on the road's course where it crosses the water (`network::course`)
         let crossed = r.crossed(c, m, k);
-        for bridge in crate::network::road_bridges(g, a, b, lv == 3, crossed, r.round(), |at| lod.at(at.x, at.y)) {
+        let way = crate::network::course(r, g, cen, c, m, k);
+        for bridge in crate::network::bridges_of(&way, lv == 3, crossed, |at| lod.at(at.x, at.y)) {
             road_bridge(&mut works_b, &bridge, &height, lk);
         }
-        for ford in crate::network::road_fords(g, a, b, lv == 3, crossed, r.round()) {
+        for ford in crate::network::fords_of(&way, lv == 3, crossed) {
             isostate_gen::bridge::road_ford(&mut works_b, &ford, lk);
         }
-        causeway(&mut works_b, lk, g, &crate::network::route(g, a, b, r.round()), lv == 3);
+        causeway(&mut works_b, lk, g, &way, lv == 3);
     }
     let parishes = towns::landmarks(r, g, cen, k, lk, lod, &mut houses, &mut plots);
     // near a works or a market place, in a churchyard, or on the railway or its banks
@@ -1997,7 +1998,8 @@ fn causeway(b: &mut Builder, lk: &Look, g: &Ground, way: &crate::network::Way, m
     }
 }
 
-/// The year's road segments, bucketed by cell, for finding the nearest road.
+/// The year's roads, as the straight lengths of their courses
+/// (`network::course`), bucketed by cell, for finding the nearest road.
 struct RoadIndex {
     w: usize,
     h: usize,
@@ -2007,10 +2009,17 @@ struct RoadIndex {
 impl RoadIndex {
     fn new(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadIndex {
         let mut cells: std::collections::HashMap<usize, Vec<((f32, f32), (f32, f32))>> = Default::default();
+        let cell = |p: bevy::math::Vec2| (p.y.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + p.x.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
         for (c, m, _) in crate::network::drawn_links(r, &g.worn, k) {
-            let seg = (cen[c], cen[m]);
-            cells.entry(c).or_default().push(seg);
-            cells.entry(m).or_default().push(seg);
+            let way = crate::network::course(r, g, cen, c, m, k);
+            for w in way.pts.windows(2) {
+                let seg = ((w[0].x, w[0].y), (w[1].x, w[1].y));
+                let (ca, cb) = (cell(w[0]), cell(w[1]));
+                cells.entry(ca).or_default().push(seg);
+                if cb != ca {
+                    cells.entry(cb).or_default().push(seg);
+                }
+            }
         }
         RoadIndex { w: r.w, h: r.h, cells }
     }
