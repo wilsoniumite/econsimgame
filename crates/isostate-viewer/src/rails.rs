@@ -1346,7 +1346,7 @@ pub fn train_paths(ry: &RailYear) -> Vec<TrainPath> {
         }
         let len = *cum.last().unwrap_or(&0.0);
         if len > 2.0 {
-            out.push(TrainPath { pts, cum, len });
+            out.push(TrainPath { pts, cum, len, cells: Vec::new() });
         }
     }
     out

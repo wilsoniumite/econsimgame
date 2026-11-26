@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 runs/
 dist/*.html
+# a marked version's zip, its trial picture and its release notes (tools/release.py)
+dist/isolated-state-*
 !dist/.keep
 .ipynb_checkpoints/
 
