@@ -1,6 +1,10 @@
-//! The game's golden run: seed 7 under the game's rules (`game_params()` and
-//! `game_content()`) with six families, to 1900 and on to 2050, which must come
-//! out byte for byte as it did when the hashes in `golden_game.txt` were taken.
+//! The game's golden runs: seed 7 under the game's rules (`game_params()` and
+//! `game_content()`) with six families, to 1900 and on to 2050, from each of the
+//! two starts, which must come out byte for byte as they did when the hashes were
+//! taken: the settled island's in `golden_game.txt`, landfall's (`--start
+//! landfall`, one town in a corner with the rules that come with it,
+//! docs/rules/landfall.md) in `golden_landfall.txt`. The two starts are two tests
+//! of one program, each with its own file, and everything below holds for each.
 //!
 //! `golden.rs` holds the port and cannot see the game: under `default_params()`
 //! nearly every hook of the game's rules returns on its first line. This test
@@ -55,9 +59,13 @@
 //! ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
 //! ```
 //!
-//! which checks the two things above, writes the seven hashes into
-//! `golden_game.txt` with the reason added below the file's earlier `# Taken:`
-//! lines (its history, kept), prints which moved, and passes.
+//! which checks the two things above for both starts, writes the seven hashes of
+//! each start that moved into its file with the reason added below the file's
+//! earlier `# Taken:` lines (its history, kept), prints which moved, and passes;
+//! a start whose seven did not move keeps its file as it was. One start alone:
+//! add `landfall` to the command (after `--test golden_game`) for landfall's,
+//! or `--exact seed_7_under_the_games_rules_is_unchanged` after the `--` for
+//! the settled island's.
 //! (`ISOSTATE_GOLDEN_PRINT=1` instead checks nothing and stops with the seven
 //! lines, for pasting by hand.) The commit that does it
 //! says which moved and why (`docs/rules/README.md`, "The game's golden test",
@@ -70,21 +78,54 @@
 //! ```
 //!
 //! before and after: it writes `game6/` (the run to 1900) and `game6-2050/`
-//! (the run to 2050) under that directory, each with `series_monthly.csv`,
+//! (the run to 2050) under that directory, and `landfall6/` and
+//! `landfall6-2050/` for landfall, each with `series_monthly.csv`,
 //! `events.json` and `run.bin` (the last with its date blanked, as hashed),
 //! ready for a diff.
 
 use isostate_core::cli::{events_json, label_for, python_json_pretty, series_csv};
 use isostate_core::record;
 use isostate_core::sim::{self, RunResult};
-use isostate_core::{accounts, game_content, game_params};
+use isostate_core::{accounts, game_content, game_params, landfall};
 
 /// A heap for each thread: the three runs go side by side (`heaps.rs`).
 #[global_allocator]
 static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
 
-/// The stored hashes, read at build time: a new file rebuilds the test.
-const STORED: &str = include_str!("golden_game.txt");
+/// One of the two starts, with its file of hashes, read at build time (a new
+/// file rebuilds the test).
+struct Start {
+    /// The start's word, as `--start` takes it (`landfall::set_start`).
+    word: &'static str,
+    /// The file the hashes are kept in, beside this test.
+    file: &'static str,
+    stored: &'static str,
+    /// The run, in words, for the messages.
+    what: &'static str,
+    /// The folder of `ISOSTATE_GOLDEN_DUMP` the run to 1900 is written to; the
+    /// run to 2050's is the same with `-2050`.
+    dump: &'static str,
+}
+
+/// The settled island: six towns and 135,000 people, the start every game had
+/// until 26 November 2026.
+const SETTLED: Start = Start {
+    word: "settled",
+    file: "golden_game.txt",
+    stored: include_str!("golden_game.txt"),
+    what: "seed 7 under game_params() with six families",
+    dump: "game6",
+};
+
+/// Landfall: one town of 5,000 in a corner, with births that answer to free
+/// land, hamlets, settlers by ship and the guard on a short town's wage.
+const LANDFALL: Start = Start {
+    word: "landfall",
+    file: "golden_landfall.txt",
+    stored: include_str!("golden_landfall.txt"),
+    what: "seed 7 at landfall (--start landfall) under game_params() with six families",
+    dump: "landfall6",
+};
 
 /// The last year of the first era, and the end of the second.
 const TURN: i64 = 1900;
@@ -124,43 +165,44 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-/// The seven hashes as `golden_game.txt` holds them, each line an era, a name
+/// The seven hashes as the start's file holds them, each line an era, a name
 /// and a hash.
-fn stored() -> Hashes {
+fn stored(start: &Start) -> Hashes {
+    let file = start.file;
     let mut got = [None; 7];
-    for (n, line) in STORED.lines().enumerate() {
+    for (n, line) in start.stored.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let mut words = line.split_whitespace();
         let (Some(era), Some(name), Some(hex), None) = (words.next(), words.next(), words.next(), words.next()) else {
-            panic!("golden_game.txt, line {}: expected an era, a name and a hash, found {line:?}", n + 1);
+            panic!("{file}, line {}: expected an era, a name and a hash, found {line:?}", n + 1);
         };
         let Some(e) = ERAS.iter().position(|&x| x == era) else {
-            panic!("golden_game.txt, line {}: {era:?} is not one of {ERAS:?}", n + 1);
+            panic!("{file}, line {}: {era:?} is not one of {ERAS:?}", n + 1);
         };
         let Some(k) = NAMES.iter().position(|&x| x == name) else {
-            panic!("golden_game.txt, line {}: {name:?} is not one of {NAMES:?}", n + 1);
+            panic!("{file}, line {}: {name:?} is not one of {NAMES:?}", n + 1);
         };
         let value = hex.strip_prefix("0x").and_then(|h| u64::from_str_radix(h, 16).ok());
         let Some(value) = value else {
-            panic!("golden_game.txt, line {}: {hex:?} is not a hash written 0x and sixteen hex digits", n + 1);
+            panic!("{file}, line {}: {hex:?} is not a hash written 0x and sixteen hex digits", n + 1);
         };
         let Some(i) = SLOTS.iter().position(|&s| s == (e, k)) else {
             panic!(
-                "golden_game.txt, line {}: {era} {name} is not hashed: the first era has no run.bin of its own (the \
+                "{file}, line {}: {era} {name} is not hashed: the first era has no run.bin of its own (the \
                  second era's holds the years to 1900 too)",
                 n + 1
             );
         };
-        assert!(got[i].is_none(), "golden_game.txt, line {}: {era} {name} is given twice", n + 1);
+        assert!(got[i].is_none(), "{file}, line {}: {era} {name} is given twice", n + 1);
         got[i] = Some(value);
     }
     let mut out = [0; 7];
     for i in 0..7 {
         let (e, k) = SLOTS[i];
-        out[i] = got[i].unwrap_or_else(|| panic!("golden_game.txt has no line for {} {}", ERAS[e], NAMES[k]));
+        out[i] = got[i].unwrap_or_else(|| panic!("{file} has no line for {} {}", ERAS[e], NAMES[k]));
     }
     out
 }
@@ -291,12 +333,14 @@ fn run_bin(r: &RunResult) -> Vec<u8> {
     blob
 }
 
-/// One run of the island, to 1900 as the game has always ended (`to_2050`
-/// false: the parameters are left as they were, so that the first era's hashes
-/// are those of every run before the second era was added) or on to 2050.
+/// One run of the island from the start, to 1900 as the game has always ended
+/// (`to_2050` false: the parameters are left as they were, so that the first
+/// era's hashes are those of every run before the second era was added) or on
+/// to 2050.
 #[allow(non_snake_case)]
-fn run(to_2050: bool) -> RunResult {
+fn run(start: &Start, to_2050: bool) -> RunResult {
     let mut P = game_params();
+    landfall::set_start(&mut P, start.word).expect("the start is one of the two");
     P.seed = 7;
     P.n_families = 6;
     if to_2050 {
@@ -316,8 +360,8 @@ fn dump(dir: &std::path::Path, csv: &str, news: &str, bin: &[u8]) {
 /// (`blind_series`, `blind_news`); and, to set against the run to 2050, its
 /// months hashed strictly and its news without the chronicle's marks
 /// (`news_unmarked`).
-fn first_era(dump_to: Option<&std::path::Path>) -> ([u64; FIRST], [u64; 3]) {
-    let r = run(false);
+fn first_era(start: &Start, dump_to: Option<&std::path::Path>) -> ([u64; FIRST], [u64; 3]) {
+    let r = run(start, false);
     let csv = series_csv(&r);
     if let Some(dir) = dump_to {
         dump(dir, &csv, &events_json(&r), &run_bin(&r));
@@ -331,8 +375,8 @@ fn first_era(dump_to: Option<&std::path::Path>) -> ([u64; FIRST], [u64; 3]) {
 /// The run to 2050: the second era's four (its months and news after 1900,
 /// and its whole run.bin), and, to set against the run to 1900, the hashes of
 /// its months up to 1900 and of its news up to 1900 without the marks.
-fn to_2050(dump_to: Option<&std::path::Path>) -> ([u64; 4], [u64; 3]) {
-    let r = run(true);
+fn to_2050(start: &Start, dump_to: Option<&std::path::Path>) -> ([u64; 4], [u64; 3]) {
+    let r = run(start, true);
     let csv = series_csv(&r);
     let bin = run_bin(&r);
     if let Some(dir) = dump_to {
@@ -384,14 +428,14 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-/// `golden_game.txt` written again with these hashes: every comment above the
+/// The start's file written again with these hashes: every comment above the
 /// hashes kept as it is, the history of earlier `# Taken:` lines with it, `why`
 /// added below them as the newest, and the hashes below that, in the file's own
 /// line ends. (Until 20 November 2026 this replaced the history with `why`
 /// alone, and the history was put back by hand from git.)
-fn write_file(h: &Hashes, why: &str) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden_game.txt");
-    let old = std::fs::read_to_string(&path).expect("golden_game.txt can be read");
+fn write_file(start: &Start, h: &Hashes, why: &str) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join(start.file);
+    let old = std::fs::read_to_string(&path).expect("the file of hashes can be read");
     let nl = if old.contains("\r\n") { "\r\n" } else { "\n" };
     let mut text = String::new();
     for line in old.lines() {
@@ -411,19 +455,33 @@ fn write_file(h: &Hashes, why: &str) {
         text.push_str(line);
         text.push_str(nl);
     }
-    std::fs::write(&path, text).expect("golden_game.txt can be written");
+    std::fs::write(&path, text).expect("the file of hashes can be written");
 }
 
+/// The settled island, as every game was played until 26 November 2026.
 #[test]
 fn seed_7_under_the_games_rules_is_unchanged() {
-    let want = stored();
+    check(&SETTLED);
+}
+
+/// Landfall: the same island settled from one town in a corner.
+#[test]
+fn landfall_seed_7_under_the_games_rules_is_unchanged() {
+    check(&LANDFALL);
+}
+
+/// The three runs of a start, checked against each other and then against the
+/// start's file (or written to it).
+fn check(start: &Start) {
+    let want = stored(start);
+    let (file, what) = (start.file, start.what);
     let dump_to = std::env::var("ISOSTATE_GOLDEN_DUMP").ok().map(std::path::PathBuf::from);
     // the run to 1900 and two runs to 2050 at once: each has its own state, so the two
     // runs to 2050 must agree to the last bit
     let ((early, early_strict), (late, late_early), (again, again_early)) = std::thread::scope(|s| {
-        let a = s.spawn(|| first_era(dump_to.as_ref().map(|d| d.join("game6")).as_deref()));
-        let b = s.spawn(|| to_2050(dump_to.as_ref().map(|d| d.join("game6-2050")).as_deref()));
-        let c = s.spawn(|| to_2050(None));
+        let a = s.spawn(|| first_era(start, dump_to.as_ref().map(|d| d.join(start.dump)).as_deref()));
+        let b = s.spawn(|| to_2050(start, dump_to.as_ref().map(|d| d.join(format!("{}-2050", start.dump))).as_deref()));
+        let c = s.spawn(|| to_2050(start, None));
         (
             a.join().expect("the run to 1900 finished"),
             b.join().expect("the first run to 2050 finished"),
@@ -436,8 +494,8 @@ fn seed_7_under_the_games_rules_is_unchanged() {
         let one = glue(late_early, late);
         let two = glue(again_early, again);
         panic!(
-            "\n\nThe game's run is not repeatable: two runs of seed 7 to 2050 under game_params() with six families, \
-             side by side in one process, disagree: {}.\n\
+            "\n\nThe game's run is not repeatable: two runs of {what} to 2050, side by side in one process, \
+             disagree: {}.\n\
              first\n{}second\n{}\n\
              (The first era's three are here each run's months and news to 1900, hashed strictly, the news without \
              the chronicle's marks.)\n\
@@ -452,25 +510,33 @@ fn seed_7_under_the_games_rules_is_unchanged() {
     if late_early != early_strict {
         let moved: Vec<&str> = (0..3).filter(|&k| late_early[k] != early_strict[k]).map(|k| MEANING[k]).collect();
         panic!(
-            "\n\nThe run to 2050 does not pass through the run to 1900: seed 7 under game_params() with six families, \
-             run on to 2050, differs in its years to 1900 from the same island run to 1900, in {} (the news is set \
+            "\n\nThe run to 2050 does not pass through the run to 1900: {what}, run on to 2050, differs in its years to 1900 from the same island run to 1900, in {} (the news is set \
              side by side without the chronicle's marks of what a history would keep, which are made with the whole \
              run in view).\n\
              Something in the run reads the year it will end (`end_year`, the record's length, the number of years \
              left) before that year comes. The game is played on to 2050 in the viewer, so that is a fault: the \
              played century must not depend on how far the run will go. ISOSTATE_GOLDEN_DUMP=DIR writes both runs' \
-             files (game6 and game6-2050) for a diff.\n",
-            moved.join(", ")
+             files ({} and {}-2050) for a diff.\n",
+            moved.join(", "),
+            start.dump,
+            start.dump
         );
     }
     if let Ok(why) = std::env::var("ISOSTATE_GOLDEN_WRITE") {
         assert!(!why.trim().is_empty(), "ISOSTATE_GOLDEN_WRITE must say what moved the hashes and why");
-        write_file(&first, why.trim());
+        // a start whose seven did not move keeps its file, and its history, as it was
+        if first != want {
+            write_file(start, &first, why.trim());
+        }
         let moved = if first == want { "nothing".to_string() } else { which(&first, &want) };
         eprintln!(
-            "\nISOSTATE_GOLDEN_WRITE is set, so nothing was checked against the file: the runs are repeatable and the \
-             run to 2050 passes through the run to 1900, and the seven hashes were written to \
-             crates/isostate-core/tests/golden_game.txt.\nmoved: {moved}"
+            "\nISOSTATE_GOLDEN_WRITE is set, so nothing was checked against the file: the runs of {what} are \
+             repeatable and the run to 2050 passes through the run to 1900, and {}.\nmoved: {moved}",
+            if first == want {
+                format!("nothing moved, so crates/isostate-core/tests/{file} was left as it was")
+            } else {
+                format!("the seven hashes were written to crates/isostate-core/tests/{file}")
+            }
         );
         for i in 0..7 {
             let (e, k) = SLOTS[i];
@@ -480,8 +546,8 @@ fn seed_7_under_the_games_rules_is_unchanged() {
     }
     if std::env::var("ISOSTATE_GOLDEN_PRINT").is_ok() {
         panic!(
-            "\n\nISOSTATE_GOLDEN_PRINT is set, so nothing was checked. The runs agree, and give\n\n{}\n\
-             Paste these seven lines over those in crates/isostate-core/tests/golden_game.txt, and say in the commit \
+            "\n\nISOSTATE_GOLDEN_PRINT is set, so nothing was checked. The runs of {what} agree, and give\n\n{}\n\
+             Paste these seven lines over those in crates/isostate-core/tests/{file}, and say in the commit \
              message which moved and why (docs/rules/README.md, \"The game's golden test\"); or let \
              ISOSTATE_GOLDEN_WRITE=\"why\" do both.\n",
             lines(&first)
@@ -490,9 +556,8 @@ fn seed_7_under_the_games_rules_is_unchanged() {
     if first != want {
         let only_late = first[..FIRST] == want[..FIRST];
         panic!(
-            "\n\nThe game moved: seed 7 under game_params() and game_content() with six families no longer gives the \
-             run it gave. What moved: {}.{}\n\
-             got\n{}expected (crates/isostate-core/tests/golden_game.txt)\n{}\n\
+            "\n\nThe game moved: {what}, with game_content(), no longer gives the run it gave. What moved: {}.{}\n\
+             got\n{}expected (crates/isostate-core/tests/{file})\n{}\n\
              The runs agree with each other, so the run is repeatable and the rules or the code changed.\n\
              If that was meant (a stage of the rules pass or of the run to 2050, a rule mended or retuned, a new rule \
              switched on in game_params()), take the new hashes on the merged tree with\n\n    \

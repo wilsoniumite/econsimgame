@@ -60,8 +60,9 @@ use crate::sim;
 use crate::util::{fmt_g6, fmt_thousands_f0};
 
 pub const USAGE: &str = "usage: isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
-                           [--start settled|landfall] [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json] [--content content.toml]
-                           [--jobs N] [--compare OTHER_DIR] [--standing [--growth]] [--quiet]";
+                           [--start settled|landfall|settled,landfall] [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json]
+                           [--content content.toml] [--jobs N] [--compare OTHER_DIR]
+                           [--standing [--growth] [--colony] [--beside SETTLED_DIR]] [--quiet]";
 
 /// What the command line asked for.
 #[derive(Clone, Debug)]
@@ -71,9 +72,16 @@ pub struct Options {
     pub rules: Rules,
     pub families: Option<usize>,
     pub end_year: Option<i64>,
-    /// The start, by its word (`landfall::set_start`): laid over the rules
-    /// before the parameters file and every `--set`.
-    pub start: Option<String>,
+    /// The starts, by their words (`landfall::set_start`), each laid over the
+    /// rules before the parameters file and every `--set`: `--start landfall`,
+    /// or `--start settled,landfall` for both side by side, each a setting (or
+    /// a set of settings) of its own. Empty is the settled island.
+    pub starts: Vec<String>,
+    /// `--beside DIR`: a sweep of the settled island on the same islands, which
+    /// the colony's check reads where it sets landfall beside it.
+    pub beside: Option<PathBuf>,
+    /// With the standing check: a colony fact missed fails the sweep.
+    pub colony: bool,
     /// Each `--set`: the key and its values as typed.
     pub sets: Vec<(String, Vec<String>)>,
     pub params_file: Option<PathBuf>,
@@ -97,6 +105,13 @@ pub struct Setting {
     /// One value per swept key, as typed.
     pub values: Vec<String>,
     pub params: Params,
+    /// Its start, "settled" or "landfall" (`start_word`).
+    pub start: &'static str,
+}
+
+/// The start of a run's parameters, in the word `--start` takes.
+pub fn start_word(P: &Params) -> &'static str {
+    if P.start.landfall { "landfall" } else { "settled" }
 }
 
 /// What a finished run leaves behind.
@@ -203,7 +218,9 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         rules: Rules::Port,
         families: None,
         end_year: None,
-        start: None,
+        starts: Vec::new(),
+        beside: None,
+        colony: false,
         sets: Vec::new(),
         params_file: None,
         content_file: None,
@@ -225,10 +242,17 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             "--families" => o.families = Some(value("--families")?.parse().map_err(|e| format!("--families: {e}"))?),
             "--end-year" => o.end_year = Some(value("--end-year")?.parse().map_err(|e| format!("--end-year: {e}"))?),
             "--start" => {
-                let w = value("--start")?;
-                crate::landfall::set_start(&mut crate::params::default_params(), &w)?;
-                o.start = Some(w);
+                let words = value("--start")?;
+                for w in words.split(',').map(str::trim) {
+                    crate::landfall::set_start(&mut crate::params::default_params(), w)?;
+                    if o.starts.iter().any(|x| x == w) {
+                        return Err(format!("--start {words}: {w} is listed twice"));
+                    }
+                    o.starts.push(w.to_string());
+                }
             }
+            "--beside" => o.beside = Some(PathBuf::from(value("--beside")?)),
+            "--colony" => o.colony = true,
             "--set" => {
                 let v = value("--set")?;
                 let (key, values) = v.split_once('=').ok_or_else(|| format!("--set {v:?}: write it as key=value or key=v1,v2"))?;
@@ -264,6 +288,9 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
     o.out = out.ok_or_else(|| format!("--out is required\n{USAGE}"))?;
     if o.growth && !o.standing {
         return Err(format!("--growth is part of the standing check: give --standing as well\n{USAGE}"));
+    }
+    if (o.colony || o.beside.is_some()) && !o.standing {
+        return Err(format!("--colony and --beside are part of the standing check: give --standing as well\n{USAGE}"));
     }
     if o.seeds.is_empty() {
         return Err("--seeds: no seeds".to_string());
@@ -362,13 +389,22 @@ pub fn set_field<T: Serialize + DeserializeOwned>(base: &T, key: &str, value: &V
     serde_json::from_value(doc).map_err(|e| explain(key, value, &e.to_string()))
 }
 
-/// The base parameters, then one `Setting` per combination of the `--set` values
-/// (the first key varies slowest).
+/// For each start asked for (the settled island alone when none is), the base
+/// parameters, then one `Setting` per combination of the `--set` values (the
+/// first key varies slowest).
 pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
-    let mut rules = o.rules.params();
-    if let Some(w) = &o.start {
-        crate::landfall::set_start(&mut rules, w)?;
+    let mut out = Vec::new();
+    let words: Vec<&str> = if o.starts.is_empty() { vec!["settled"] } else { o.starts.iter().map(String::as_str).collect() };
+    for w in words {
+        out.extend(settings_of(o, w)?);
     }
+    Ok(out)
+}
+
+/// The settings of one start.
+fn settings_of(o: &Options, word: &str) -> Result<Vec<Setting>, String> {
+    let mut rules = o.rules.params();
+    crate::landfall::set_start(&mut rules, word)?;
     let mut base = match &o.params_file {
         Some(p) => rules.load_over(p)?,
         None => rules,
@@ -391,6 +427,11 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
         }
         // what a --params file is refused for is refused when swept, before the first run
         P.check()?;
+        // the start is a column: named in the label where it is landfall, so that a sweep of either
+        // start compares with a reference of the same start by name; the settled island's labels
+        // are as they always were
+        let start = start_word(&P);
+        let swept_start = o.sets.iter().any(|(k, _)| k.starts_with("start."));
         let label = if values.is_empty() {
             // nothing swept: name the column after what was run (the families may come from --params)
             let families = match base.n_families {
@@ -398,11 +439,12 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
                 1 => ", 1 family".to_string(),
                 n => format!(", {n} families"),
             };
-            format!("{} rules{families}", o.rules.as_str())
+            format!("{} rules{}{families}", o.rules.as_str(), if start == "landfall" { ", landfall" } else { "" })
         } else {
-            o.sets.iter().zip(&values).map(|((k, _), v)| format!("{k}={v}")).collect::<Vec<_>>().join(" ")
+            let pairs = o.sets.iter().zip(&values).map(|((k, _), v)| format!("{k}={v}")).collect::<Vec<_>>().join(" ");
+            if start == "landfall" && !swept_start { format!("landfall, {pairs}") } else { pairs }
         };
-        out.push(Setting { label, values, params: P });
+        out.push(Setting { label, values, params: P, start });
     }
     Ok(out)
 }
@@ -677,7 +719,7 @@ pub fn facts_json(sw: &Sweep, command: &str, code: Option<&str>) -> Value {
             let setting = &sw.settings[run.setting];
             let mut o = json!({
                 "run": run.id, "seed": run.seed, "setting": setting.label, "set": set_object(sw, setting),
-                "ok": run.outcome.is_ok(), "seconds": run.seconds,
+                "start": setting.start, "ok": run.outcome.is_ok(), "seconds": run.seconds,
             });
             match &run.outcome {
                 Ok(d) => {
@@ -696,7 +738,7 @@ pub fn facts_json(sw: &Sweep, command: &str, code: Option<&str>) -> Value {
         "code": code,
         "seeds": sw.seeds,
         "keys": sw.keys,
-        "settings": sw.settings.iter().map(|s| json!({"label": s.label, "set": set_object(sw, s)})).collect::<Vec<_>>(),
+        "settings": sw.settings.iter().map(|s| json!({"label": s.label, "set": set_object(sw, s), "start": s.start})).collect::<Vec<_>>(),
         "facts": sw.fact_index.iter().map(|(n, g, k)| json!({"name": n, "group": g, "kind": k.as_str()})).collect::<Vec<_>>(),
         "runs": runs,
     })
@@ -721,6 +763,7 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
         Rules::Game => "game_params and game_content: what a live game is played under",
     });
     let _ = writeln!(s, "code:     {}", code.map_or("unknown (git describe gave nothing)".to_string(), |c| format!("{c} (git describe where it was run)")));
+    let _ = writeln!(s, "start:    {}", if o.starts.is_empty() { "settled (the settled island)".to_string() } else { o.starts.join(", ") });
     let _ = writeln!(s, "seeds:    {}", seeds.join(" "));
     let _ = writeln!(s, "families: {}", o.families.map_or("as the parameters say".to_string(), |n| n.to_string()));
     let _ = writeln!(s, "end year: {}", o.end_year.map_or("as the parameters and content say".to_string(), |y| y.to_string()));
@@ -1001,9 +1044,18 @@ pub fn table(sw: &Sweep) -> String {
 #[derive(Clone, Debug, Default)]
 pub struct Then {
     pub label: String,
+    /// Its start, "settled" or "landfall" (a sweep written before the starts
+    /// were named is of the settled island).
+    pub start: String,
     /// The seeds of its finished runs.
     pub seeds: Vec<u64>,
     pub values: HashMap<String, Seeded>,
+}
+
+/// A run's start as its facts.json gives it: "settled" where it says nothing,
+/// as every sweep written before the starts were named.
+fn start_of_run(run: &Value) -> String {
+    run["start"].as_str().unwrap_or("settled").to_string()
 }
 
 /// The settings of the sweep in `dir`, with each fact's values across its finished runs.
@@ -1016,11 +1068,12 @@ pub fn read_then(dir: &Path) -> Result<Vec<Then>, String> {
     let mut out: Vec<Then> = Vec::new();
     for run in runs.iter().filter(|r| r["ok"].as_bool() == Some(true)) {
         let label = run["setting"].as_str().unwrap_or("").to_string();
+        let start = start_of_run(run);
         let seed = run["seed"].as_u64().ok_or_else(|| not_a_sweep("a run without a seed"))?;
         let k = match out.iter().position(|t| t.label == label) {
             Some(k) => k,
             None => {
-                out.push(Then { label, ..Then::default() });
+                out.push(Then { label, start, ..Then::default() });
                 out.len() - 1
             }
         };
@@ -1054,7 +1107,15 @@ pub const STAR_RUNS: usize = 4;
 pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
     let mut out = String::new();
     for (k, setting) in sw.settings.iter().enumerate() {
-        let other = then.iter().find(|t| t.label == setting.label).unwrap_or(&then[0]);
+        // the setting of the same name, or the first of the same start, or the first
+        let other = then.iter().find(|t| t.label == setting.label).or_else(|| then.iter().find(|t| t.start == setting.start)).unwrap_or(&then[0]);
+        if other.start != setting.start {
+            let _ = writeln!(
+                out,
+                "\nthe starts differ: now {}, then {}; the comparison below sets one island's history against another's",
+                setting.start, other.start
+            );
+        }
         let now = setting_values(sw, k);
         let seeds: Vec<u64> = sw.runs.iter().filter(|r| r.setting == k && r.outcome.is_ok()).map(|r| r.seed).collect();
         let common: Vec<u64> = seeds.iter().copied().filter(|s| other.seeds.contains(s)).collect();
@@ -1157,9 +1218,18 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         Some(dir) => Some(read_then(dir)?),
         None => None,
     };
+    let beside = match &o.beside {
+        Some(dir) => Some(read_then(dir).map_err(|e| e.replace("--compare", "--beside"))?),
+        None => None,
+    };
     let plan = plan(&o)?;
-    if o.standing && plan.settings.len() < 2 && o.compare.is_none() {
+    // the colony's check needs nothing to set it against: its bands are history's
+    let colony = plan.settings.iter().any(|s| s.start == "landfall");
+    if o.standing && plan.settings.len() < 2 && o.compare.is_none() && !colony {
         return Err(format!("--standing needs something to set the sweep against: two settings (--set key=a,b) or --compare OTHER_DIR\n{USAGE}"));
+    }
+    if o.colony && !colony {
+        return Err(format!("--colony asks for the colony's check, which only the landfall start has: give --start landfall\n{USAGE}"));
     }
     std::fs::create_dir_all(&o.out).map_err(|e| format!("--out {}: {e}", o.out.display()))?;
     let sw = run(&o, plan);
@@ -1169,7 +1239,11 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
     }
     write_outputs(&sw, &o, &text)?;
     // the standing check (standing.rs): printed last, and written beside summary.txt
-    let standing = if o.standing { crate::standing::for_sweep(&sw, then.as_deref().zip(o.compare.as_deref())) } else { None };
+    let standing = if o.standing {
+        crate::standing::for_sweep(&sw, then.as_deref().zip(o.compare.as_deref()), beside.as_deref().zip(o.beside.as_deref()))
+    } else {
+        None
+    };
     if let Some(s) = &standing {
         std::fs::write(o.out.join("standing.txt"), &s.text).map_err(|e| format!("{}: {e}", o.out.join("standing.txt").display()))?;
     }
@@ -1193,6 +1267,9 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         }
         if o.growth && !s.growth_missed.is_empty() {
             why.push(format!("the growth after 1900 failed (--growth): {} not met\n  {}", s.growth_missed.len(), s.growth_missed.join("\n  ")));
+        }
+        if o.colony && !s.colony_missed.is_empty() {
+            why.push(format!("the colony's check failed (--colony): {} not met\n  {}", s.colony_missed.len(), s.colony_missed.join("\n  ")));
         }
     }
     if !why.is_empty() {
@@ -1306,6 +1383,31 @@ mod tests {
         assert_eq!(settings(&six).unwrap()[0].label, "game rules, 1 family");
     }
 
+    /// The start is a column: either start alone, or both side by side, the
+    /// settled island's labels as they always were and landfall's naming it.
+    #[test]
+    fn the_start_is_a_column() {
+        let args = |extra: &[&str]| -> Vec<String> { ["--out", "x", "--rules", "game", "--families", "6"].iter().chain(extra).map(|s| s.to_string()).collect() };
+        let s = settings(&parse_args(&args(&[])).unwrap()).unwrap();
+        assert_eq!((s.len(), s[0].label.as_str(), s[0].start), (1, "game rules, 6 families", "settled"));
+        let s = settings(&parse_args(&args(&["--start", "landfall"])).unwrap()).unwrap();
+        assert_eq!((s.len(), s[0].label.as_str(), s[0].start), (1, "game rules, landfall, 6 families", "landfall"));
+        assert!(s[0].params.start.landfall && s[0].params.immigration.enabled && s[0].params.frontier.enabled);
+        let s = settings(&parse_args(&args(&["--start", "settled,landfall"])).unwrap()).unwrap();
+        let labels: Vec<(&str, &str)> = s.iter().map(|x| (x.label.as_str(), x.start)).collect();
+        assert_eq!(labels, [("game rules, 6 families", "settled"), ("game rules, landfall, 6 families", "landfall")]);
+        // swept, landfall says so before the swept values; the settled island's are as they were
+        let s = settings(&parse_args(&args(&["--start", "settled,landfall", "--set", "hurdle=0.1,0.12"])).unwrap()).unwrap();
+        let labels: Vec<&str> = s.iter().map(|x| x.label.as_str()).collect();
+        assert_eq!(labels, ["hurdle=0.1", "hurdle=0.12", "landfall, hurdle=0.1", "landfall, hurdle=0.12"]);
+        // the start alone by --set is a start of its own, and its label says what was set
+        let s = settings(&parse_args(&args(&["--set", "start.landfall=true"])).unwrap()).unwrap();
+        assert_eq!((s[0].label.as_str(), s[0].start), ("start.landfall=true", "landfall"));
+        assert!(parse_args(&args(&["--start", "landfall,landfall"])).unwrap_err().contains("listed twice"));
+        assert!(parse_args(&args(&["--start", "corner"])).is_err());
+        assert!(parse_args(&args(&["--colony"])).unwrap_err().contains("--standing"));
+    }
+
     #[test]
     fn a_swept_setting_is_checked_as_a_file_would_be() {
         // a stock target of 100 months leaves the game's brake on a glut (8 months)
@@ -1335,7 +1437,7 @@ mod tests {
             let done = Done { facts: Facts { facts, ..Facts::default() }, annual: Vec::new(), names: Vec::new(), start_year: 1750 };
             runs.push(Run { id: runs.len(), seed, setting: k, outcome: Ok(done), seconds: 17.0 });
         }
-        let setting = |v: &str| Setting { label: format!("hurdle={v}"), values: vec![v.to_string()], params: crate::params::default_params() };
+        let setting = |v: &str| Setting { label: format!("hurdle={v}"), values: vec![v.to_string()], params: crate::params::default_params(), start: "settled" };
         let fact_index = match &runs[0].outcome {
             Ok(done) => done.facts.facts.iter().map(|f| (f.name.clone(), f.group, f.kind)).collect(),
             Err(_) => unreachable!(),
