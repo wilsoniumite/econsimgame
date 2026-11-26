@@ -1739,3 +1739,100 @@ fn the_making_panels_edits_go_through_the_thread_and_give_the_trays_island() {
     b.step();
     same(&a, &b, "a year after the panel's edits and the tray's");
 }
+
+// IDEAS-PLATE (ideas_plate.rs): the island's ideas come from the game's thread
+// as a card does; a drag's hold goes through the thread as an edit by hand, is
+// on the panel's row with its year, holds the idea back, and taken back leaves
+// the island that never had it. Island 7, six families, the game's rules as
+// they stand; each case is set beside the same island played with no edit, so
+// it leans on no one island's history and sets no rule by name.
+#[test]
+fn a_drag_on_the_ideas_timeline_goes_through_the_thread_and_taken_back_leaves_the_untouched_island() {
+    use isostate_core::edits::PinWhen;
+    use isostate_core::inspect::Thing;
+    use isostate_core::island_ideas::drop_choices;
+    let dir = saves::test_dir("ideas-plate-test");
+    let game_at = |name: &str| {
+        let file = dir.join(format!("{name}.json"));
+        (Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, save: Some(file.to_string_lossy().into_owned()), ..default() }, file)
+    };
+    let (o, untouched) = game_at("untouched");
+    let mut u = Table::open(&o);
+    let (o, file) = game_at("held");
+    let mut a = Table::open(&o);
+    assert_eq!(a.year(), 1790);
+    let told = a.ask(Thing::Ideas).expect("the island's ideas are told");
+    let ideas = told.timeline.expect("a timeline");
+    assert_eq!(ideas.now, 1791);
+    // every idea not yet found that a drag may move, held back ten years past the run asked of here
+    let row = ideas.rows().find(|r| r.kind != "use" && r.found.is_none() && r.drag.is_ok()).expect("an idea not yet found").clone();
+    let offers = drop_choices(&row, 1880, ideas.end).unwrap();
+    let hold = offers.iter().find(|o| o.label == "Hold it back until 1880").expect("a hold").edit.clone();
+    assert!(a.order("by_hand", Cmd::ByHand(hold.clone())), "{}", a.said);
+    assert_eq!(a.said, format!("By hand: {} held back until 1880", row.label));
+    assert_eq!(a.live.standing.back, Some((1790, 0)), "it can be taken back as any edit");
+    let again = a.ask(Thing::Ideas).unwrap().timeline.unwrap();
+    assert_eq!(again.row(&row.name).unwrap().pin, Some((1880, PinWhen::NotBefore)), "the row carries the hold and its year");
+    for _ in 0..5 {
+        a.step();
+        u.step();
+    }
+    let k = a.ask(Thing::Ideas).unwrap().timeline.unwrap();
+    assert!(k.row(&row.name).unwrap().found.is_none(), "{} is not found before 1880", row.label);
+    let to = a.take_back().expect("the hold is taken back");
+    assert_eq!((to.year, to.months), (1790, 0));
+    for _ in 0..5 {
+        a.step();
+    }
+    same(&a, &u, "five years after the hold was taken back");
+    assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new());
+    assert_eq!(check_of_save(&file, 1795, 0), check_of_save(&untouched, 1795, 0), "the save five years after the take back");
+    // the panel says why a find cannot be moved
+    let back = a.ask(Thing::Ideas).unwrap().timeline.unwrap();
+    let found = back.rows().find(|r| r.found.is_some() && !r.at_start && r.kind != "use").unwrap();
+    assert!(drop_choices(found, 1800, back.end).unwrap_err().contains("cannot be unmade but by taking it back"));
+    drop(a);
+    drop(u);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// GROUND-BRUSH (ground.rs): a stroke of the brush goes through the thread as one
+// edit, the year after it holds the squares it changed (`Holds::now`), and taken
+// back the island is the one never painted.
+#[test]
+fn a_stroke_of_the_brush_shows_in_the_years_ground_and_taken_back_leaves_the_untouched_island() {
+    use isostate_core::edits::{Edit, Ground};
+    // island 7, six families, the game's rules as they stand, played to January 1791
+    // through the thread, set beside the same island with no edit: it leans on no
+    // one island's history
+    let o = Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() };
+    let mut u = Table::open(&o);
+    let mut a = Table::open(&o);
+    let k = a.r.filled - 1;
+    // two squares of land with no coal under them, side by side, the first the viewer finds
+    let coal = a.r.holds.field("coal").expect("the ground's coal").to_vec();
+    let w = a.r.w;
+    let square = (w..a.r.n - w).find(|&c| (0..4).all(|d| a.r.terrain[c + d] > 0 && coal[c + d] == 0)).expect("land with no coal");
+    let edit = Edit::Ground { kind: Ground::Coal, lay: true, size: 1, squares: vec![square + 1, square + 2] };
+    // the preview the viewer paints is what the island then holds, to the fields' 256 steps
+    let (preview, rich) = crate::overlay::preview_stroke(&a.r, k, 0, &Default::default(), true, 1, &[square + 1, square + 2], None).unwrap();
+    assert!(a.order("by_hand", Cmd::ByHand(edit)), "{}", a.said);
+    assert!(a.said.starts_with(&format!("By hand: coal laid down on {} squares", preview.len())), "the preview reaches the squares the stroke did: {} against {}", preview.len(), a.said);
+    a.step();
+    let k = a.r.filled - 1;
+    let now = &a.r.holds.now[k];
+    assert_eq!(now.len(), preview.len(), "the year holds every square the stroke changed");
+    let g = crate::overlay::ground_map(&a.r, k, 0).unwrap();
+    for &(c, v) in &preview {
+        assert!((g.cells[c] - v).abs() <= 0.02 + 0.02 * rich as f32, "square {c}: the preview said {v}, the year holds {}", g.cells[c]);
+    }
+    assert!(g.by_hand && crate::overlay::ground_map(&u.r, u.r.filled - 1, 0).is_some_and(|g| !g.by_hand));
+    // taken back, the island that was never painted
+    a.take_back().expect("the stroke is taken back");
+    same(&a, &u, "the stroke taken back");
+    assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new(), "the run taken back is the run never painted");
+    a.step();
+    u.step();
+    same(&a, &u, "a year after the stroke was taken back");
+    assert!(a.r.holds.now.is_empty());
+}

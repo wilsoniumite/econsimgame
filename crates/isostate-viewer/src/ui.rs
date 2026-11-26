@@ -674,9 +674,11 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 let tabs: (&str, &str) = if sandbox { ("1 2 3 4 5", "hand, rules, markets, news, families") } else { ("1 2 3 4", "family, holdings, markets, news") };
                 let more: &[(&str, &str)] = &[
                     // (task A) two more: when town ground joined its town, and who lives on it
-                    ("M", "map views: rent, markets, reach, prices, wages, town growth, residents"),
-                    ("G", "the next good, when prices are mapped"),
+                    ("M", "map views: rent, markets, reach, prices, made here, wages, town growth, residents, deposits, traffic"),
+                    ("G", "the next good, or kind of ground, when one is mapped"),
                     ("T", "miniature focus on or off"),
+                    // note.rs: her words, kept where she stands
+                    ("N", "a note in your words, kept with a picture of the screen"),
                     ("Esc", if sandbox { "put the tool down, or close the note about what you clicked" } else { "close the note about what you clicked" }),
                 ];
                 let f3: &[(&str, &str)] = if sandbox { &[("F3", "how long each frame takes to draw, as a strip")] } else { &[] };
@@ -686,6 +688,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         row.spawn(text(f, what, 15.0, INK));
                     });
                 }
+                // her question of 19 November: the backlog, read from docs/BACKLOG.md, and her notes of the day
+                c.spawn(Node { margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| small_button(row, f, "The backlog and your notes of today", crate::backlog_seen::OpenBacklog));
                 c.spawn((text(f, "Press H again to close this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
         });
@@ -1338,6 +1342,8 @@ pub fn kind_colour(kind: &str) -> Color {
         // what became of the player's own orders at a year's turn (`Toasts::say`): done, or not
         "orders" => Color::srgb(0.62, 0.30, 0.45),
         "orders_refused" => Color::srgb(0.70, 0.25, 0.22),
+        // a note kept at the window (note.rs)
+        "note" => crate::note::NOTE_INK,
         _ => Color::srgb(0.45, 0.45, 0.45),
     }
 }
@@ -1366,6 +1372,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "state" => "The state",
         "orders" | "orders_refused" => "Your orders",
         "hand" => "By hand",
+        "note" => "Your note",
         _ => "News",
     }
 }

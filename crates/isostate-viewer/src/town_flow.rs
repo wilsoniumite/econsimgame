@@ -103,6 +103,13 @@ pub struct Flow {
     menu_drawn: Option<(u64, Option<(usize, bool)>)>,
 }
 
+impl Flow {
+    /// The town whose making is shown, while the panel is open (for a note: note.rs).
+    pub fn town(&self) -> Option<usize> {
+        self.town
+    }
+}
+
 pub fn plugin(app: &mut App) {
     app.init_resource::<Flow>().add_systems(Startup, spawn_panel).add_systems(
         Update,
