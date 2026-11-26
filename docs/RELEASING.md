@@ -15,7 +15,7 @@ About once a week, when main holds a game worth trying, it is marked as a versio
 9. Run them. The zip is then at the repository's `releases/latest` page, to download from anywhere.
 10. `python tools/release.py --practice` does all of it from wherever the checkout stands, its refusals turned into warnings, to try the command itself; it publishes nothing either, and what it prints is not to be run.
 
-On 26 November 2026, on a machine shared with other builds, the whole command took 11.2 minutes from an empty build folder (the build 10.6, the trial 12 seconds), 16.3 minutes after a new commit with the other crates already built (the build 15.7, the machine busier), and 0.6 minutes run again on the same commit. The zip is 28 MiB, the program in it 87.5 MiB.
+On 26 November 2026, on a machine shared with other builds, the whole command took 11.2 minutes from an empty build folder (the build 10.6, the trial 12 seconds), 16.3 minutes after a new commit with the other crates already built (the build 15.7, the machine busier), and 0.6 minutes run again on the same commit. The zip is 28 MiB, the program in it 87.5 MiB. The build folder, `target/dist`, takes 4 GB of the disk; it may be deleted between versions, at the price of the next build starting from nothing.
 
 ## What a player needs
 
