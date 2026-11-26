@@ -623,6 +623,11 @@ pub(crate) const HANDS_A_STOREY: f32 = 200.0;
 /// a lot's are by what its town knows. It is built again, in the form of
 /// the year, only when it has come to want half as many storeys again as it
 /// stands: so it does not change with every hand it takes on or lets go.
+///
+/// A works of care (the content's `care_homes`: a hospital and a home for the
+/// old, the core's docs/rules/care.md) stands in the same forms, by the same
+/// rule: a large civic house of the year, as near as the game's assets come to
+/// a hospital until it has one of its own.
 pub(crate) fn office(r: &Replay, f: usize, k: usize) -> Option<Built> {
     let now = r.y0 + k as i32;
     if !r.builds.kept() || now <= FROM {
@@ -630,7 +635,7 @@ pub(crate) fn office(r: &Replay, f: usize, k: usize) -> Option<Built> {
     }
     let firm = r.header.firms.get(f)?;
     let method = r.header.methods.get(firm.method)?;
-    if method.name != "offices" {
+    if method.name != "offices" && method.name != "care_homes" {
         return None;
     }
     let labor = method.labor.unwrap_or(0.33);

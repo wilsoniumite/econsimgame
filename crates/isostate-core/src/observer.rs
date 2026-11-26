@@ -176,6 +176,9 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     // the lorry (docs/rules/lorry.md): the hauling done by lorry, while the lorry may be
     // found (before the ages, whose series come after everyone's: tests/ages.rs)
     crate::lorry::add_series(&mut reg, P, n_months);
+    // care (docs/rules/care.md): its hands, its part of the spending and its price
+    // (before the ages, too)
+    crate::care::add_series(&mut reg, C, P, n_months);
     // ages (docs/rules/ages.md): the people's ages, reckoned beneath the played totals
     crate::ages::add_series(&mut reg, P, n_months);
     // state (docs/rules/state.md): the rate on pay, and what the treasury pays out
@@ -297,6 +300,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     crate::who_works::record_month(st, P, &mut s, t);
     // the lorry (docs/rules/lorry.md): nought until it is found
     crate::lorry::record_month(st, P, &mut s, t);
+    // care (docs/rules/care.md): its hands, its part of the spending and its price
+    crate::care::record_month(st, C, P, &mut s, t);
     st.series = s;
 }
 

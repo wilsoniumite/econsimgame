@@ -265,6 +265,8 @@ pub(crate) fn taken_back(
     let unis = crate::replay::universities_standing(r);
     // and the first year of each road, which the town's streets are laid by, is gone through again
     g.land.closes.forget_roads_from(to.filled);
+    // and the roads the carts wore (`network::drawn_links`)
+    g.worn.forget_from(to.filled);
     if unis == 0 {
         slots.forget(to.firms);
     } else if slots.firm_pos.len() >= unis_from + unis {

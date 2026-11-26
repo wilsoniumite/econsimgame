@@ -723,6 +723,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::lorry::facts(r) {
         b.num(name, kind, v);
     }
+    // care (docs/rules/care.md): its hands, its spending and its price, every tenth year from 1900
+    for (name, kind, v) in crate::care::facts(r) {
+        b.num(name, kind, v);
+    }
     // pay (docs/rules/pay.md): each class's pay, reckoned from the hands and not played
     for (name, kind, v) in crate::pay::facts(r) {
         b.num(name, kind, v);

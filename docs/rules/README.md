@@ -1083,3 +1083,13 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   made, bought or held: every sum over the goods takes the goods of the start in numpy's order and a
   later good after them, and the families' typical good is reckoned on the goods of the start. How to
   add a good after 1900 is there in a few lines. [goods.md](goods.md).
+- **care** (acts only once the island finds it, from 1908): a ninth need, served by one good made in
+  towns by hospitals and homes of care, every hour of it presence, which no machine of the tasks' rule
+  takes, learning nothing and with no economies of size, not carried and not kept; households' want of it
+  is a share of the Engel rule's richer set that grows with their town's old, the very old counted four
+  times. [care.md](care.md), `care.enabled`.
+- **a works' machines on its own making** (acts only from 1901, when a machine first runs on anything): a
+  works whose machines run on the good it makes, the power stations' on electricity, runs them on its own
+  making, so the market's shortage of current no longer stands the stations' machines idle and makes the
+  shortage worse. Traced from the slumps when machines tend, which it halves. [tending.md](tending.md),
+  "The slumps", `tasks.own_run`.

@@ -35,6 +35,13 @@ pub fn discovery(st: &mut State, C: &Content, P: &Params, tech_rng: &mut Rng, ye
         if own && !crate::tasks::idea_sought(C, P, t) {
             continue;
         }
+        // care's method (docs/rules/care.md; not in the Python) likewise: sought
+        // only while its rule is on, with draws of its own
+        let care = crate::care::is_idea(C, t);
+        if care && !crate::care::sought(P) {
+            continue;
+        }
+        let own = own || care;
         let mut drawn;
         let rng: &mut Rng = if own {
             drawn = crate::rng::idea_stream(P.seed, &C.tech_name[t], year);

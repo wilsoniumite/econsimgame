@@ -256,7 +256,7 @@ pub fn island_ideas(sim: &Sim, learnt: Option<&Learnt>) -> IslandIdeas {
                 // the island makes more; so the mean wait at today's chance is the longest
                 // the mean wait can be, and the year it gives is the latest it is likely by
                 let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(k, g)] > 0.0).collect();
-                let sought = crate::woods::sought(C, P, k) && (!crate::tasks::idea_of_use(C, k) || crate::tasks::idea_sought(C, P, k));
+                let sought = crate::woods::sought(C, P, k) && (!crate::tasks::idea_of_use(C, k) || crate::tasks::idea_sought(C, P, k)) && (!crate::care::is_idea(C, k) || crate::care::sought(P));
                 let after = C.tech_after.get(k).copied().unwrap_or(0);
                 if pin.is_none() && sought && now >= after && !req.is_empty() {
                     let p = req.iter().map(|&g| st.cumprod[g] / st.disc_X0[(k, g)]).fold(f64::INFINITY, f64::min).max(0.0);
