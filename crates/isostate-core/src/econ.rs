@@ -1026,6 +1026,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut q = vec![0.0; NFI];
     let mut use_f = Mat::zeros(NFI, G);
     let mut labor_f = vec![0.0; NFI];
+    let own_run = P.tasks.own_run;
     for i in 0..NFI {
         let t = ft[i];
         let mut fill_in = f64::INFINITY;
@@ -1044,7 +1045,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                 for g in 0..G {
                     fill_in = fill_in.min(if a[(i, g)] - r.of(g) > 0.0 { fill[(t, g)] } else { 1.0 });
                 }
-                fr = r.run.iter().map(|&(g, _)| fill[(t, g)]).fold(1.0, f64::min);
+                // tasks.own_run (docs/rules/tending.md, "The slumps"): a works whose
+                // machines run on the good it makes runs them on its own making, so
+                // the market's shortage of that good does not stand them idle
+                fr = r.run.iter().filter(|&&(g, _)| !(own_run && g == out[i])).map(|&(g, _)| fill[(t, g)]).fold(1.0, f64::min);
             }
         }
         let fill_heat = if h[i] > 0.0 { pairwise_sum_by(NF, |k| hshare[(i, k)] * fill[(t, fuels[k])]) } else { 1.0 };
@@ -1056,7 +1060,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         // the run goods are charged for what the machines used
         if let Some(r) = run {
             for &(g, v) in &r.run {
-                use_f[(i, g)] -= q[i] * v * (1.0 - fr);
+                // tasks.own_run: of its own good it buys no more than the market's
+                // fill; the rest its machines take from what it makes
+                let f = if own_run && g == out[i] { fill[(t, g)].min(fr) } else { fr };
+                use_f[(i, g)] -= q[i] * v * (1.0 - f);
             }
         }
         if !running.is_empty() {
