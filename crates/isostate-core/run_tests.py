@@ -285,6 +285,11 @@ QUICK_SKIPS = [
     'no_hungry_january_after_a_town_takes_a_district',
     'the_shelves_go_with_a_district_to_an_old_town_and_nothing_is_lost',
 
+    # squares
+    'the_book_holds_every_year_on_islands_1_to_8',
+    'a_works_keeps_its_first_square_while_it_stands',
+    'nothing_moves_with_the_switch',
+
     # state
     'a_chip_overrides_the_book_from_the_year_it_is_set',
     'the_book_pays_from_1901_and_the_treasury_balances',

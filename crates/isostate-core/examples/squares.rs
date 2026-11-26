@@ -254,10 +254,18 @@ fn picture(o: &Out, i: usize, path: &str) {
         let c = o.town_node[i];
         (x0, y0, x1, y1) = (c % W, c / W, c % W, c / W);
     }
-    let (x0, y0) = (x0.saturating_sub(1), y0.saturating_sub(1));
-    let (x1, y1) = ((x1 + 1).min(W - 1), (y1 + 1).min(H - 1));
+    let (mut x0, mut y0) = (x0.saturating_sub(1), y0.saturating_sub(1));
+    let (mut x1, mut y1) = ((x1 + 1).min(W - 1), (y1 + 1).min(H - 1));
+    // a large town: the nine cells by nine about its middle, so that the squares show
+    let (nx, ny) = (o.town_node[i] % W, o.town_node[i] / W);
+    if x1 - x0 > 8 {
+        (x0, x1) = (nx.saturating_sub(4), (nx + 4).min(W - 1));
+    }
+    if y1 - y0 > 8 {
+        (y0, y1) = (ny.saturating_sub(4), (ny + 4).min(H - 1));
+    }
     let (cw, ch) = (x1 - x0 + 1, y1 - y0 + 1);
-    let px = ((520 / (cw.max(ch) * SIDE)).clamp(2, 12)) as usize;
+    let px = ((600 / (cw.max(ch) * SIDE)).clamp(2, 12)) as usize;
     let (pw, ph) = (cw * SIDE * px, ch * SIDE * px);
     let gap = 12;
     let cols = 3;
@@ -341,7 +349,7 @@ fn picture(o: &Out, i: usize, path: &str) {
                     }
                     let n = ny as usize * W + nx as usize;
                     if s.road[n] > 0 {
-                        let col = if s.road[c] >= 2 && s.road[n] >= 2 { [20, 20, 20] } else { [90, 80, 70] };
+                        let col = if s.road[c] >= 2 && s.road[n] >= 2 { [70, 66, 60] } else { [150, 144, 132] };
                         line(&mut panel, pw, ph, spot(c), spot(n), col);
                     }
                 }

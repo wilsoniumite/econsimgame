@@ -1083,3 +1083,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   made, bought or held: every sum over the goods takes the goods of the start in numpy's order and a
   later good after them, and the families' typical good is reckoned on the goods of the start. How to
   add a good after 1900 is there in a few lines. [goods.md](goods.md).
+- **squares** (a shadow, read by no rule): every cell with something built keeps sixteen by sixteen
+  squares of 125 m, each with its tenant (a works, a pit, house blocks, a park, a town's open ground,
+  derelict ground) and the year it was taken, allotted once a year from the books' shares and never laid
+  out afresh; nothing in the economy, the books or the news moves with it. [squares.md](squares.md),
+  `squares.enabled`.

@@ -1122,6 +1122,13 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
     let mut claimed = vec![0u8; 0];
     claimed.resize(b.tables.len() * PER_CELL, 0);
     let mut works_on = vec![0usize; N];
+    // each cell's works share as the books have it
+    let mut ks = vec![0.0f64; N];
+    for f in 0..st.F_count {
+        if st.f_alive[f] {
+            ks[st.f_cell[f]] += crate::works::land_held(st, C, P, f);
+        }
+    }
     for f in 0..st.F_count.min(b.works.len()) {
         let h = &b.works[f];
         if h.squares.is_empty() {
@@ -1148,12 +1155,9 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         // a works holds its share of the cell to within a square
         let x = crate::works::land_held(st, C, P, f) * PER_CELL as f64;
         let n = h.squares.len() as f64;
-        if (n - x).abs() >= 1.0 + 1e-9 && x <= PER_CELL as f64 {
-            // (a cell over-full is scaled down, below)
-            let sum: f64 = (0..st.F_count).filter(|&g| st.f_alive[g] && st.f_cell[g] == h.cell).map(|g| crate::works::land_held(st, C, P, g)).sum();
-            if sum <= 1.0 {
-                return Err(format!("{year}: works {f} holds {n} squares for {x:.2} of ground"));
-            }
+        // (a cell over-full is scaled down)
+        if (n - x).abs() >= 1.0 + 1e-9 && ks[h.cell] <= 1.0 && b.short == 0 {
+            return Err(format!("{year}: works {f} holds {n} squares for {x:.2} of ground"));
         }
     }
     for (&(r, c), h) in &b.pits {
@@ -1197,9 +1201,9 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
             return Err(format!("{year}: cell {c} keeps a table with nothing on it"));
         }
         // the works' squares come to the cell's works share within a square
-        let ks = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_cell[f] == c).map(|f| crate::works::land_held(st, C, P, f)).sum::<f64>().min(1.0);
-        if (works_on[c] as f64 - ks * PER_CELL as f64).abs() > 1.0 && b.short == 0 {
-            return Err(format!("{year}: cell {c} has {} squares of works for {:.2} of the cell", works_on[c], ks));
+        let share = ks[c].min(1.0);
+        if (works_on[c] as f64 - share * PER_CELL as f64).abs() > 1.0 && b.short == 0 {
+            return Err(format!("{year}: cell {c} has {} squares of works for {share:.4} of the cell", works_on[c]));
         }
         // a pit's squares come to its surface within a square
         let ms: f64 = (0..st.mine_sectors.len()).filter(|_| st.mine_surface.rows > 0).map(|r| st.mine_surface[(r, c)]).sum();
@@ -1224,6 +1228,12 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
             }
         } else if town > 0 {
             return Err(format!("{year}: cell {c} is no town's and has {town} squares of town ground"));
+        }
+    }
+    // a cell with no table has nothing the books count in whole squares
+    for c in 0..N {
+        if b.index[c] == 0 && (ks[c].min(1.0) * PER_CELL as f64 > 1.0 || st.urban[c]) {
+            return Err(format!("{year}: cell {c} keeps no table and holds {:.4} of works{}", ks[c], if st.urban[c] { " and is a town's" } else { "" }));
         }
     }
     // every works holds its squares
