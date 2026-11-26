@@ -578,23 +578,136 @@ fn route_rivers(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
     Way { pts, crossings, water: OnWater::None }
 }
 
+/// How far a road's curve may leave its straight line where it crosses a
+/// river to cross it square: at most this angle from the line (60 degrees),
+/// so that a river running nearly along the road does not twist it into an S.
+const SQUARE_MOST: f32 = 0.5;
+/// How far past a bridge's ramp (`isostate_gen::bridge::APPROACH`, 0.02)
+/// a road's curve runs straight on, so that a cart is square on the bridge
+/// before it climbs.
+const APPROACH_PAST: f32 = 0.03;
+
+/// The way of the road from `a` to `b` (two cells' middles) as a smooth
+/// curve (`road_course`): it leaves `a` along `da` and arrives at `b` along
+/// `db` (both of length one), on the railways' curve (`course::Ends`).
+/// Where the straight line crosses a river, the curve passes through the
+/// same point, square to the water (or as near square as `SQUARE_MOST`
+/// lets it), and it must cross every river exactly as often as the way
+/// `route` draws does: a drawn road crosses a drawn river only where the
+/// simulation has a bridge or a ford, and no more often. Where it would
+/// not, or where `route` takes the road round a meander along the bank, the
+/// way is `route`'s. On the new land it then keeps off standing water as
+/// `route` does (`round_water`).
+pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool) -> Way {
+    let straight = route_rivers(g, a, b, round);
+    // (a way that goes round a meander, a lake or the tide keeps the way it had)
+    if !straight.straight() || route(g, a, b, round).water != OnWater::None {
+        return route(g, a, b, round);
+    }
+    let chord = (b - a).normalize_or(Vec2::X);
+    // the points the curve passes through, in order along the road, with its direction at each
+    let mut marks: Vec<(f32, Vec2, Vec2, f32)> = straight
+        .crossings
+        .iter()
+        .map(|&(at, river, half, _, _)| {
+            let mut square = river.perp();
+            if square.dot(chord) < 0.0 {
+                square = -square;
+            }
+            if square.dot(chord) < SQUARE_MOST {
+                square = (square + chord).normalize_or(chord);
+            }
+            // straight across the bridge or the ford and its ramps, from bank to bank and a little past
+            let reach = half / square.perp_dot(river).abs().max(0.34) + 0.0175 + APPROACH_PAST;
+            ((at - a).dot(chord), at, square, reach)
+        })
+        .collect();
+    marks.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut stops: Vec<(Vec2, Vec2)> = vec![(a, da)];
+    for &(_, at, along, reach) in &marks {
+        stops.push((at - along * reach, along));
+        stops.push((at + along * reach, along));
+    }
+    stops.push((b, db));
+    // (the straight lengths must leave room for the curve between them)
+    if stops.windows(2).any(|w| (w[1].0 - w[0].0).dot(chord) < 0.03) {
+        return route(g, a, b, round);
+    }
+    let mut pts: Vec<Vec2> = vec![a];
+    for w in stops.windows(2) {
+        let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };
+        let n = ((w[0].0.distance(w[1].0) / 0.04).ceil() as usize).max(4);
+        pts.extend((1..=n).map(|i| ends.point(i as f32 / n as f32, 0.0)));
+    }
+    // it crosses each river as often as the straight line it is drawn for does, and only there
+    let count = |pts: &[Vec2]| {
+        let mut by: Vec<(u32, usize)> = Vec::new();
+        for w in pts.windows(2) {
+            for (_, ri, _, _) in crate::rivers::crossing_points(&g.rivers, &g.water, w[0], w[1]) {
+                match by.iter_mut().find(|x| x.0 == ri) {
+                    Some(x) => x.1 += 1,
+                    None => by.push((ri, 1)),
+                }
+            }
+        }
+        by.sort_unstable();
+        by
+    };
+    if count(&pts) != count(&[a, b]) {
+        return route(g, a, b, round);
+    }
+    // each crossing as the straight line has it, crossed the way the curve runs there
+    let crossings = straight.crossings.iter().map(|&(at, river, half, level, _)| (at, river, half, level, marks.iter().find(|m| m.1 == at).map_or(chord, |m| m.2))).collect();
+    let way = Way { pts, crossings, water: OnWater::None };
+    if g.laid.is_none() || !standing_on(g, &way.pts) {
+        return way;
+    }
+    round_water(g, a, b, way)
+}
+
+/// The road from a link's way as a cart drives it (`driven`), for any way.
+pub fn driven_on(g: &Ground, way: &Way, main: bool, crossed: Crossed, round: bool) -> Vec<Vec3> {
+    if way.straight() {
+        let (a, b) = (way.pts[0], way.pts[1]);
+        return driven(g, (a.x, a.y), (b.x, b.y), main, crossed, round);
+    }
+    let bridges = if crossed == Crossed::Bridge { bridges_on(way, main, |_| Detail::Play) } else { Vec::new() };
+    let fords = if crossed != Crossed::Bridge { fords_on(way, main, crossed) } else { Vec::new() };
+    driven_round(g, way, &bridges, &fords)
+}
+
+/// The bridges on a link's way (`course`): one wherever it crosses a
+/// river's middle line, each built at the level of detail `detail` gives
+/// for its place. None where the run says the road crosses its water by a
+/// ford or a ferry (`crossed`, from `Replay::crossed`: the core's
+/// docs/rules/crossings.md).
+pub fn bridges_of(way: &Way, main: bool, crossed: Crossed, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
+    if crossed != Crossed::Bridge {
+        return Vec::new();
+    }
+    bridges_on(way, main, detail)
+}
+
+/// The fords (or a ferry's landings) on a link's way, where the run says it
+/// crosses its water with no bridge: one wherever the way crosses a river's
+/// middle line, reaching along the road as far as the water does.
+pub fn fords_of(way: &Way, main: bool, crossed: Crossed) -> Vec<RoadFord> {
+    if crossed == Crossed::Bridge {
+        return Vec::new();
+    }
+    fords_on(way, main, crossed)
+}
+
+/// The way the road between cells `c` and `m` is drawn in year `k`: its
+/// course as `road_course` fixed it the year it was first drawn.
+pub fn course(r: &Replay, g: &Ground, cen: &[(f32, f32)], c: usize, m: usize, k: usize) -> Way {
+    g.courses.way(r, g, cen, c, m, k)
+}
+
 /// The middle line of the ribbon of the road along `way`, as `road_line` drapes a straight one.
 pub fn way_line(g: &Ground, way: &Way) -> Vec<Vec3> {
     let pts: Vec<(f32, f32)> = way.pts.iter().map(|p| (p.x, p.y)).collect();
     drape(g, &pts, ROAD_LIFT)
-}
-
-/// The bridges on the road from `a` to `b`: one wherever it crosses a
-/// river's middle line, as long as the river is wide where the road crosses
-/// it, each built at the level of detail `detail` gives for its place. None
-/// where the run says the road crosses its water by a ford or a ferry
-/// (`crossed`, from `Replay::crossed`: the core's docs/rules/crossings.md);
-/// with `round`, only where its way crosses (`route`).
-pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
-    if crossed != Crossed::Bridge {
-        return Vec::new();
-    }
-    bridges_on(&route(g, a, b, round), main, detail)
 }
 
 /// The bridges where a way crosses water.
@@ -609,16 +722,6 @@ fn bridges_on(way: &Way, main: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<Roa
         .collect()
 }
 
-/// The fords (or a ferry's landings) on the road from `a` to `b`, where the
-/// run says it crosses its water with no bridge: one wherever its way
-/// crosses a river's middle line, reaching along the road as far as the water does.
-pub fn road_fords(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool) -> Vec<RoadFord> {
-    if crossed == Crossed::Bridge {
-        return Vec::new();
-    }
-    fords_on(&route(g, a, b, round), main, crossed)
-}
-
 /// The fords or ferries where a way crosses water.
 fn fords_on(way: &Way, main: bool, crossed: Crossed) -> Vec<RoadFord> {
     way.crossings
@@ -631,15 +734,11 @@ fn fords_on(way: &Way, main: bool, crossed: Crossed) -> Vec<RoadFord> {
         .collect()
 }
 
-/// Where the road from `a` to `c` runs over drowned ground (the mouth of a
-/// river, a creek) and a causeway carries it at `CAUSEWAY_TOP`: each stretch
-/// as how far along the road it starts and ends (0 at `a`, 1 at `c`), from
-/// one dry end to the other and a little past each.
-pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
-    causeway_runs_every(g, a, c, 0.02)
-}
-
-/// `causeway_runs`, looked at every `step` along the road.
+/// Where the straight road from `a` to `c` runs over drowned ground (the
+/// mouth of a river, a creek) and a causeway carries it at `CAUSEWAY_TOP`:
+/// each stretch as how far along the road it starts and ends (0 at `a`, 1 at
+/// `c`), from one dry end to the other and a little past each, looked at
+/// every `step` along the road.
 fn causeway_runs_every(g: &Ground, a: Vec2, c: Vec2, step: f32) -> Vec<(f32, f32)> {
     let len = a.distance(c);
     let n = ((len / step).ceil() as usize).max(2);
@@ -1086,7 +1185,7 @@ impl Worn {
 
 /// Whether cell `c` is a town's ground in year `k`, as the town's streets
 /// are laid on it (`scatter::towns`).
-fn town_ground(r: &Replay, k: usize, c: usize) -> bool {
+pub(crate) fn town_ground(r: &Replay, k: usize, c: usize) -> bool {
     let off = k * r.n + c;
     if r.kept() {
         r.built[off] > 0
@@ -1451,7 +1550,6 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     // tarmac, a bypass's paler, until their look is drawn (a later piece)
     let tr = &r.trans[k * r.n..(k + 1) * r.n];
     for (c, m, lv) in drawn_links(r, &g.worn, k) {
-        let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
         let trunk = tr[c] & 64 != 0 && tr[m] & 64 != 0;
         let colour = match (trunk, tr[c] & 128 != 0 || tr[m] & 128 != 0) {
             (true, true) => *lk.ground.tarmac_worn,
@@ -1459,9 +1557,10 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
             _ if lv == 3 => main,
             _ => lane,
         };
-        // (crossings: round the meanders its straight line cuts, where the run keeps its crossings;
-        // on the new land round a lake or a tideway, or over it on a causeway)
-        roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), colour);
+        // (its course, fixed the year it was first drawn: a curve through the meeting places,
+        // or round the meanders its straight line cuts; on the new land round a lake or a
+        // tideway, or over it on a causeway)
+        roads.ribbon(&way_line(g, &course(r, g, cen, c, m, k)), road_width(lv), colour);
     }
     Nets { roads, rails }
 }
