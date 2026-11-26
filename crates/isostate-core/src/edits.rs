@@ -118,6 +118,7 @@ pub const SWITCHES: &[&str] = &[
     "tasks.enabled",
     "woods.enabled",
     "who_works.enabled",
+    "pace.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -144,6 +145,11 @@ pub const SWITCHES: &[&str] = &[
 /// night/g-who-works: it acts only from 1901, so the trial to 1790 throws it
 /// where it does nothing; thrown on after 1900 it counts from the next year's
 /// end, and thrown off the hands are half the people from the next month.
+/// Pace (`pace.enabled`, docs/rules/pace.md) joined both on night/g-timber-check,
+/// when it was switched on: it too acts only from 1901, and thrown either way
+/// after it only changes the share of the plant still to come that the works
+/// ask for from the next month, which `tests/pace.rs` plays with the money
+/// checked every month.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -165,6 +171,7 @@ pub const SWITCHABLE: &[&str] = &[
     "tasks.enabled",
     "woods.enabled",
     "who_works.enabled",
+    "pace.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
