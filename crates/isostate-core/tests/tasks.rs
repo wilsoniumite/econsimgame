@@ -7,7 +7,7 @@
 //! computing and to 2030 for models) under the game's rules with six
 //! families, with the switches they lean on set by name (`tasks.enabled`,
 //! `tasks.land`, `tasks.yield_cap`, `tasks.computing`, `tasks.models`,
-//! `tasks.office_machines`) and
+//! `tasks.office_machines`; the lorry, `tasks.lorry` and `lorry`, off) and
 //! every other rule as the game has it. What they check
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
@@ -28,7 +28,10 @@ fn params(on: bool) -> Params {
     P.seed = 7;
     P.n_families = 6;
     P.end_year = Some(END);
-    P.tasks = TasksParams { enabled: on, ..TasksParams::game() };
+    // played without the lorry and its roads (docs/rules/lorry.md), which came after:
+    // its series is in the run's fingerprint, and from 1901 it changes island 7's history
+    P.tasks = TasksParams { enabled: on, lorry: false, ..TasksParams::game() };
+    P.lorry = Default::default();
     P
 }
 
@@ -58,8 +61,9 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    // (and the four machines that tend, docs/rules/tending.md, held by tests/tending.rs)
-    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_machines", "office_computing", "models", "moving_line", "automatic_machine", "robot", "lights_out_line"]);
+    // (and the four machines that tend, docs/rules/tending.md, held by tests/tending.rs, and the
+    // lorry, docs/rules/lorry.md, held by tests/lorry.rs)
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_machines", "office_computing", "models", "moving_line", "automatic_machine", "robot", "lights_out_line", "lorry"]);
     let combine = &C.tasks.uses[4];
     assert_eq!((combine.class, combine.from, combine.reach), (tasks::TEND, 0.0, 0.6));
     assert!(!combine.on_works && combine.on_sector.iter().enumerate().all(|(s, &b)| b == (C.sector_name[s] == "farm" || C.sector_name[s] == "pasture")));
@@ -115,8 +119,8 @@ fn the_drive_is_laid_only_with_its_goods() {
     // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
     // (and the tractor and the combine on the fields, the office machines and
     // office computing in the works' clerking, models in judging, and the four
-    // machines that tend, docs/rules/tending.md)
-    assert_eq!(six.tasks.uses.len(), 12);
+    // machines that tend, docs/rules/tending.md, and the lorry, docs/rules/lorry.md)
+    assert_eq!(six.tasks.uses.len(), 13);
     let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
     assert_eq!(drive.name, "electric_drive");
     assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
@@ -266,6 +270,11 @@ fn island_7_to_1925() {
     let mut empty = content(&P);
     empty.tasks.uses.clear();
     empty.tasks.plant_goods.clear();
+    // the motor vehicle, which only the lorry waits on, is then an idea like any other
+    // and would be sought: it is held back past the run, as it is with the lorry off
+    if let Some(t) = empty.tech_name.iter().position(|n| n == "motor_vehicle") {
+        empty.tech_after[t] = 9999;
+    }
     let none = check_of(P, empty);
     let off = check_of(params(false), content(&params(false)));
     let (on, none, off) = (on.join().unwrap(), none.join().unwrap(), off.join().unwrap());
@@ -343,7 +352,8 @@ fn island_7_to_1925_on_the_land() {
 /// years on. The combine, which tends and comes from 1935, is not waited for.
 fn starts(s: &sim::Sim) -> Option<i64> {
     let f = &s.st.tasks.found;
-    let haul: Vec<i64> = s.content.tasks.uses.iter().zip(f).filter(|(u, _)| u.class == tasks::HAUL).map(|(_, &y)| y).collect();
+    // (the lorry, a haul use behind its own switch, off in these runs, is never found)
+    let haul: Vec<i64> = s.content.tasks.uses.iter().zip(f).filter(|(u, _)| u.class == tasks::HAUL && u.allowed(&s.params)).map(|(_, &y)| y).collect();
     if haul.is_empty() || haul.iter().any(|&y| y < 0) { None } else { haul.iter().copied().max() }
 }
 
@@ -542,7 +552,7 @@ fn computing_stands_behind_its_switch() {
     // and the office machines (docs/rules/tasks.md, "Office machines"), which stand
     // behind one of their own too, as the machines that tend do behind `tending`)
     // stands behind no switch and reads its threshold in all
-    assert!(C.tasks.uses.iter().filter(|u| !["office_computing", "models", "office_machines"].contains(&u.name.as_str()) && u.switch.as_deref() != Some("tending")).all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
+    assert!(C.tasks.uses.iter().filter(|u| !["office_computing", "models", "office_machines"].contains(&u.name.as_str()) && u.switch.as_deref() != Some("tending") && u.switch.as_deref() != Some("lorry")).all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
     // without the content after 1900 it is not laid
     let mut one = game.clone();
     one.tree.stage = 1;

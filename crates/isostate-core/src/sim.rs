@@ -377,7 +377,7 @@ pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar:
 }
 
 /// Traffic wears tracks; busy tracks become roads, roads become turnpikes.
-pub fn update_roads(st: &mut State, _C: &Content, P: &Params) {
+pub fn update_roads(st: &mut State, _C: &Content, P: &Params, year: i64) {
     let N = st.N;
     let mut traffic = vec![0.0; N];
     for i in 0..st.T_max {
@@ -417,7 +417,8 @@ pub fn update_roads(st: &mut State, _C: &Content, P: &Params) {
         }
         let quiet = st.road[c] > 0 && traffic[c] < 0.2 * thr[st.road[c] as usize];
         st.road_quiet[c] = if quiet { st.road_quiet[c] + 1 } else { 0 };
-        if st.road_quiet[c] >= 6 {
+        // the lorry (docs/rules/lorry.md): from 1901 a made road or a turnpike is kept
+        if st.road_quiet[c] >= 6 && !crate::lorry::kept(P, year, st.road[c]) {
             st.road[c] -= 1;
             st.road_quiet[c] = 0;
         }
@@ -469,7 +470,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     if !warm {
         crate::roads::begin(st, C, P, year);
     }
-    update_roads(st, C, P);
+    update_roads(st, C, P, year);
     // traffic (docs/rules/traffic.md): the same carting once more, link by link; it only watches
     crate::traffic::year(st, P, year, warm);
     crate::roads::yearly(st, C, P, year, warm);

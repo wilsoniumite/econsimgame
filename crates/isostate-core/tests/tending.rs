@@ -30,7 +30,8 @@ fn params(tending: bool) -> Params {
     P.seed = 7;
     P.n_families = 6;
     P.end_year = Some(TO);
-    P.tasks = TasksParams { enabled: true, land: true, office_machines: true, tending, ..TasksParams::game() };
+    // the lorry (docs/rules/lorry.md), after the four in the file, off by name: these runs are played without it
+    P.tasks = TasksParams { enabled: true, land: true, office_machines: true, tending, lorry: false, ..TasksParams::game() };
     P
 }
 
@@ -81,8 +82,9 @@ fn tending_stands_behind_its_switch() {
         assert!(tasks::idea_of_use(&C, t));
         assert!(tasks::idea_sought(&C, &game, t) && !tasks::idea_sought(&C, &off, t), "{idea} is sought only with the switch on");
     }
-    // no other idea of the tree waits on a use
-    let ours: Vec<usize> = USES.iter().map(|u| idea_of(&C, u.1)).collect();
+    // no other idea of the tree waits on a use, but the lorry's (docs/rules/lorry.md)
+    let mut ours: Vec<usize> = USES.iter().map(|u| idea_of(&C, u.1)).collect();
+    ours.push(idea_of(&C, "motor_vehicle"));
     assert!((0..C.NT).filter(|t| !ours.contains(t)).all(|t| !tasks::idea_of_use(&C, t)));
     // without the content after 1900 neither the uses nor their ideas are laid
     let mut one = game.clone();
@@ -157,6 +159,12 @@ fn island_7_to_1935() {
     });
     let off = played(params(false), content(&params(false)));
     let mut out = content(&params(false));
+    // the lorry, the table's last use, off in these runs, is taken out first
+    let lorry = use_of(&out, "lorry");
+    assert_eq!(lorry + 1, out.tasks.uses.len());
+    out.tasks.uses.remove(lorry);
+    let t = idea_of(&out, "motor_vehicle");
+    out.tech_after[t] = 9999;
     for (name, idea, _, _) in USES.iter().rev() {
         let u = use_of(&out, name);
         assert_eq!(u + 1, out.tasks.uses.len(), "the four are the table's last uses, so that taking them out moves no other's place");

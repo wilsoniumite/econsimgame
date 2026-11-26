@@ -268,10 +268,20 @@
 # each month for a twelfth of the plant still to come, not a quarter, so it
 # comes in over a year on the mean and the timber-and-brick cycle is damped;
 # 1750-1900 held, since the rule acts from 1901
+# Taken: 1901-2050 economy, books, news and run.bin: the lorry (tasks.lorry,
+# lorry.roads, lorry.keep; docs/rules/lorry.md), found after 1905, takes the
+# carters' hauling, its saving is had by the road under it, and from 1901 no
+# made road falls back for want of traffic; the content's list of ideas has
+# the motor vehicle; 1750-1900 held, since nothing of it acts before 1901
+# Taken: 1901-2050 economy and run.bin: the lorry's series lorry_share now
+# comes before the ages' (tests/ages.rs holds the ages' series after
+# everyone's); 1750-1900 held
+# Taken: on the merge of main (pace) into night/g-lorry: 1901-2050 economy,
+# books, news and run.bin, the lorry and pace together; 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x2ea077e11528a4b7
-1901-2050 books    0x63ba1063cc3ebefc
-1901-2050 news     0xd44a5faf6b6e6e87
-1901-2050 run.bin  0x037ccbc96e49fc8c
+1901-2050 economy  0x115d1bac67fe985e
+1901-2050 books    0xa7817e00f2d2dd2c
+1901-2050 news     0xa735135428bbfb84
+1901-2050 run.bin  0x860084f227908b91

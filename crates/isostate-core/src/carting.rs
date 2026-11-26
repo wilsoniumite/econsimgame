@@ -15,6 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::Content;
 use crate::facts::Kind;
 use crate::observer::annual;
 use crate::params::Params;
@@ -59,7 +60,7 @@ impl CartingParams {
 /// month's wage, is the carters the town needs; its carters move `adjust` of
 /// the way there, and they leave the town's supply of hands. (A month's lag,
 /// because the bill is only known once the month's goods have moved.)
-pub fn take_carters(st: &mut State, P: &Params, supply: &mut [f64]) {
+pub fn take_carters(st: &mut State, C: &Content, P: &Params, supply: &mut [f64]) {
     if !P.carting.enabled {
         return;
     }
@@ -67,13 +68,24 @@ pub fn take_carters(st: &mut State, P: &Params, supply: &mut [f64]) {
     if st.cart_bill.len() != T {
         st.cart_bill = vec![0.0; T];
     }
+    // the lorry (docs/rules/lorry.md): once one is found, an hour of the carting's
+    // work takes `cart_hands` hands and costs `cart_hands * wage + cart_cost`, and the
+    // bill pays for the work at that cost; until then every penny is a carter's
+    let lorries = crate::tasks::cart_hiring(st, C, P);
     // the first month of all starts with the carters its bill pays for
     let k = if st.carters.len() == T { P.carting.adjust.clamp(0.0, 1.0) } else { 1.0 };
     let mut carters = vec![0.0; T];
     for t in 0..T {
         if st.town_active[t] && st.wage[t] > 0.0 {
             let most = P.carting.max_share * supply[t];
-            let want = (P.carting.labor * st.cart_bill[t] / st.wage[t]).min(most);
+            let want = if lorries {
+                let (h, m) = (st.tasks.cart_hands[t], st.tasks.cart_cost[t]);
+                let work = P.carting.labor * st.cart_bill[t] / (h * st.wage[t] + m);
+                st.tasks.cart_work[t] = work;
+                (work * h).min(most)
+            } else {
+                (P.carting.labor * st.cart_bill[t] / st.wage[t]).min(most)
+            };
             carters[t] = if k >= 1.0 { want } else { (st.carters[t] + k * (want - st.carters[t])).min(most) };
             supply[t] -= carters[t];
         }

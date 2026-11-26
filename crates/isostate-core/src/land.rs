@@ -43,7 +43,9 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
             }
         }
     }
-    let mut graph = tr::build_graph(&st.world, &st.road, &st.rail, &port, &st.cover);
+    // the lorry (docs/rules/lorry.md): a land square cheaper where lorries run
+    let mult = crate::lorry::road_mult(st, _P);
+    let mut graph = tr::build_graph_with(&st.world, &st.road, &st.rail, &port, &st.cover, &mult);
     // canals (docs/rules/canals.md): the canals open so far, as a layer of water over the cells
     crate::canals::float(st, _P, &mut graph);
     // roads (docs/probes/dx-roads.md): a trust's road costs its toll to pass

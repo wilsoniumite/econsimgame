@@ -441,7 +441,7 @@ fn wages(o: &Opts) {
                     let mut probe = sim.st.clone();
                     let mut s: Vec<f64> = probe.pop.iter().map(|&p| P.participation * p).collect();
                     let s0 = s.clone();
-                    carting::take_carters(&mut probe, &P, &mut s);
+                    carting::take_carters(&mut probe, &sim.content, &P, &mut s);
                     let s1 = s.clone();
                     mines::take_crews(&mut probe, &P, &mut s);
                     let s2 = s.clone();
