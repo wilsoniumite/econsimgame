@@ -266,6 +266,8 @@ pub struct NoteLine {
     version: u64,
     /// the last note kept in this window: its text's path
     pub last: Option<PathBuf>,
+    /// what the card says once Enter is pressed, when, and the words it was said of
+    told: Option<(String, f32, String)>,
 }
 
 impl NoteLine {
@@ -285,6 +287,13 @@ struct LineRoot;
 struct LineWords;
 #[derive(Component)]
 struct LineDate;
+#[derive(Component)]
+struct LineFoot;
+
+/// How long the card stays up after Enter, saying the note is kept, in seconds.
+const TOLD_FOR: f32 = 4.0;
+/// What the card says under the line while it is open.
+const FOOT: &str = "Enter keeps it, with a picture of the screen and where you stand. Escape drops it. Ctrl+V pastes.";
 
 /// What a note says of where she stands.
 #[derive(SystemParam)]
@@ -388,7 +397,7 @@ fn setup_line(mut commands: Commands, font: Res<UiFont>) {
                 .with_children(|c| {
                     c.spawn((ui::text(f, "A note, in your words", 13.5, NOTE_INK), LineDate));
                     c.spawn((ui::text(f, "|", 19.0, INK), LineWords));
-                    c.spawn(ui::text(f, "Enter keeps it, with a picture of the screen and where you stand. Escape drops it. Ctrl+V pastes.", 12.5, MUTED));
+                    c.spawn((ui::text(f, FOOT, 12.5, MUTED), LineFoot));
                 });
         });
 }
@@ -396,22 +405,41 @@ fn setup_line(mut commands: Commands, font: Res<UiFont>) {
 /// The ink of a note: a deep green, apart from the hand's blue-black and the news's colours.
 pub const NOTE_INK: Color = Color::srgb(0.20, 0.42, 0.36);
 
-fn draw_line(line: Res<NoteLine>, mut root: Query<&mut Visibility, With<LineRoot>>, mut words: Query<&mut Text, (With<LineWords>, Without<LineDate>)>, mut date: Query<&mut Text, (With<LineDate>, Without<LineWords>)>, mut drawn: Local<Option<u64>>) {
-    if *drawn == Some(line.version) {
+/// The line while it is open; and for a few seconds after Enter, the same
+/// card saying the note is kept, since a toast can stand under a panel or the
+/// tray, or be hidden by the News panel.
+#[allow(clippy::type_complexity)]
+fn draw_line(
+    line: Res<NoteLine>,
+    time: Res<Time>,
+    mut root: Query<&mut Visibility, With<LineRoot>>,
+    mut texts: ParamSet<(Query<&mut Text, With<LineDate>>, Query<&mut Text, With<LineWords>>, Query<&mut Text, With<LineFoot>>)>,
+    mut drawn: Local<Option<(u64, bool)>>,
+) {
+    let told = line.told.as_ref().filter(|(_, at, _)| time.elapsed_secs() - at < TOLD_FOR);
+    let state = (line.version, told.is_some());
+    if *drawn == Some(state) {
         return;
     }
-    *drawn = Some(line.version);
-    let want = if line.stage == Stage::Open { Visibility::Inherited } else { Visibility::Hidden };
+    *drawn = Some(state);
+    let open = line.stage == Stage::Open;
+    let want = if open || told.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     for mut v in &mut root {
         v.set_if_neq(want);
     }
-    for mut t in &mut words {
-        t.0 = format!("{}|", line.words);
+    let date = line.place.as_ref().map_or(String::new(), |p| format!(" \u{00b7} {}", p.date));
+    let (head, words, foot) = match (open, told) {
+        (false, Some((said, _, words))) => (format!("Your note{date}"), words.clone(), said.clone()),
+        _ => (format!("A note, in your words{date}"), format!("{}|", line.words), FOOT.to_string()),
+    };
+    for mut t in &mut texts.p0() {
+        t.0 = head.clone();
     }
-    if let Some(p) = &line.place {
-        for mut t in &mut date {
-            t.0 = format!("A note, in your words \u{00b7} {}", p.date);
-        }
+    for mut t in &mut texts.p1() {
+        t.0 = words.clone();
+    }
+    for mut t in &mut texts.p2() {
+        t.0 = foot.clone();
     }
 }
 
@@ -439,6 +467,7 @@ pub fn keys(
         }
         line.place = Some(at.place(&tl));
         line.words.clear();
+        line.told = None;
         line.was_playing = tl.playing;
         tl.playing = false;
         // the picture of the screen as it stands, before the line is drawn over it
@@ -540,17 +569,23 @@ pub fn keys(
                         }
                         println!("note: kept {} ({} words)", path.display(), note.words.split_whitespace().count());
                         line.last = Some(path);
-                        toasts.say("note", &format!("Your note is kept, the {} today{}.", ordinal(number), if note.picture { ", with a picture of the screen" } else { "" }), &when, now);
+                        let said = format!("Kept, the {} note today{}.", ordinal(number), if note.picture { ", with a picture of the screen" } else { "" });
+                        toasts.say("note", &said, &when, now);
+                        line.told = Some((said, now, line.words.clone()));
                     }
                     Err(why) => {
                         eprintln!("note: not kept: {why}");
-                        toasts.say("orders_refused", &format!("The note could not be kept: {why}"), &when, now);
+                        let said = format!("The note could not be kept: {why}");
+                        toasts.say("orders_refused", &said, &when, now);
+                        line.told = Some((said, now, line.words.clone()));
                     }
                 }
             }
             Err(why) => {
                 println!("note: not kept: {why}");
-                toasts.say("orders_refused", &format!("The note is not kept: {why}"), &when, now);
+                let said = format!("The note is not kept: {why}");
+                toasts.say("orders_refused", &said, &when, now);
+                line.told = Some((said, now, line.words.clone()));
             }
         }
     } else if enter {

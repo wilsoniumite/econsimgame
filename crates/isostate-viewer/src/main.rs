@@ -11,6 +11,8 @@
 
 mod ages_chart;
 mod back;
+// the backlog seen from the help card, with her notes of the day
+mod backlog_seen;
 mod purse_chart;
 mod boats;
 mod built;
@@ -1099,6 +1101,7 @@ fn main() {
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
         .add_plugins(note::plugin)
+        .add_plugins(backlog_seen::plugin)
         .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);

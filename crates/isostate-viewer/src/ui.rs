@@ -688,6 +688,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         row.spawn(text(f, what, 15.0, INK));
                     });
                 }
+                // her question of 19 November: the backlog, read from docs/BACKLOG.md, and her notes of the day
+                c.spawn(Node { margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| small_button(row, f, "The backlog and your notes of today", crate::backlog_seen::OpenBacklog));
                 c.spawn((text(f, "Press H again to close this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
         });
