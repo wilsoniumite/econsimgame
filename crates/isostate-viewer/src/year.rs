@@ -1232,7 +1232,7 @@ mod tests {
 
     #[test]
     fn the_trains_keep_running_while_their_lines_are_as_they_were() {
-        let line = |pts: &[(f32, f32)]| trains::TrainPath { pts: pts.iter().map(|&(x, z)| Vec3::new(x, 0.0, z)).collect(), cum: vec![0.0; pts.len()], len: 1.0 };
+        let line = |pts: &[(f32, f32)]| trains::TrainPath { pts: pts.iter().map(|&(x, z)| Vec3::new(x, 0.0, z)).collect(), cum: vec![0.0; pts.len()], len: 1.0, cells: Vec::new() };
         let old = [line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])];
         // the same lines built again (another year, or the same year for another camera)
         assert!(same_lines(&old, &[line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])]));

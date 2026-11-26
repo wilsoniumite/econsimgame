@@ -269,6 +269,7 @@ pub(crate) fn taken_back(
     g.land.closes.forget_roads_from(to.filled);
     // and the roads the carts wore (`network::drawn_links`)
     g.worn.forget_from(to.filled);
+    g.courses.forget_from(to.filled);
     if unis == 0 {
         slots.forget(to.firms);
     } else if slots.firm_pos.len() >= unis_from + unis {

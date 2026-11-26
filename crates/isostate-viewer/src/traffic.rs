@@ -189,9 +189,11 @@ pub fn trade_lines(r: &Replay, k: usize, t: usize) -> Option<String> {
 /// The weight carted along a carters' round (`trains::road_routes`) in year
 /// `k`: the mean, over the links between squares it passes, of what each
 /// carried by cart (nothing where the link's weight went by rail or water).
+/// The links are the round's own (`TrainPath::cells`); a path that does not
+/// say them is read by the squares its points lie in.
 pub fn cart_weight_along(r: &Replay, k: usize, p: &crate::trains::TrainPath) -> f32 {
-    let mut cells: Vec<usize> = Vec::new();
-    for q in &p.pts {
+    let mut cells: Vec<usize> = p.cells.clone();
+    for q in p.pts.iter().filter(|_| p.cells.is_empty()) {
         if q.x < 0.0 || q.z < 0.0 || q.x as usize >= r.w || q.z as usize >= r.h {
             continue;
         }
@@ -331,9 +333,10 @@ pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale,
         let t = sc.at(w);
         let width = (NARROW + (WIDE - NARROW) * t * t) * near;
         let col = mix(PAPER, INKS[m as usize & 3], 0.35 + 0.65 * t);
-        // carting on a made road follows the road's own way (round a meander or a lake, as `network::route`)
+        // carting on a made road follows the road's own course (its curve, or round a meander or a
+        // lake, as `network::course` draws it)
         let mut pts = if m == tf::CART && made(c) && made(d) {
-            let way = crate::network::route(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[d].0, cen[d].1), r.round());
+            let way = crate::network::course(r, g, cen, c, d, k);
             way.pts.windows(2).enumerate().flat_map(|(j, p)| {
                 let seg = line(g, (p[0].x, p[0].y), (p[1].x, p[1].y));
                 // (each length after the first begins where the last ended)
