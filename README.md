@@ -364,3 +364,7 @@ The work in hand is listed in the backlog: the pass's fifth stage and two mends 
 - The parity tests need fixtures dumped from the Python, about 3 GB, which are not in the repository. Without them they pass and check nothing, and the golden test stands alone.
 
 [docs/BACKLOG.md](docs/BACKLOG.md) has the order of work, and [docs/backlog/found-along-the-way.md](docs/backlog/found-along-the-way.md) the long list these were drawn from. [PLAN.md](PLAN.md) says where it is all meant to go.
+
+## Licence
+
+The code and everything else in this repository may be used under the [MIT licence](LICENSE-MIT) or the [Apache Licence, version 2.0](LICENSE-APACHE), whichever you prefer. The Fredoka font has its own, the SIL Open Font Licence, whose text lies beside it in `crates/isostate-viewer/assets/fonts`. The name Isolated State is not part of the grant: a version of your own that you pass on should carry another name.
