@@ -653,6 +653,10 @@ fn builtin(name: &str, args: Vec<V>) -> Option<V> {
             let x = f32s(a);
             back(&a[0], x[0] * (1.0 - x[2]) + x[1] * x[2])
         }),
+        "step" => each(&args, &|a| {
+            let x = f32s(a);
+            back(&a[1], if x[1] < x[0] { 0.0 } else { 1.0 })
+        }),
         "select" => match &args[2] {
             V::B(c) => if *c { args[1].clone() } else { args[0].clone() },
             V::Vec(c) => V::Vec(c.iter().enumerate().map(|(k, c)| builtin("select", vec![part(&args[0], k), part(&args[1], k), c.clone()]).unwrap()).collect()),
@@ -1220,7 +1224,233 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------ what lies on the map's axes
+
+    /// The measure of stage 3 of leaving the grid (26 November 2026): the
+    /// length, in kilometres, of the edges in a raster of the ground's paint
+    /// that run straight along one of the map's axes, within about three
+    /// degrees of it, for 400 m or more. `v` holds `n` by `n` values `d`
+    /// metres apart, a row at a time along x. An edge between two rows (or
+    /// columns) is where the paint changes by more than `thr` across one step
+    /// or across eight, so that a soft edge counts as a hard one does, taken
+    /// once where the change is greatest; a run of such edges along one row
+    /// boundary, unbroken for `400 / d` steps, is a straight edge on the axis
+    /// (an edge turned three degrees from the axis steps to the next row
+    /// within 19 steps). `tests::the_ground_paints_nothing_on_the_maps_axes`
+    /// holds it, and the pictures' own measure (in the notes of the piece)
+    /// is the same on the pixels of a picture taken straight down.
+    pub(crate) fn on_axes(v: &[f32], n: usize, d: f32, thr: f32, grain: bool) -> f32 {
+        let at = |i: usize, j: usize, along_x: bool| if along_x { v[j * n + i] } else { v[i * n + j] };
+        let need = (400.0 / d).ceil() as usize;
+        let mut metres = 0.0;
+        for along_x in [true, false] {
+            // the change across the boundary between row j and row j + 1
+            let change = |i: usize, j: usize| {
+                let near = (at(i, j + 1, along_x) - at(i, j, along_x)).abs();
+                let wide = if j >= 3 && j + 5 < n { (at(i, j + 5, along_x) - at(i, j - 3, along_x)).abs() } else { 0.0 };
+                near.max(wide)
+            };
+            for j in 1..n - 2 {
+                // in a picture (`grain`) a run may pass over one step with no edge, as its grain breaks a line
+                let (mut run, mut gap) = (0, 0);
+                for i in 0..=n {
+                    let edge = i < n && {
+                        let c = change(i, j);
+                        c > thr && c >= change(i, j - 1) && c > change(i, j + 1)
+                    };
+                    if edge {
+                        run += 1 + gap;
+                        gap = 0;
+                    } else if grain && run > 0 && gap == 0 && i < n {
+                        gap = 1;
+                    } else {
+                        if run >= need {
+                            metres += run as f32 * d;
+                        }
+                        (run, gap) = (0, 0);
+                    }
+                }
+            }
+        }
+        metres / 1000.0
+    }
+
+    fn rgb(h: u32) -> [f32; 3] {
+        [((h >> 16) & 255) as f32 / 255.0, ((h >> 8) & 255) as f32 / 255.0, (h & 255) as f32 / 255.0]
+    }
+
+    fn lum(c: [f32; 3]) -> f32 {
+        0.30 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+    }
+
+    /// `n` by `n` values of `f` a step of `d` metres apart round `mid`, in
+    /// rows turned `turn` radians against the map's x axis.
+    fn raster(n: usize, d: f32, mid: Vec2, turn: f32, f: &dyn Fn(Vec2) -> f32) -> Vec<f32> {
+        let (sin, cos) = turn.sin_cos();
+        let half = (n as f32 - 1.0) * 0.5;
+        (0..n * n)
+            .map(|k| {
+                let (u, v) = ((k % n) as f32 - half, (k / n) as f32 - half);
+                f(mid + Vec2::new(cos * u - sin * v, sin * u + cos * v) * (d / 2000.0))
+            })
+            .collect()
+    }
+
+    /// Works ground (`works_ground`, `works_drift`) and a view of town ground
+    /// (`built_at`, `built_reach`) paint nothing along the map's axes: no
+    /// more than the same paint shows along two lines turned 45 degrees
+    /// against them, which is what any curve shows by chance. The rules they
+    /// took the place of, copied here as they stood on main at f8bf321,
+    /// painted tens of kilometres along the axes in a few squares, which
+    /// shows that the measure sees what it is for.
+    #[test]
+    fn the_ground_paints_nothing_on_the_maps_axes() {
+        let p = shader();
+        let quarter = std::f32::consts::FRAC_PI_4;
+        // works ground over 6 km by 6 km, a pixel every 20 m: the share of
+        // hard standing, cinder and gravel, as the shader mixes it
+        let (n, d, mid) = (300usize, 20.0f32, Vec2::new(32.5, 18.5));
+        let new = |at: Vec2| 0.3 * 0.85 * smoothstep(0.45, 0.85, p.call("works_drift", vec![v2(at)]).f());
+        // the old rule: tiles of 1/3.5 of a square on the map's axes, each
+        // cinder, plain yard or gravel, with lanes along their sides
+        let old = |at: Vec2| {
+            let q = at * 3.5;
+            let b = world::hash2(q.x.floor() as i32, q.y.floor() as i32, 93);
+            let tile = if b < 0.3 { 0.0 } else if b > 0.72 { 0.3 } else { 0.15 };
+            let lane = |x: f32| ((x - x.floor() + 0.035).fract() < 0.07) as u8 as f32;
+            tile + (0.45 - tile) * lane(q.x).max(lane(q.y))
+        };
+        let km = |f: &dyn Fn(Vec2) -> f32, turn: f32| on_axes(&raster(n, d, mid, turn, f), n, d, 0.04, false);
+        let (works_old, works_new, works_chance) = (km(&old, 0.0), km(&new, 0.0), km(&new, quarter));
+        eprintln!("works ground, 36 km2: {works_old:.1} km of edge on the map's axes by the old tiles; now {works_new:.2} km, and {works_chance:.2} km along lines turned 45 degrees");
+        assert!(works_old > 50.0, "the measure no longer sees the old tiles: {works_old} km");
+        assert!(works_new <= (1.5 * works_chance).max(0.3), "works ground paints {works_new} km of edge along the map's axes, where it shows {works_chance} km along lines turned 45 degrees");
+
+        // a view of town ground: a town of six squares and a lone square off it,
+        // over 12 km by 12 km, a pixel every 30 m. Its tints are four shades of
+        // indigo (Residents), the land round it paper. A spot is built where its
+        // parcel's point, warped, lies in a town square, as `world::class_key` has it
+        let town = |x: i32, y: i32| matches!((x, y), (11, 21) | (12, 21) | (12, 22) | (13, 22) | (11, 22) | (12, 23) | (15, 20));
+        let shade = |x: i32, y: i32| rgb([0xaebde0, 0x8497c9, 0x5a6dab, 0x333f7d][((x * 7 + y * 3) % 4) as usize]);
+        let blank = rgb(0xd9d3c4);
+        let tap = |x: i32, y: i32| {
+            let t = if town(x, y) { shade(x, y) } else { blank };
+            V::Vec(vec![V::F(t[0]), V::F(t[1]), V::F(t[2]), V::F(0.5)])
+        };
+        let lie = |x: i32, y: i32| V::F(if town(x, y) { 1.0 } else { 0.0 });
+        let tinted = std::cell::Cell::new(0usize);
+        // the new: the built ground's own outline, read in the warped map
+        let new = |at: Vec2| {
+            let (cx, cy) = fields::parcel(at).2.into();
+            let (wx, wy) = world::warp_raw(cx, cy);
+            let built = town(wx.floor() as i32, wy.floor() as i32);
+            let b = p.call("built_at", vec![v2(at)]).v2();
+            let (bx, by) = (b[0] - 0.5, b[1] - 0.5);
+            let (x0, y0) = (bx.floor() as i32, by.floor() as i32);
+            let f = Vec2::new(bx - bx.floor(), by - by.floor());
+            let bt = p.call("built_reach", vec![v2(f), tap(x0, y0), tap(x0 + 1, y0), tap(x0, y0 + 1), tap(x0 + 1, y0 + 1), lie(x0, y0), lie(x0 + 1, y0), lie(x0, y0 + 1), lie(x0 + 1, y0 + 1), V::F(built as u8 as f32)]).v4();
+            tinted.set(tinted.get() + (bt[3] > 0.5) as usize);
+            lum([0, 1, 2].map(|k| blank[k] * (1.0 - bt[3]) + bt[k] * bt[3]))
+        };
+        // the old: one tint a square, its edges wandered by 0.11 and blended over 0.06
+        let old = |at: Vec2| {
+            let q = Vec2::new(at.x + 0.11 * world::vnoise(at.x * 1.7 + 3.1, at.y * 1.7 + 9.2, 91), at.y + 0.11 * world::vnoise(at.x * 1.7 + 7.7, at.y * 1.7 + 1.3, 93));
+            let b = q - Vec2::splat(0.5);
+            let (x0, y0) = (b.x.floor() as i32, b.y.floor() as i32);
+            let (wx, wy) = (smoothstep(0.44, 0.56, b.x - b.x.floor()), smoothstep(0.44, 0.56, b.y - b.y.floor()));
+            let t = |x: i32, y: i32| if town(x, y) { shade(x, y) } else { blank };
+            lum([0, 1, 2].map(|k| (1.0 - wx) * (1.0 - wy) * t(x0, y0)[k] + wx * (1.0 - wy) * t(x0 + 1, y0)[k] + (1.0 - wx) * wy * t(x0, y0 + 1)[k] + wx * wy * t(x0 + 1, y0 + 1)[k]))
+        };
+        let (n, d, mid) = (400usize, 30.0f32, Vec2::new(13.0, 21.0));
+        let km = |f: &dyn Fn(Vec2) -> f32, turn: f32| on_axes(&raster(n, d, mid, turn, f), n, d, 0.04, false);
+        let view_new = km(&new, 0.0);
+        let area = tinted.get() as f32 * d * d / 1e6;
+        let (view_old, view_chance) = (km(&old, 0.0), km(&new, quarter));
+        eprintln!("a view of town ground, 144 km2: {view_old:.1} km of edge on the map's axes one tint a square; now {view_new:.2} km, and {view_chance:.2} km along lines turned 45 degrees; {area:.1} km2 tinted");
+        assert!(view_old > 15.0, "the measure no longer sees the squares: {view_old} km");
+        assert!(view_new <= (1.5 * view_chance).max(0.3), "a view of town ground paints {view_new} km of edge along the map's axes, where it shows {view_chance} km along lines turned 45 degrees");
+        // and the town is still tinted: about its seven squares, less the faded edges
+        assert!(area > 8.0, "the town's ground is hardly tinted: {area} km2");
+    }
+
+    /// The same measure on pictures taken straight down, looking north
+    /// (`--view PATH,YEAR,X,Z,0,89.9,DIST`), with the interface cut away: the
+    /// picture's middle, 20 to 1580 across and 90 to 680 down of 1600 by
+    /// 1000. `ISOSTATE_AXES` lists the pictures, parted by `;`, and
+    /// `A.png-B.png` measures what A has that B has not (a map view less the
+    /// plain map: the wash alone). `ISOSTATE_AXES_M` is the metres a pixel
+    /// (1.072 times the camera's distance in squares, for 1000 pixels down
+    /// and a field of view of 30 degrees).
+    /// `cargo test -p isostate-viewer --bin isostate-viewer measure_pictures -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn measure_pictures() {
+        let list = std::env::var("ISOSTATE_AXES").expect("ISOSTATE_AXES names the pictures");
+        let m: f32 = std::env::var("ISOSTATE_AXES_M").expect("ISOSTATE_AXES_M gives the metres a pixel").parse().unwrap();
+        // how much the paint must change to be an edge, of 1 (0.04, as in the test, unless `ISOSTATE_AXES_THR` says)
+        let thr: f32 = std::env::var("ISOSTATE_AXES_THR").ok().and_then(|t| t.parse().ok()).unwrap_or(0.04);
+        let lums = |path: &str| {
+            let (w, h, px) = crate::shots::load_rgba(std::path::Path::new(path)).unwrap();
+            let (w, h) = (w as usize, h as usize);
+            (0..w * h).map(|i| lum([px[i * 4] as f32 / 255.0, px[i * 4 + 1] as f32 / 255.0, px[i * 4 + 2] as f32 / 255.0])).collect::<Vec<f32>>()
+        };
+        for item in list.split(';').filter(|s| !s.is_empty()) {
+            let (a, b) = match item.split_once(".png-") {
+                Some((a, b)) => (format!("{a}.png"), Some(b.to_string())),
+                None => (item.to_string(), None),
+            };
+            let mut v = lums(&a);
+            if let Some(b) = &b {
+                for (x, y) in v.iter_mut().zip(lums(b)) {
+                    *x -= y;
+                }
+            }
+            // the grain the ground is drawn with smoothed away: three pixels by three, twice
+            for _ in 0..2 {
+                let was = v.clone();
+                for y in 1..999 {
+                    for x in 1..1599 {
+                        let mut s = 0.0;
+                        for dy in 0..3 {
+                            for dx in 0..3 {
+                                s += was[(y + dy - 1) * 1600 + x + dx - 1];
+                            }
+                        }
+                        v[y * 1600 + x] = s / 9.0;
+                    }
+                }
+            }
+            // the middle of a picture of 1600 by 1000, in three squares of 520
+            // side by side from (20, 90)
+            let n = 520usize;
+            let mut km = 0.0;
+            for x0 in [20usize, 540, 1060] {
+                let crop: Vec<f32> = (0..n * n).map(|i| v[(90 + i / n) * 1600 + x0 + i % n]).collect();
+                km += on_axes(&crop, n, m, thr, true);
+            }
+            eprintln!("axes: {item}: {km:.2} km of edge on the map's axes ({:.1} by {:.1} km measured)", 1560.0 * m / 1000.0, 520.0 * m / 1000.0);
+        }
+    }
+
+    /// The warp the shader reads a view of town ground in is the one the
+    /// parcels take their class by.
+    #[test]
+    fn the_shader_warps_the_squares_as_the_parcels_do() {
+        let p = shader();
+        for at in spots(1200) {
+            let (wx, wz) = world::warp_raw(at.x, at.y);
+            assert_eq!(p.call("warp_raw", vec![v2(at)]).v2(), [wx, wz], "warp_raw at ({}, {}): the shader and the Rust have drifted apart", at.x, at.y);
+        }
+    }
+
     impl V {
+        fn v4(&self) -> [f32; 4] {
+            match self {
+                V::Vec(c) if c.len() == 4 => [c[0].f(), c[1].f(), c[2].f(), c[3].f()],
+                v => panic!("{v:?} is not a vec4<f32>"),
+            }
+        }
+
         fn v2i(&self) -> [i32; 2] {
             match self {
                 V::Vec(c) if c.len() == 2 => [c[0].i(), c[1].i()],

@@ -14,6 +14,7 @@
 
 use bevy::math::Vec3;
 
+pub mod pits;
 pub mod towns;
 
 use isostate_gen::bridge::road_bridge;
@@ -51,7 +52,13 @@ pub struct Slots {
     pub trees: Vec<Slot>,
     pub houses: Vec<Slot>,
     pub farms: Vec<Slot>,
+    /// the four spots of a cell a pit stands on where the run keeps no workings (the port's rules)
     pub mines: Vec<Slot>,
+    /// the spots a working's pit may take, sixteen a cell at random, sorted by
+    /// the warped cell they lie on (`pits::ground_spots`)
+    pub pit_ground: Vec<Slot>,
+    /// where each working's pit was placed, kept for the run (`pits::Places`)
+    pub pits: std::sync::Arc<pits::Places>,
     /// where every firm's works stands: the middle of its yard, and the way it faces
     pub firm_pos: Vec<(f32, f32, f32)>,
     /// the largest size each works may be drawn at where it stands: less than
@@ -1346,6 +1353,8 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         houses: grid_slots(r, g, 7, 12, 0.7, false),
         farms: Vec::new(),
         mines: grid_slots(r, g, 2, 14, 0.7, false),
+        pit_ground: pits::ground_spots(r, g),
+        pits: Default::default(),
         firm_pos: Vec::new(),
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
@@ -1879,24 +1888,19 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     };
     // Where the run keeps its quarries, pits and mines as workings (a pit head on
     // one cell, with its hands; the core's docs/rules/mines.md), each working at
-    // work gets one pit, on the first free spot of its cell: a stand-in until the
-    // pit heads and spoil heaps are drawn to their size. Otherwise the pits are
-    // read off the land mix, a pit on every spot the mix paints as diggings.
+    // work gets one pit, where its working and the ground put it the year it
+    // opened (`pits.rs`), a stand-in until the pit heads and spoil heaps are
+    // drawn to their size; one a works' yard covers this year is not drawn.
+    // Otherwise the pits are read off the land mix, a pit on every spot the mix
+    // paints as diggings.
     let year_workings = r.workings.get(k).filter(|w| !w.is_empty());
-    if let Some(list) = year_workings {
-        let mut waiting: std::collections::HashMap<u32, Vec<PitKind>> = std::collections::HashMap::new();
-        for w in list.iter().filter(|w| w.opened != 0 && w.hands >= 1.0) {
-            if let Some(kind) = pit_kind(w.class) {
-                waiting.entry(w.cell).or_default().push(kind);
-            }
-        }
-        for s in &slots.mines {
-            if near_plot(s.x, s.z) {
+    if year_workings.is_some() {
+        for p in pits::standing(r, slots, k) {
+            let Some(kind) = pit_kind(p.class) else { continue };
+            if near_plot(p.at.x, p.at.z) {
                 continue;
             }
-            let Some(kinds) = waiting.get_mut(&s.wcell) else { continue };
-            let Some(kind) = kinds.pop() else { continue };
-            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v, detail: lod.at(s.x, s.z) }, lk);
+            pit(&mut works_b, &Site::level(ground(g, p.at.x, p.at.z), p.at.yaw), &Pit { kind, v: p.at.v, detail: lod.at(p.at.x, p.at.z) }, lk);
         }
     } else {
         for s in &slots.mines {
