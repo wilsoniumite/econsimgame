@@ -1815,7 +1815,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         tally.add(TreeKind::Hedgerow, &mut trees, |t| hedge_tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk));
     }
 
-    // farmsteads among the fields, each with a lane to the nearest road
+    // farmsteads among the fields, each with a lane to the nearest road (and for ISOSTATE_TIMING,
+    // how many stand, how many have a lane, and how many more would at 0.8 of a square)
+    let mut farms = (0usize, 0usize, 0usize);
     for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
         let c = s.wcell as usize;
         // the farm is of the land it stands on
@@ -1837,9 +1839,16 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         farmstead(&mut houses, &mut smoke, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, detail: lod.at(s.x, s.z), seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
+        farms.0 += 1;
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
             lane(&mut lanes, lk, g, (gate.x, gate.z), to, s.v);
+            farms.1 += 1;
+        } else if roads.nearest(gate.x, gate.z, 0.8).is_some() {
+            farms.2 += 1;
         }
+    }
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!("timing year farms {year}: {} farmsteads, {} with a lane to a road within 0.55 of a square, {} more with one within 0.8", farms.0, farms.1, farms.2);
     }
 
     let pit_kind = |cls: u8| match cls {

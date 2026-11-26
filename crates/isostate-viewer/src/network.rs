@@ -998,32 +998,50 @@ pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
 /// which a square's traffic makes it a track (`road_thresholds`, the core's
 /// params.rs), here read on the link (the core's docs/rules/traffic.md).
 pub const WORN_WEIGHT: f32 = 1500.0;
-/// In how many years a link must carry `WORN_WEIGHT` by cart for the carts
-/// to have worn a road along it. Once worn it is kept: a road paid for is
-/// not unmade by quiet (docs/designs/ways.md, part 2).
-pub const WORN_YEARS: u16 = 20;
+/// In how many years of the last `WORN_WINDOW` a link must carry
+/// `WORN_WEIGHT` by cart for the carts to have worn a road along it.
+pub const WORN_YEARS: u16 = 10;
+pub const WORN_WINDOW: u16 = 20;
+/// A worn road goes back to grass in the picture once fewer than this many
+/// of the last `WORN_WINDOW` years wore it: after twenty years in which it
+/// never carried `WORN_WEIGHT`. The simulation's road stays (its squares
+/// keep their level); what goes is the link the picture drew it on. The
+/// simulation's trees of cheapest paths move from one link to a parallel one
+/// over the years, and a road kept on every link it ever wore piles three
+/// centuries of them into a net (on island 7 in 2050, 7,170 links, as many
+/// as every road between road squares; `drawn_links`).
+pub const WORN_FADE: u16 = 1;
 /// A year a link carries this much by cart, a turnpike's traffic (the
 /// core's third threshold), wears it as `HEAVY_COUNTS` years do: a new way
 /// that takes a heavy flow at once (to a new pit, a new works) is worn in
-/// four such years, not twenty.
+/// two such years.
 pub const WORN_HEAVY: f32 = 40_000.0;
 pub const HEAVY_COUNTS: u16 = 5;
 
+/// A rule of wear: a link is worn once it has carried `weight` or more by
+/// cart in `years` of the last `window` years (every year so far where
+/// `window` is 0), a year of `WORN_HEAVY` counting `HEAVY_COUNTS`; and a
+/// worn link goes back to grass once fewer than `fade` of the last `window`
+/// years wore it (never where `fade` is 0).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WornRule {
+    pub weight: f32,
+    pub years: u16,
+    pub window: u16,
+    pub fade: u16,
+}
+
 /// The roads the carts wore, as far as the record has been gone through:
-/// for each link (`c * 4 + slot`, the core's `traffic::SLOTS`), the years it
-/// carried the rule's weight or more by cart, and the first year (counted
-/// from the start) it was worn; `u16::MAX` for none yet. Kept in
-/// `Ground::worn`, by the rule `WORN_WEIGHT` in `WORN_YEARS` years.
+/// for each link (`c * 4 + slot`, the core's `traffic::SLOTS`), whether it
+/// was worn in each year. Kept in `Ground::worn`.
 pub struct Worn {
     known: std::sync::Mutex<WornKnown>,
-    /// the weight a year, and in how many years
-    weight: f32,
-    years: u16,
+    rule: WornRule,
 }
 
 impl Default for Worn {
     fn default() -> Worn {
-        Worn::by(WORN_WEIGHT, WORN_YEARS)
+        Worn::by(WornRule { weight: WORN_WEIGHT, years: WORN_YEARS, window: WORN_WINDOW, fade: WORN_FADE })
     }
 }
 
@@ -1031,14 +1049,27 @@ impl Default for Worn {
 struct WornKnown {
     /// how many years have been gone through
     through: usize,
-    years: Vec<u16>,
-    since: Vec<u16>,
+    /// for each link, the years of wear so far (with no window), or the last
+    /// 32 years as bits, the latest lowest: worn, and worn heavily
+    count: Vec<u16>,
+    bits: Vec<u32>,
+    heavy: Vec<u32>,
+    /// for each link, whether it is worn now
+    on: Vec<bool>,
+    /// for each year, the links worn, as bits
+    years: Vec<Vec<u64>>,
+}
+
+impl WornKnown {
+    fn worn(&self, k: usize, l: usize) -> bool {
+        self.years.get(k).is_some_and(|b| b[l / 64] >> (l % 64) & 1 != 0)
+    }
 }
 
 impl Worn {
     /// Wear by another rule than the game's (for the measure, `tests::measure_a_recorded_run`).
-    pub fn by(weight: f32, years: u16) -> Worn {
-        Worn { known: Default::default(), weight, years }
+    pub fn by(rule: WornRule) -> Worn {
+        Worn { known: Default::default(), rule }
     }
 
     /// An edit taken back (back.rs): the years from `from` (counted from the
@@ -1081,12 +1112,14 @@ fn by_wear() -> bool {
 /// each link once and in the order `road_segments` gives them. A link
 /// between two squares of made road or turnpike is drawn where the carts
 /// wore it (`Worn`): where it has carried `WORN_WEIGHT` or more by cart in
-/// `WORN_YEARS` years, counted over every year of the record up to `k`, a
-/// year of `WORN_HEAVY` or more counting `HEAVY_COUNTS`, a diagonal as a
-/// diagonal; and once worn it stays drawn while both
-/// its squares are made roads. A trunk road's or a bypass's link is drawn
-/// where `road_segments`' rule draws it, as always, so that the state's
-/// roads keep their lines, and as a diagonal too where the carts wore one. A run that kept no traffic (the port's rules, or a record made
+/// `WORN_YEARS` of the last `WORN_WINDOW` years (a year of `WORN_HEAVY` or
+/// more counting `HEAVY_COUNTS`; in the record's first years, in every year
+/// so far), a diagonal as a diagonal; and once worn it stays drawn while
+/// both its squares are made roads, until twenty years go by in which it
+/// never carries `WORN_WEIGHT` (`WORN_FADE`). A trunk road's or a bypass's
+/// link is drawn where `road_segments`' rule draws it, as always, so that
+/// the state's roads keep their lines, and as a diagonal too where the carts
+/// wore one. A run that kept no traffic (the port's rules, or a record made
 /// before 25 November 2026) has every road drawn by `road_segments`, and so
 /// does a year past what the record holds.
 ///
@@ -1127,7 +1160,7 @@ pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)>
             }
             // (road_segments gives the same links in the same order, less some diagonals)
             let drawn_today = today.next_if(|&(a, b, _)| a == c && b == m).is_some();
-            let keep = (state(c, m) && drawn_today) || known.since[c * 4 + s] as usize <= k;
+            let keep = (state(c, m) && drawn_today) || known.worn(k, c * 4 + s);
             if keep {
                 out.push((c, m, lv));
             }
@@ -1140,25 +1173,43 @@ pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)>
 /// first `WORN_YEARS` years a link is worn by carrying `WORN_WEIGHT` in
 /// every year so far: the island's roads are older than the record, and
 /// what the carts use from its first year is all there is to go by.
-fn wear_through(r: &Replay, rule: &Worn, known: &mut WornKnown, k: usize) {
-    let n = r.n;
-    if known.years.len() != n * 4 {
-        *known = WornKnown { through: 0, years: vec![0; n * 4], since: vec![u16::MAX; n * 4] };
+fn wear_through(r: &Replay, worn: &Worn, known: &mut WornKnown, k: usize) {
+    let (n, rule) = (r.n, worn.rule);
+    if known.on.len() != n * 4 {
+        *known = WornKnown { through: 0, count: vec![0; n * 4], bits: vec![0; n * 4], heavy: vec![0; n * 4], on: vec![false; n * 4], years: Vec::new() };
     }
+    let window = rule.window.min(32);
+    let mask = if window == 0 { 0 } else { u32::MAX >> (32 - window) };
     while known.through <= k {
         let y = known.through;
+        // (in the record's first years, every year so far)
         let need = rule.years.min(y as u16 + 1);
+        let full = window == 0 || y + 1 >= window as usize;
+        let mut year = vec![0u64; (n * 4).div_ceil(64)];
         for c in 0..n {
             for s in 0..4 {
                 let l = c * 4 + s;
-                if r.traffic.mode(n, y, c, s) == isostate_core::traffic::CART && r.traffic.weight(n, y, c, s) >= rule.weight {
-                    known.years[l] += if r.traffic.weight(n, y, c, s) >= WORN_HEAVY { HEAVY_COUNTS } else { 1 };
-                    if known.years[l] >= need && known.since[l] == u16::MAX {
-                        known.since[l] = y as u16;
-                    }
+                let w = if r.traffic.mode(n, y, c, s) == isostate_core::traffic::CART { r.traffic.weight(n, y, c, s) } else { 0.0 };
+                let (wore, heavy) = (w >= rule.weight, w >= WORN_HEAVY.max(rule.weight));
+                let count = if window == 0 {
+                    known.count[l] = known.count[l].saturating_add(if heavy { HEAVY_COUNTS } else { wore as u16 });
+                    known.count[l]
+                } else {
+                    known.bits[l] = (known.bits[l] << 1) | wore as u32;
+                    known.heavy[l] = (known.heavy[l] << 1) | heavy as u32;
+                    ((known.bits[l] & mask).count_ones() + (HEAVY_COUNTS as u32 - 1) * (known.heavy[l] & mask).count_ones()) as u16
+                };
+                if !known.on[l] && count >= need {
+                    known.on[l] = true;
+                } else if known.on[l] && rule.fade > 0 && full && count < rule.fade {
+                    known.on[l] = false;
+                }
+                if known.on[l] {
+                    year[l / 64] |= 1 << (l % 64);
                 }
             }
         }
+        known.years.push(year);
         known.through += 1;
     }
 }
@@ -1429,17 +1480,18 @@ mod tests {
     #[ignore]
     fn measure_a_recorded_run() {
         let Ok(paths) = std::env::var("ISOSTATE_WORN_RUNS") else { return };
-        let rules: Vec<(f32, u16)> = std::env::var("ISOSTATE_WORN_RULES").map_or(vec![(WORN_WEIGHT, WORN_YEARS)], |v| {
+        let rules: Vec<WornRule> = std::env::var("ISOSTATE_WORN_RULES").map_or(vec![Worn::default().rule], |v| {
             v.split(',').map(|r| {
-                let (a, b) = r.split_once(':').unwrap();
-                (a.parse().unwrap(), b.parse().unwrap())
+                let p: Vec<&str> = r.split(':').collect();
+                WornRule { weight: p[0].parse().unwrap(), years: p[1].parse().unwrap(), window: p.get(2).map_or(0, |x| x.parse().unwrap()), fade: p.get(3).map_or(0, |x| x.parse().unwrap()) }
             }).collect()
         });
         for path in paths.split(';') {
             let bytes = std::fs::read(path).unwrap();
             let r = crate::replay::parse(path, &bytes).unwrap();
-            for &(weight, years) in &rules {
-                let worn = Worn::by(weight, years);
+            for &rule in &rules {
+                let worn = Worn::by(rule);
+                let WornRule { weight, years, window, fade } = rule;
                 for year in [1800, 1850, 1900, 1950, 2000, 2050] {
                     let k = (year - r.y0) as usize;
                     if k >= r.ny {
@@ -1456,7 +1508,7 @@ mod tests {
                                 let Some(d) = isostate_core::traffic::other_end(r.w, r.h, c, s) else { continue };
                                 let (tc, td) = (r.trans[k * r.n + c], r.trans[k * r.n + d]);
                                 if r.traffic.mode(r.n, k, c, s) == isostate_core::traffic::CART && (tc & 3).min(td & 3) >= 2 && !drawn.contains(&(c, d)) {
-                                    heavy.push((r.traffic.weight(r.n, k, c, s), c, d, known.years[c * 4 + s], tc, td));
+                                    heavy.push((r.traffic.weight(r.n, k, c, s), c, d, known.count[c * 4 + s].max(known.bits[c * 4 + s].count_ones() as u16), tc, td));
                                 }
                             }
                         }
@@ -1467,7 +1519,7 @@ mod tests {
                     }
                     let all = m.carted_drawn + m.carted_road_not_drawn + m.carted_track;
                     println!(
-                        "{path} rule {weight} in {years} years, {year}: today {} links closing {}; drawn {} ({:.2} of today's) closing {} ({} with a cell of town ground), {} diagonals today's rule leaves out; of the year's carting (weight by length) {:.3} on drawn links, {:.3} on made roads not drawn, {:.3} on tracks",
+                        "{path} rule {weight} in {years} of {window} years, fading under {fade}, {year}: today {} links closing {}; drawn {} ({:.2} of today's) closing {} ({} with a cell of town ground), {} diagonals today's rule leaves out; of the year's carting (weight by length) {:.3} on drawn links, {:.3} on made roads not drawn, {:.3} on tracks",
                         m.today, m.today_closed, m.drawn, m.drawn as f64 / m.today.max(1) as f64, m.closed, m.closed_town, m.diagonals,
                         m.carted_drawn / all.max(1e-9), m.carted_road_not_drawn / all.max(1e-9), m.carted_track / all.max(1e-9)
                     );

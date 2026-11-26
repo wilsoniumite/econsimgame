@@ -544,15 +544,26 @@ mod tests {
         // island 7 is another island, on which in 1800 a cart rides 0.0024 off its road's surface at
         // 60.99, 16.53 (a fault of the carts' drawing on the new land, in the faults' file for the
         // round of mending, docs/backlog/for-the-bugfix-round.md, and not mended here)
+        // The case is played twice: with every road drawn, as it was found (`network::ALL_IN_TEST`),
+        // and with the roads the carts wore (`network::drawn_links`), on which there are fewer
+        // main roads and so fewer rounds (9 in 1800 where there were 10 or more)
         let r = crate::live::played_at_stage(7, 6, 150, 1, true).expect("the game starts");
         let g = world::build_ground(&r);
         let cen = network::centres(&r);
+        for all in [true, false] {
+            network::ALL_IN_TEST.with(|a| a.set(all));
+            keep_to_their_roads(&r, &g, &cen, if all { 10 } else { 6 });
+            network::ALL_IN_TEST.with(|a| a.set(false));
+        }
+    }
+
+    fn keep_to_their_roads(r: &Replay, g: &Ground, cen: &[(f32, f32)], least_rounds: usize) {
         let mut crossed = 0;
         for year in [1800, 1850, 1900] {
             let k = (year - r.y0) as usize;
             assert!(k < r.filled, "{year} is not played");
-            let c = check(&r, &g, &cen, k);
-            assert!(c.rounds >= 10, "{year}: only {} carters' rounds", c.rounds);
+            let c = check(r, g, cen, k);
+            assert!(c.rounds >= least_rounds, "{year}: only {} carters' rounds", c.rounds);
             // at the height of the road or the deck under it, wherever it is
             assert!(c.off_surface.0 < 1e-4, "{year}: a cart rides {} off its road's surface at {}", c.off_surface.0, c.off_surface.1);
             // and so never at the water's height, nor under it

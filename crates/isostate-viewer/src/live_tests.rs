@@ -1531,9 +1531,10 @@ fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
     // The roads the carts wore (`network::drawn_links`), measured on a recorded run:
     // island 7 under the game's rules, which keep the traffic, played forty years and
     // read back from its `run.bin`. It leans on no history but the traffic being kept:
-    // a road once drawn stays drawn while its squares are made roads; the drawn roads
-    // close fewer squares than every road between road squares does, and carry most of
-    // the year's carting; and with the rule off the picture is the one before.
+    // a road once drawn stays drawn while its squares are made roads, until twenty years
+    // go by in which it never carries what wears it; the drawn roads close fewer squares
+    // than every road between road squares does, and carry most of the year's carting;
+    // and with the rule off the picture is the one before.
     let mut game = isostate_core::save::Game::new(7, 6, 0);
     assert!(game.sim.params.traffic.enabled, "the case is played with the traffic kept");
     for _ in 0..40 {
@@ -1550,7 +1551,13 @@ fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
         let drawn = crate::network::drawn_links(&r, &worn, k);
         let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
         for l in &before {
-            assert!(!made(l.0) || !made(l.1) || drawn.iter().any(|d| (d.0, d.1) == (l.0, l.1)), "year {k}: the road {l:?} drawn before is gone");
+            if made(l.0) && made(l.1) && !drawn.iter().any(|d| (d.0, d.1) == (l.0, l.1)) {
+                // gone back to grass: twenty quiet years
+                let (o, s) = isostate_core::traffic::link(r.w, l.0, l.1).unwrap();
+                let quiet = k + 1 >= crate::network::WORN_WINDOW as usize
+                    && (k + 1 - crate::network::WORN_WINDOW as usize..=k).all(|y| r.traffic.mode(r.n, y, o, s) != isostate_core::traffic::CART || r.traffic.weight(r.n, y, o, s) < crate::network::WORN_WEIGHT);
+                assert!(quiet, "year {k}: the road {l:?} drawn before is gone, though the carts wore it in the last twenty years");
+            }
         }
         before = drawn;
     }
