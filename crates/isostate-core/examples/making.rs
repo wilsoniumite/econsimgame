@@ -66,6 +66,17 @@ fn main() {
                     kinds.sort_by(|a, b| b.0.total_cmp(&a.0));
                     let words: Vec<String> = kinds.iter().map(|(h, l)| format!("{l} {h:.0}")).collect();
                     println!("  {:<14} {:>7.0} people: {}", m.name, st.pop[t], words.join(", "));
+                    // TOWN-FLOW-HAND: with --hand, the faint kinds and what Build one here would build
+                    if hand {
+                        for f in &m.faint {
+                            let offer = match m.hand_of(f.good).map(|k| &k.build) {
+                                Some(Ok(o)) => format!("{} on {}, {} for {:.0}, {:.0}% a year", o.label.to_lowercase(), o.cell % st.world.W, o.cell / st.world.W, o.cost, 100.0 * o.ret),
+                                Some(Err(why)) => format!("none: {why}"),
+                                None => "no hand".to_string(),
+                            };
+                            println!("      (faint{}) {}: {offer}", if f.known { "" } else { ", found nowhere" }, f.label);
+                        }
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => println!("  {}: {e}", st.town_name[t]),
