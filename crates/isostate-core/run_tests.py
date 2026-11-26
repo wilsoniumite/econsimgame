@@ -18,9 +18,9 @@ golden tests give the same hashes under both. Its build is also the one the view
 working loop's, is the quickest to build again after a change to the core).
 
 `--quick` leaves out the slowest tests, those named in QUICK_SKIPS below, so that the rest run in about
-half a minute: for a builder while working (`--profile work --quick`: a change, its build and these
-tests in under a minute). The whole set is run once before a piece is handed over, and
-the gate runs it all. `--slowest N` lists, at the end, the N tests that took longest and their seconds
+half a minute, and builds no examples (half the programs to link): for a builder while working
+(`--profile work --quick`: a change, its build and these tests in under a minute). The whole set is run
+once before a piece is handed over, and the gate runs it all. `--slowest N` lists, at the end, the N tests that took longest and their seconds
 (each program's tests are timed by the test harness's own clock, with every program running at once).
 
 It prints one line for each program as it finishes (its seconds, its tests and its verdict), then the
@@ -388,6 +388,9 @@ def main(argv):
     # 1. the build, as cargo test does it (the examples are built too, so that one that no longer
     # compiles fails here as it fails there); cargo's own messages go to the terminal
     build = ["cargo", "test", "-p", "isostate-core", "--no-run", "--message-format=json-render-diagnostics"] + profile
+    if quick:
+        # the library, the command and tests/, without the examples (--tests: every target that is tested)
+        build.append("--tests")
     proc = subprocess.run(build, cwd=HERE, stdout=subprocess.PIPE, text=True, errors="replace")
     programs = []
     for line in proc.stdout.splitlines():
