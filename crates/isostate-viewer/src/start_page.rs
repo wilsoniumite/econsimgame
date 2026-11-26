@@ -66,6 +66,8 @@ pub struct PictureAsk {
     pub more: bool,
     pub family: bool,
     pub begin: bool,
+    /// a name whose tooltip is opened and locked for the picture (`tip:Land`)
+    pub tip: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -102,7 +104,8 @@ pub fn wanted(argv: &[String], set: &[String]) -> Result<Option<Asked>, String> 
                         "more" => pic.more = true,
                         "family" => pic.family = true,
                         "begin" => pic.begin = true,
-                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family or begin")),
+                        w if w.starts_with("tip:") => pic.tip = Some(w["tip:".len()..].to_string()),
+                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family, begin or tip:NAME")),
                     }
                 }
                 asked.mode = Mode::Picture(pic);
@@ -229,6 +232,23 @@ impl Field {
         }
     }
 
+    /// What its name's tooltip says: what the choice is, then what it decides
+    /// (docs/designs/words.md: three sentences at most, 18 words each).
+    pub fn says(self) -> &'static str {
+        match self {
+            Field::Kind => "A sandbox is the island to watch and to change with tools. The family game is one family among the great families. Both are saved as you play.",
+            Field::Start => "How the island begins in 1750. The settled island has its towns, farms and great families from the first year.",
+            Field::Seed => "The number that makes the island, its land and its first towns. The same number makes the same island every time.",
+            Field::Families => "The great families hold land and firms across the island. In the family game you play one of them.",
+            Field::To => "The game ends after this year. A game saved goes on to the last year it began with.",
+            Field::Advance => "The years before it are played before the window opens. A family game that opens late is saved apart, as a trial.",
+            Field::Land => "The new land has rivers that run downhill, lakes and relief every 500 m. The old island is the land of every game before 19 November 2026.",
+            Field::Season => "Holds one season all year, for its look. Clock lets the seasons turn with the months.",
+            Field::Size => "The size of the game's window, in pixels. The window can be made larger once the game is open.",
+            Field::View => "The map view the game opens on. M steps through the views in the game.",
+        }
+    }
+
     /// Whether its options are laid side by side (else it steps, with - and +).
     pub fn laid_out(self) -> bool {
         matches!(self, Field::Kind | Field::Start | Field::Land | Field::Season)
@@ -323,18 +343,18 @@ impl Choices {
     pub fn line(&self, f: Field) -> String {
         match f {
             Field::Kind => match self.kind {
-                Kind::Sandbox => "Watch the island, and change it by hand.".into(),
+                Kind::Sandbox => "Watch the island, and change it with tools.".into(),
                 Kind::Family => format!("Play one family among {}.", self.families),
             },
             Field::Start => starts().get(self.start).map_or(String::new(), |s| s.line.to_string()),
             Field::Seed => "Each number is another island.".into(),
-            Field::Families => "Great families, holding land and works.".into(),
+            Field::Families => "Great families, holding land and firms.".into(),
             Field::To => format!("{} years from 1750.", self.to - 1750 + 1),
             Field::Advance => {
                 if self.advance == 0 {
                     "1750 played. Nothing to wait for.".into()
                 } else {
-                    let trial = if self.kind == Kind::Family { " Kept as a trial." } else { "" };
+                    let trial = if self.kind == Kind::Family { " Saved apart, as a trial." } else { "" };
                     format!("{} years played first: {}.{trial}", self.advance + 1, play_words(self.advance + 1))
                 }
             }
@@ -601,6 +621,16 @@ struct NewCount;
 #[derive(Component)]
 struct MoreWord;
 
+/// What the tooltips of Command and Go on say.
+pub const COMMAND_SAYS: &str = "This command line starts the same game as the page. Copy puts it on the clipboard. Any option on a command line skips the page.";
+pub const GO_ON_SAYS: &str = "The games saved in this machine's folder of saved games. A game saves itself as you play. A click plays its years again and goes on.";
+
+/// A tooltip behind a name on the page, from its own words, with links to the
+/// glossary's terms where its words name them.
+fn tip(name: &str, says: &str) -> crate::tips::Tip {
+    crate::tips::Tip::new(name, crate::tips::TipBody { term: name.to_string(), says: crate::words::glossary().pieces(says, None), ..default() })
+}
+
 /// Run the page, and return the program's exit code.
 pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
     let picture = match &asked.mode {
@@ -647,7 +677,9 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
         .add_systems(Startup, setup)
         .add_plugins(crate::whats_new::plugin)
         .add_plugins(crate::backlog_seen::plugin)
-        .add_systems(PreUpdate, keys.after(bevy::input::InputSystems))
+        // the tooltips that lock and nest, behind each choice's name (tips.rs); Esc closes them first
+        .add_plugins(crate::tips::plugin)
+        .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).after(crate::tips::escape))
         .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, news_count, up_after, go).chain());
     if let Some(p) = picture {
         app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None });
@@ -663,7 +695,8 @@ struct PageSize((u32, u32));
 fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>, mut images: ResMut<Assets<Image>>, page: Res<Page>, size: Res<PageSize>, shooting: Option<ResMut<Shooting>>) {
     let font = fonts.add(Font::from_bytes(crate::FREDOKA.to_vec()));
     commands.insert_resource(UiFont(font.clone()));
-    let mut cam = commands.spawn((Camera2d, IsDefaultUiCamera));
+    // (the tooltips keep themselves inside the main camera's view)
+    let mut cam = commands.spawn((Camera2d, IsDefaultUiCamera, crate::MainCam));
     if let Some(mut shooting) = shooting {
         let mut img = Image::new_target_texture(size.0 .0, size.0 .1, TextureFormat::Rgba8UnormSrgb, None);
         img.texture_descriptor.usage |= TextureUsages::COPY_SRC;
@@ -709,9 +742,12 @@ fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page) {
         });
 }
 
-fn heading(p: &mut ChildSpawnerCommands, f: &Handle<Font>, title: &str, aside: &str) {
+fn heading(p: &mut ChildSpawnerCommands, f: &Handle<Font>, title: &str, aside: &str, says: Option<&str>) {
     p.spawn(Node { align_items: AlignItems::Baseline, column_gap: Val::Px(10.0), margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|h| {
-        h.spawn(ui::text(f, title, 22.0, INK));
+        let mut t = h.spawn(ui::text(f, title, 22.0, INK));
+        if let Some(says) = says {
+            t.insert(tip(title, says));
+        }
         h.spawn(ui::text(f, aside, 14.0, MUTED));
     });
 }
@@ -724,7 +760,7 @@ fn go_on_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>, page: &Page, now
     .with_children(|c| {
         let card = c.target_entity();
         let n = page.saves.len();
-        heading(c, f, "Go on", &match n { 0 => "no saved games".to_string(), 1 => "1 saved game".to_string(), n => format!("{n} saved games, newest first") });
+        heading(c, f, "Go on", &match n { 0 => "no saved games".to_string(), 1 => "1 saved game".to_string(), n => format!("{n} saved games, newest first") }, Some(GO_ON_SAYS));
         if n == 0 {
             c.spawn(ui::text(f, "A game saves itself as you play.", 15.0, MUTED));
             c.spawn(ui::text(f, "Begin a new island, and it will be here.", 15.0, MUTED));
@@ -777,7 +813,7 @@ fn save_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, i: usize, s: &Listed
 
 fn new_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>) {
     row.spawn(ui::card(Node { flex_direction: FlexDirection::Column, width: Val::Px(540.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(18.0)), row_gap: Val::Px(2.0), border_radius: BorderRadius::all(Val::Px(18.0)), flex_shrink: 0.0, ..default() })).with_children(|c| {
-        heading(c, f, "A new island", "1750 on");
+        heading(c, f, "A new island", "1750 on", None);
         for field in Field::NEW {
             field_row(c, f, field);
         }
@@ -815,7 +851,7 @@ fn field_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field) {
     .with_children(|r| {
         r.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).with_children(|line| {
             line.spawn((Node { width: Val::Px(84.0), flex_shrink: 0.0, ..default() },)).with_children(|l| {
-                l.spawn(ui::text(f, field.label(), 14.5, MUTED));
+                l.spawn((ui::text(f, field.label(), 14.5, MUTED), tip(field.label(), field.says())));
             });
             line.spawn((Node { align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, FieldBox(field)));
         });
@@ -871,7 +907,7 @@ fn foot(root: &mut ChildSpawnerCommands, f: &Handle<Font>) {
         // the command line that does the same
         c.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).with_children(|row| {
             row.spawn(Node { width: Val::Px(84.0), flex_shrink: 0.0, ..default() }).with_children(|l| {
-                l.spawn(ui::text(f, "Command", 14.5, MUTED));
+                l.spawn((ui::text(f, "Command", 14.5, MUTED), tip("Command", COMMAND_SAYS)));
             });
             row.spawn((Node { flex_grow: 1.0, flex_shrink: 1.0, padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }, BackgroundColor(Color::srgb(0.95, 0.93, 0.87)))).with_children(|t| {
                 t.spawn((ui::text(f, "", 14.0, INK), CommandText));
@@ -1209,14 +1245,18 @@ struct Shooting {
 /// With nobody at the page: wait for it to be laid out, its font drawn, its
 /// shaders made and What's new read, take its picture, and with `begin` press
 /// Begin, starting the game it would start with a picture of its own.
-fn shoot(mut commands: Commands, mut s: ResMut<Shooting>, mut page: ResMut<Page>, wn: Res<crate::whats_new::WhatsNew>, waiting: Res<crate::PipelinesWaiting>, mut exit: MessageWriter<AppExit>) {
+fn shoot(mut commands: Commands, mut s: ResMut<Shooting>, mut page: ResMut<Page>, wn: Res<crate::whats_new::WhatsNew>, waiting: Res<crate::PipelinesWaiting>, mut tips: ResMut<crate::tips::Tips>, mut exit: MessageWriter<AppExit>) {
     s.frames += 1;
+    // the pointer rests on a name, as a script's does (tips.rs), long enough for its tooltip to lock
+    if tips.aim.is_none() {
+        tips.aim = s.ask.tip.clone();
+    }
     let Some(image) = s.image.clone() else { return };
     match s.asked_at {
         None => {
             let held = *s.held.get_or_insert_with(std::time::Instant::now);
             let pending = waiting.0.load(std::sync::atomic::Ordering::Relaxed);
-            let ready = (wn.ready || held.elapsed().as_secs_f32() > 10.0) && pending == 0;
+            let ready = (wn.ready || held.elapsed().as_secs_f32() > 10.0) && pending == 0 && (s.ask.tip.is_none() || held.elapsed().as_secs_f32() > 2.5);
             if s.frames < 20 || (!ready && held.elapsed().as_secs_f32() < 45.0) {
                 return;
             }
@@ -1347,7 +1387,7 @@ mod tests {
         assert_eq!(wanted(&line("--start-page"), &[]), Ok(Some(Asked { mode: Mode::Window { from_game: true }, size: None })));
         assert_eq!(
             wanted(&line("--page-shot out/p.png,more,begin --size 1280x720"), &[]),
-            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true }), size: Some((1280, 720)) }))
+            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true, tip: None }), size: Some((1280, 720)) }))
         );
         assert!(wanted(&line("--start-page --family"), &[]).unwrap_err().contains("--family is an option of a game"));
         assert!(wanted(&line("--page-shot"), &[]).is_err());
@@ -1500,11 +1540,27 @@ mod tests {
                     for sentence in l.split(['.', ':']).filter(|s| !s.trim().is_empty()) {
                         assert!(sentence.split_whitespace().count() <= 12, "{f:?}: {sentence}");
                     }
+                    assert!(crate::words::kept_out_in(&l).is_empty(), "{f:?}: {l} holds {:?}", crate::words::kept_out_in(&l));
+                    for (_, name) in c.options(*f).0.iter().enumerate() {
+                        assert_eq!(crate::words::label_fault(name), None, "{f:?}");
+                    }
                 }
             }
         }
         for s in starts() {
             assert!(s.line.split_whitespace().count() <= 12, "{}", s.line);
+            assert_eq!(crate::words::label_fault(s.name), None);
+        }
+        // the tooltips keep the glossary's rules (docs/designs/words.md): three sentences, 18 words each
+        let says: Vec<(&str, &str)> = Field::NEW.iter().chain(&Field::MORE).map(|f| (f.label(), f.says())).chain([("Command", COMMAND_SAYS), ("Go on", GO_ON_SAYS)]).collect();
+        for (name, text) in says {
+            assert_eq!(crate::words::label_fault(name), None);
+            let s = crate::words::sentences(text);
+            assert!((1..=3).contains(&s.len()), "{name}: {} sentences", s.len());
+            for sen in &s {
+                assert!(sen.split_whitespace().count() <= 18 && sen.ends_with('.') && !sen.contains([':', ';', '(', ')']), "{name}: {sen}");
+            }
+            assert!(crate::words::kept_out_in(text).is_empty(), "{name}: {:?}", crate::words::kept_out_in(text));
         }
         assert_eq!(ago(1_000, 1_000 + 7_300), "2 h ago");
         assert_eq!(ago(0, 3 * 86_400 + 5), "3 days ago");
