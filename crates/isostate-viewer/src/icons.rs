@@ -38,6 +38,8 @@ pub struct Icons {
     pub road: Handle<Image>,
     #[allow(dead_code)]
     pub rail: Handle<Image>,
+    /// a link that leaves the game, to Wikipedia (tips.rs): an arrow up and to the right
+    pub out: Handle<Image>,
 }
 
 const N: usize = 64;
@@ -270,6 +272,16 @@ fn road() -> Image {
     c.image()
 }
 
+fn out() -> Image {
+    let mut c = Canvas::new();
+    // the shaft, from the lower left toward the upper right, and the head at its end
+    let n = (0.045, 0.045);
+    let (a, b) = ((0.22, 0.78), (0.62, 0.38));
+    c.fill(&poly(vec![(a.0 + n.0, a.1 + n.1), (b.0 + n.0, b.1 + n.1), (b.0 - n.0, b.1 - n.1), (a.0 - n.0, a.1 - n.1)]), WHITE);
+    c.fill(&poly(vec![(0.80, 0.20), (0.80, 0.62), (0.38, 0.20)]), WHITE);
+    c.image()
+}
+
 fn rail() -> Image {
     let mut c = Canvas::new();
     // a railway going off to the skyline: the sleepers, and the two rails over them
@@ -392,6 +404,7 @@ pub fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         cross: add(market_cross()),
         road: add(road()),
         rail: add(rail()),
+        out: add(out()),
     };
     commands.insert_resource(icons);
 }
@@ -409,7 +422,7 @@ mod tests {
     fn all() -> Vec<(&'static str, Image)> {
         vec![
             ("coin", coin()), ("works", works()), ("land", land()), ("people", people()), ("family", family()), ("holdings", holdings()), ("markets", markets()), ("news", news()), ("map", map()),
-            ("pen", pen()), ("scales", scales()), ("eye", eye()), ("sheaf", sheaf()), ("lamp", lamp()), ("cross", market_cross()), ("road", road()), ("rail", rail()),
+            ("pen", pen()), ("scales", scales()), ("eye", eye()), ("sheaf", sheaf()), ("lamp", lamp()), ("cross", market_cross()), ("road", road()), ("rail", rail()), ("out", out()),
         ]
     }
 
