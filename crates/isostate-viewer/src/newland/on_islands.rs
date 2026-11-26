@@ -392,7 +392,7 @@ fn no_scenery_slot_lies_in_a_lake_or_on_the_tide() {
         let slots = crate::scatter::make_slots(&isl.r, g);
         let mut by_a_lake = 0;
         let mut on_shore = 0;
-        for (what, list) in [("tree", &slots.trees), ("house", &slots.houses), ("farm", &slots.farms), ("pit", &slots.mines), ("hedgerow tree", &slots.hedge)] {
+        for (what, list) in [("tree", &slots.trees), ("house", &slots.houses), ("farm", &slots.farms), ("pit", &slots.mines), ("pit ground", &slots.pit_ground), ("hedgerow tree", &slots.hedge)] {
             assert!(!list.is_empty(), "island {} has no {what} slots", isl.seed);
             for s in list.iter() {
                 let h = isl.bare(s.x, s.z);

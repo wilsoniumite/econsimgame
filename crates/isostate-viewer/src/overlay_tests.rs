@@ -195,9 +195,9 @@ fn the_inspector_says_what_the_overlay_shows() {
     let r = strip();
     assert_eq!(said(&r, 0, 0, Overlay::Rent, 0, None), None);
     // 12 months of the record's middle value: 10^(128/255*6 - 3) is about 1.03 a month
-    assert_eq!(said(&r, 0, 2, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns about \u{00a3}12 a year.");
+    assert_eq!(said(&r, 0, 2, Overlay::Rent, 0, None).unwrap(), "Rent here: about \u{00a3}12 a year.");
     // the record's top step is a floor, not a figure
-    assert_eq!(said(&r, 0, 3, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
+    assert_eq!(said(&r, 0, 3, Overlay::Rent, 0, None).unwrap(), "Rent here: \u{00a3}12k a year or more.");
     assert_eq!(said(&r, 0, 2, Overlay::Areas, 0, None).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
     assert_eq!(said(&r, 0, 1, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby's market is here.");
     assert_eq!(said(&r, 0, 2, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby is as far as 6.0 km of flat open country.");
@@ -345,7 +345,7 @@ fn made_here_shares_a_crop_by_its_ground_and_takes_a_pit_as_it_is() {
     let w = wash_year(&r, 1, Overlay::Made, 1, None);
     assert_eq!(&tint(&w, 1)[..3], &rgb(BLANK));
     assert_eq!(w.legend.title, "Where coal was made in 1751");
-    assert_eq!(said(&r, 1, 3, Overlay::Made, 1, None).unwrap(), "Made here: about 5 of coal was raised at the pit head on this square in the year.");
+    assert_eq!(said(&r, 1, 3, Overlay::Made, 1, None).unwrap(), "Made here: about 5 of coal in the year, at the pit head.");
     // a good of the works goes over each town's own ground, here its middle
     let mut works = strip_years(2);
     works.holds.sectors.clear();
