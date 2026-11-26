@@ -217,6 +217,15 @@ What is left of the fall is not the woods' and not the pits'
   pays: the woods are where the land's bidding left them, and the craft only
   makes them grow back faster. The woodmen still cut as the price bids, not
   what grows back.
+- **Trees by hand.** Since 26 November 2026 the sandbox's brush
+  (`edits::Ground`, "Timber") plants a stand or takes one away by setting the
+  cover itself, between two months. Planted, a square takes a full stand of
+  what its ground bears (`forest_pot`) under the brush's middle and half of one
+  at its edge, and only where this rule lets trees stay (the wood's and the
+  wild's share over 0.02 at the last review; on less the cover halves each
+  year). Taken away, no timber comes of the trees, since the hand makes no
+  goods, and they grow back at the rule's own pace. The woods' cut reads the
+  cover from the next month on; nothing else of this rule changes.
 
 ## What worries me
 

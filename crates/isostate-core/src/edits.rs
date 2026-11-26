@@ -243,6 +243,12 @@ pub enum Edit {
     /// closed, and every method that makes it turned off there: "Close all and
     /// forbid this kind here". It waits for the year's turn.
     CloseKind { town: usize, good: String },
+    // GROUND-BRUSH (the brush on the ground, docs/designs/sandbox.md, 6.9):
+    /// One stroke of the brush: a kind of ground laid down (`lay`) or taken
+    /// away on every square within `size` squares of those the brush passed
+    /// over, in the order it passed them. Carried out at once; what follows
+    /// is the rules' own, from the next year's review of the land.
+    Ground { kind: Ground, lay: bool, size: u8, squares: Vec<usize> },
 }
 
 /// What a pin asks of its idea.
@@ -302,15 +308,7 @@ pub fn pin_says(st: &State, idea: Idea, year: i64) -> Pinned {
 /// handled most of the idea's goods last year, against their thresholds),
 /// with no draw and no inventor named.
 pub fn find_pinned(st: &mut State, C: &Content, t: usize, year: i64, events: &mut Vec<Event>) {
-    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(t, g)] > 0.0).collect();
-    let mut best: Option<(f64, usize)> = None;
-    for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
-        let score: f64 = req.iter().map(|&g| st.town_prod_year[(i, g)] / st.disc_X0[(t, g)]).sum::<f64>() + 1e-9 * st.pop[i];
-        if best.is_none_or(|(b, _)| score > b) {
-            best = Some((score, i));
-        }
-    }
-    let Some((_, i)) = best else { return };
+    let Some(i) = pinned_town(st, C, t) else { return };
     st.know[(i, t)] = st.know[(i, t)].max(0.25);
     st.tech_year[t] = year;
     st.tech_town[t] = i as i64;
@@ -326,6 +324,22 @@ pub fn find_pinned(st: &mut State, C: &Content, t: usize, year: i64, events: &mu
     ev.cell = Some(st.town_node[i]);
     ev.tech = Some(t);
     events.push(ev);
+}
+
+/// The town a pin finds idea `t` of the tree in (`find_pinned`), which the
+/// island's timeline also finds it in when it is dragged to now
+/// (`island_ideas`): the town that handled most of the idea's goods last year,
+/// against their thresholds. It only reads.
+pub fn pinned_town(st: &State, C: &Content, t: usize) -> Option<usize> {
+    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(t, g)] > 0.0).collect();
+    let mut best: Option<(f64, usize)> = None;
+    for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
+        let score: f64 = req.iter().map(|&g| st.town_prod_year[(i, g)] / st.disc_X0[(t, g)]).sum::<f64>() + 1e-9 * st.pop[i];
+        if best.is_none_or(|(b, _)| score > b) {
+            best = Some((score, i));
+        }
+    }
+    best.map(|(_, i)| i)
 }
 
 /// An idea by its name, with its label: the tree's ideas first, then the
@@ -395,6 +409,10 @@ pub struct Ledger {
     /// TOWN-FLOW-HAND: the methods turned off by hand, as (town, method),
     /// which `forbidden` reads.
     pub forbidden: Vec<(usize, usize)>,
+    /// GROUND-BRUSH: the squares whose deposit the hand has changed, as (the
+    /// kind's place in `Ground::ALL`, square), for the viewer's map of what
+    /// the ground holds (the standing timber is sent whole every year).
+    pub ground: std::collections::BTreeSet<(u8, usize)>,
 }
 
 /// A factor the hand may use, or a sentence saying why not.
@@ -483,6 +501,12 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
         Edit::CloseKind { town: t, good } => {
             let (said, m) = close_kind(sim, *t, good)?;
             tech = m.and_then(|m| tech_of_method(&sim.content, m));
+            said
+        }
+        // GROUND-BRUSH
+        Edit::Ground { kind, lay, size, squares } => {
+            let (said, c) = ground(sim, *kind, *lay, *size, squares)?;
+            cell = Some(c);
             said
         }
     };
@@ -1305,4 +1329,283 @@ pub fn best_build(sim: &Sim, t: usize, g: usize) -> Result<Offer, String> {
         None if why.is_empty() => Err(format!("no works on this island makes {}", C.good_label[g].to_lowercase())),
         None => Err(why.join("; ")),
     }
+}
+
+// ---------------------------------------------------------------- the brush on the ground (GROUND-BRUSH)
+//
+// The atlas's fourth plate, the ground, is the viewer's Deposits view; this is
+// its hand. A stroke of the brush is one edit, however many squares it passes
+// over, and is carried out at once: the island's deposits are read once a year,
+// at the review of the land (`land::update_land_use`, `mines::review`), so a
+// deposit changed in March acts from that January on. Laying down raises a kind
+// of ground on the squares the brush reaches, as rich as the island's own good
+// deposits of it under the brush's middle and half that at its edge; taking
+// away leaves none of it there. Nothing is opened or closed by the hand: the
+// mines' rule finds a deposit laid down at its next review and sinks a working
+// where one would pay, as on the island's own ground, and a working whose
+// deposit is taken away raises nothing more from it, stands idle, and is given
+// up once it has stood idle its years (docs/rules/mines.md, D). The standing
+// timber is the woods' cover: trees are planted only where woods may stand,
+// and taken away they leave no timber, since the hand makes no goods.
+
+/// A kind of ground the brush lays down or takes away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ground {
+    Coal,
+    IronOre,
+    Clay,
+    Stone,
+    Timber,
+}
+
+impl Ground {
+    /// In the order of the viewer's kinds of ground (`overlay::KINDS`), whose
+    /// first four are the record's deposits in its order (`DEPOSIT_FIELDS`).
+    pub const ALL: [Ground; 5] = [Ground::Coal, Ground::IronOre, Ground::Clay, Ground::Stone, Ground::Timber];
+
+    /// The island's field it is (`World::field`), or "cover" for the standing timber.
+    pub fn field(self) -> &'static str {
+        match self {
+            Ground::Coal => "coal",
+            Ground::IronOre => "ore",
+            Ground::Clay => "clay",
+            Ground::Stone => "rock",
+            Ground::Timber => "cover",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Ground::Coal => "coal",
+            Ground::IronOre => "iron ore",
+            Ground::Clay => "clay",
+            Ground::Stone => "stone",
+            Ground::Timber => "standing timber",
+        }
+    }
+
+    /// The land sector that works it (`Content::sector_name`).
+    fn sector(self) -> &'static str {
+        match self {
+            Ground::Coal => "coalmine",
+            Ground::IronOre => "ironmine",
+            Ground::Clay => "claypit",
+            Ground::Stone => "quarry",
+            Ground::Timber => "forestry",
+        }
+    }
+
+    /// Its place in `ALL`.
+    pub fn index(self) -> u8 {
+        Ground::ALL.iter().position(|&g| g == self).unwrap_or(0) as u8
+    }
+}
+
+/// The widest a brush may be: this many squares from a square it passes over.
+pub const BRUSH_MOST: u8 = 4;
+
+/// How rich a deposit is laid on an island that holds none of its kind, on
+/// the fields' scale of 0 to 1: a good coalfield of the port's island.
+const RICH_IF_NONE: f64 = 0.8;
+
+/// How far a brush of `size` reaches: every square whose middle is within
+/// `size` and a half squares of one it passes over (size 1 is the square and
+/// the eight round it).
+fn reach(size: u8) -> f64 {
+    size as f64 + 0.5
+}
+
+/// What one stroke leaves on each square it changes, as (square, what it holds
+/// after it), by the squares' order. `old` is the kind as the ground holds it
+/// now, on the fields' scale of 0 to 1, on an island `w` squares wide.
+/// Laying down, a square within reach is raised, where it holds less, to
+/// `top(square)` times a share that is one under the brush's middle and falls
+/// to a half at its edge, by the distance to the nearest square the brush
+/// passed over; taking away, it is left with none. A square whose figure would
+/// not change is left out. It only reads: the viewer paints its preview of a
+/// stroke by it, so that the two cannot reach different squares.
+pub fn stroke(old: &[f64], w: usize, lay: bool, size: u8, squares: &[usize], top: impl Fn(usize) -> f64) -> Vec<(usize, f64)> {
+    let n = old.len();
+    let (w, r) = (w.max(1), reach(size));
+    let h = n / w;
+    let k = r.floor() as i64;
+    let mut near: std::collections::BTreeMap<usize, f64> = std::collections::BTreeMap::new();
+    for &s in squares.iter().filter(|&&s| s < n) {
+        let (sx, sy) = ((s % w) as i64, (s / w) as i64);
+        for dy in -k..=k {
+            for dx in -k..=k {
+                let (x, y) = (sx + dx, sy + dy);
+                let d = ((dx * dx + dy * dy) as f64).sqrt();
+                if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 || d > r + 1e-9 {
+                    continue;
+                }
+                let e = near.entry(y as usize * w + x as usize).or_insert(d);
+                *e = e.min(d);
+            }
+        }
+    }
+    near.into_iter()
+        .filter_map(|(c, d)| {
+            let new = if lay { old[c].max(top(c) * (1.0 - 0.5 * (d / r).powi(2))) } else { 0.0 };
+            (new != old[c]).then_some((c, new))
+        })
+        .collect()
+}
+
+/// How rich the brush lays a deposit under its middle: as rich as the
+/// island's own good deposits of the kind, the mean of the richest tenth of
+/// the squares of land that hold any (on an island that holds none,
+/// `RICH_IF_NONE`). The island's ground as it stands, so a second stroke is
+/// laid about as rich as the first.
+pub fn richness(field: &[f64], land: &[bool]) -> f64 {
+    let mut v: Vec<f64> = field.iter().zip(land).filter(|&(&f, &l)| l && f > 0.0).map(|(&f, _)| f).collect();
+    if v.is_empty() {
+        return RICH_IF_NONE;
+    }
+    v.sort_by(|a, b| b.total_cmp(a));
+    let k = (v.len() / 10).max(1);
+    v[..k].iter().sum::<f64>() / k as f64
+}
+
+/// Whether woods may stand on a square: land whose woodland and wild shares
+/// pass what the land rule lets trees stay on (`land::update_land_use`, where
+/// trees on less halve each year).
+fn woods_may_stand(st: &State, C: &Content, c: usize) -> bool {
+    let (fi, ns) = (st.forestry_sector, C.NS);
+    st.world.land[c] && st.lam.rows > ns && c < st.lam.cols && st.lam[(fi, c)] + st.lam[(ns, c)] > 0.02
+}
+
+/// The field of a deposit, to change.
+fn deposit_mut(world: &mut crate::world::World, kind: Ground) -> &mut Vec<f64> {
+    match kind {
+        Ground::Coal => &mut world.coal,
+        Ground::IronOre => &mut world.ore,
+        Ground::Clay => &mut world.clay,
+        Ground::Stone | Ground::Timber => &mut world.rock,
+    }
+}
+
+/// What a stroke of `kind` would change on the island as it stands, as
+/// `stroke` says it, and how rich it lays a deposit (for the standing
+/// timber nought: its top is each square's own, the stand its ground bears).
+pub fn ground_plan(st: &State, C: &Content, kind: Ground, lay: bool, size: u8, squares: &[usize]) -> (Vec<(usize, f64)>, f64) {
+    let w = st.world.W;
+    match kind {
+        Ground::Timber => {
+            let top = |c: usize| if woods_may_stand(st, C, c) { st.world.forest_pot[c] } else { 0.0 };
+            (stroke(&st.cover, w, lay, size, squares, top), 0.0)
+        }
+        _ => {
+            let f = st.world.field(kind.field());
+            let rich = richness(f, &st.world.land);
+            (stroke(f, w, lay, size, squares, |c| if st.world.land[c] { rich } else { 0.0 }), rich)
+        }
+    }
+}
+
+/// The workings standing on the squares a stroke changes: those whose pit
+/// head is on one, or whose lease takes one in (`mines.rs`, A).
+fn workings_on(st: &State, C: &Content, kind: Ground, squares: &[(usize, f64)]) -> usize {
+    let N = st.N;
+    let Some(r) = C.sector_name.iter().position(|n| n == kind.sector()).and_then(|s| crate::mines::row(st, s)) else { return 0 };
+    let mut heads: Vec<usize> = Vec::new();
+    for &(c, _) in squares {
+        let leased = st.mine_head[r * N + c];
+        for h in [Some(c), (leased >= 0).then_some(leased as usize)].into_iter().flatten() {
+            if st.mine_opened[r * N + h] != 0 && !heads.contains(&h) {
+                heads.push(h);
+            }
+        }
+    }
+    heads.len()
+}
+
+/// A number of squares in words: "1 square", "21 squares".
+fn squares_count(n: usize) -> String {
+    if n == 1 { "1 square".to_string() } else { format!("{n} squares") }
+}
+
+/// A phrase begun with a capital.
+fn capital_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
+}
+
+/// A stroke of the brush carried out (`Edit::Ground`): the news's title, text
+/// and town, and the square the news is about (the middle one of the stroke).
+fn ground(sim: &mut Sim, kind: Ground, lay: bool, size: u8, squares: &[usize]) -> Result<((String, String, Option<usize>), usize), String> {
+    let (st, C, P) = (&sim.st, &sim.content, &sim.params);
+    let n = st.N;
+    if squares.is_empty() {
+        return Err("a stroke of the brush passes over at least one square".to_string());
+    }
+    if let Some(&s) = squares.iter().find(|&&s| s >= n) {
+        return Err(format!("there is no square {s} on the island, which has {n}"));
+    }
+    if size > BRUSH_MOST {
+        return Err(format!("the brush reaches at most {BRUSH_MOST} squares from where it passes, not {size}"));
+    }
+    let mid = squares[squares.len() / 2];
+    let near = (st.catch[mid] >= 0).then_some(st.catch[mid] as usize);
+    let place = match near {
+        Some(t) => format!("round {}, in {}'s district", square_at(st, mid), st.town_name[t]),
+        None => format!("round {}", square_at(st, mid)),
+    };
+    let label = kind.label();
+    let (changes, rich) = ground_plan(st, C, kind, lay, size, squares);
+    if changes.is_empty() {
+        return Err(match (lay, kind) {
+            (true, Ground::Timber) => format!("no trees can be planted {place}: the woods there stand as thick as the ground bears, or the land is farmed, built on or worked"),
+            (true, _) => format!("the ground {place} holds as much {label} as the brush lays already"),
+            (false, Ground::Timber) => format!("no trees stand {place} to take away"),
+            (false, _) => format!("there is no {label} {place} to take away"),
+        });
+    }
+    let pits = if kind == Ground::Timber { 0 } else { workings_on(st, C, kind, &changes) };
+    let row = C.sector_name.iter().position(|s| s == kind.sector()).and_then(|s| crate::mines::row(st, s));
+    let (mines_on, idle) = (P.mines.enabled, P.mines.idle_years.max(1));
+    let count = squares_count(changes.len());
+    let st = &mut sim.st;
+    for &(c, v) in &changes {
+        if kind == Ground::Timber {
+            st.cover[c] = v;
+            continue;
+        }
+        deposit_mut(&mut st.world, kind)[c] = v;
+        // what is laid down is fresh: nothing has been raised from it
+        if let (true, Some(r)) = (lay, row) {
+            st.mine_dug[(r, c)] = 0.0;
+        }
+        st.by_hand.ground.insert((kind.index(), c));
+    }
+    let worked = match pits {
+        0 => "No working stands on it.".to_string(),
+        1 => format!("The one working that raised it there raises nothing more from those squares; a working left with none stands idle, and the mines' rule gives it up once it has stood idle {idle} years."),
+        p => format!("The {p} workings that raised it there raise nothing more from those squares; a working left with none stands idle, and the mines' rule gives it up once it has stood idle {idle} years."),
+    };
+    let follows = if mines_on {
+        "No pit is opened by the hand: the island's adventurers find it at the next year's review of the land, and sink a working where one would pay, as they do on the island's own ground."
+    } else {
+        "No pit is opened by the hand: from the next year's review of the land it is bid for as the island's own ground of the kind is."
+    };
+    let (title, text) = match (lay, kind) {
+        (true, Ground::Timber) => (
+            format!("By hand: trees planted on {count} {place}"),
+            format!("Trees were planted by hand on {count} {place}: a full stand of what the ground bears under the brush's middle and half of one at its edge, on the squares where woods may stand. Squares that are farmed, built on or worked take none. The woods are cut and grow back by their own rule from this month."),
+        ),
+        (false, Ground::Timber) => (
+            format!("By hand: the trees on {count} {place} taken away"),
+            format!("Every tree standing on {count} {place} was taken away by hand. No timber comes of them, since the hand makes no goods; the woods grow back there by their own rule, slowly."),
+        ),
+        (true, _) => (
+            format!("By hand: {label} laid down on {count} {place}"),
+            format!(
+                "{} was laid down by hand on {count} {place}, as rich as the island's own best tenth of {label} ({rich:.2} on the fields' scale of 0 to 1) under the brush's middle and half that at its edge, and fresh: nothing has been raised from it. {follows}",
+                capital_first(label)
+            ),
+        ),
+        (false, _) => (format!("By hand: {label} taken away from {count} {place}"), format!("The {label} under {count} {place} was taken away by hand: none of it is left there. {worked}")),
+    };
+    Ok(((title, text, near), mid))
 }

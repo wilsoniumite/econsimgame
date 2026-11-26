@@ -408,13 +408,24 @@ fn distance(s: &Spec, a: &Ask) -> f32 {
 /// nearest to the question (`distance`), and among the equally near, the one
 /// the lot's `pick` falls on. The same question always gets the same answer.
 pub fn choose(a: &Ask) -> Answer {
-    let known: Vec<&Spec> = FORMS.iter().filter(|s| a.knows.all(s.needs)).collect();
+    choose_within(a, u8::MAX)
+}
+
+/// `choose`, among the forms that can be built to `most` storeys or fewer,
+/// and built to no more than that: where a town keeps its towers to its main
+/// streets, a lot elsewhere asks for six storeys and must not get a tower of
+/// ten because the nearest form of its year stands no lower. (If no form
+/// stands that low, every form is in the running, as `choose` has it.)
+pub fn choose_within(a: &Ask, most: u8) -> Answer {
+    let low = |s: &&Spec| s.storeys.0 <= most;
+    let known: Vec<&Spec> = FORMS.iter().filter(|s| a.knows.all(s.needs)).filter(low).collect();
+    let known = if known.is_empty() && most != u8::MAX { FORMS.iter().filter(|s| a.knows.all(s.needs)).collect() } else { known };
     let pool: Vec<&Spec> = if known.is_empty() { FORMS.iter().collect() } else { known };
     let best = pool.iter().map(|s| distance(s, a)).fold(f32::INFINITY, f32::min);
     let near: Vec<&&Spec> = pool.iter().filter(|s| distance(s, a) <= best + 1e-6).collect();
     let i = ((a.pick.clamp(0.0, 1.0) * near.len() as f32) as usize).min(near.len() - 1);
     let s = near[i];
-    Answer { shape: s.shape, storeys: a.storeys.clamp(s.storeys.0, s.storeys.1), fits: best == 0.0 }
+    Answer { shape: s.shape, storeys: a.storeys.clamp(s.storeys.0, s.storeys.1).min(most.max(s.storeys.0)), fits: best == 0.0 }
 }
 
 // ------------------------------------------------------------------ drawing a form

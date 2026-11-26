@@ -291,9 +291,33 @@ pub struct MapOverlay {
     /// the scale the view was last painted on, where it colours by a number:
     /// the traffic's ribbons are laid on it (`traffic.rs`)
     pub scale: Option<Scale>,
+    /// GROUND-BRUSH: the brush's strokes of the year in progress, painted over
+    /// the Deposits view at once (ground.rs) until the year's end brings them
+    pub preview: Preview,
+}
+
+/// What the brush has painted since the last year came, until the next one
+/// brings the island's own figures for it: the year (as an index) they are
+/// laid over and every year after it, and for each square a kind (`KINDS`)
+/// and what it holds.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Preview {
+    pub from: usize,
+    pub cells: Vec<(usize, usize, f32)>,
 }
 
 impl MapOverlay {
+    /// The view shown, as `--overlay` takes it ("rent", "price:coal",
+    /// "deposits:clay"), or None for the plain map (for a note: note.rs).
+    pub fn word(&self, r: &Replay) -> Option<String> {
+        let kind = self.kind?;
+        Some(match kind {
+            Overlay::Price | Overlay::Made => format!("{}:{}", kind.word(), r.header.goods.get(self.good).map_or("", |g| g.name.as_str())),
+            Overlay::Deposits => format!("deposits:{}", KINDS.get(self.deposit).map_or("coal", |k| k.word)),
+            _ => kind.word().to_string(),
+        })
+    }
+
     /// An edit taken back (back.rs): the ends reckoned for the years from
     /// `filled` on are forgotten, a reckoning on its way (of the run that is
     /// gone) is let go, and the map is painted again.
@@ -305,10 +329,19 @@ impl MapOverlay {
         self.ends.version += 1;
         self.painted = None;
         self.version += 1;
+        self.preview = Preview::default();
     }
 
     pub fn new(kind: Option<Overlay>, good: usize) -> MapOverlay {
-        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None }
+        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None, preview: Preview::default() }
+    }
+
+    /// GROUND-BRUSH: the brush's preview put in place, and the map painted again.
+    pub fn set_preview(&mut self, p: Preview) {
+        if self.preview != p {
+            self.preview = p;
+            self.painted = None;
+        }
     }
 
     /// The view a `Choice` names, with its good, kind of ground and range.
@@ -739,6 +772,8 @@ pub struct GroundMap {
     pub share_left: Option<f32>,
     /// for timber: whether the figure is the timber standing (a game) or a guess from the woods' share
     pub standing: bool,
+    /// GROUND-BRUSH: whether the hand has laid down or taken away any of it by this year
+    pub by_hand: bool,
 }
 
 /// What the ground holds of kind `i` (`KINDS`) in year `k`. None where the
@@ -757,7 +792,7 @@ pub fn ground_map(r: &Replay, k: usize, i: usize) -> Option<GroundMap> {
         for c in (0..r.n).filter(|&c| land(r, c)) {
             cells[c] = if standing { h.cover[k * r.n + c] as f32 / 255.0 } else { pot.map_or(0.0, |p| p[c] as f32 / 255.0) * class_share(r, k, c, 3) };
         }
-        return Some(GroundMap { cells, worked, share_left: None, standing });
+        return Some(GroundMap { cells, worked, share_left: None, standing, by_hand: false });
     }
     let field = h.field(kind.field)?;
     let deposit = replay::DEPOSIT_FIELDS.iter().position(|&f| f == kind.field);
@@ -771,15 +806,76 @@ pub fn ground_map(r: &Replay, k: usize, i: usize) -> Option<GroundMap> {
             }
         }
     }
+    // GROUND-BRUSH: a square whose deposit the hand changed holds what the year says, in place of the field
+    let mut laid: Vec<Option<f32>> = Vec::new();
+    if let (Some(d), Some(year)) = (deposit, h.now.get(k).filter(|y| !y.is_empty())) {
+        laid = vec![None; r.n];
+        for &(c, kd, b) in year {
+            if kd as usize == d && (c as usize) < r.n {
+                laid[c as usize] = Some(b as f32 / 255.0);
+            }
+        }
+    }
     let (mut first, mut now) = (0.0f32, 0.0f32);
     for c in (0..r.n).filter(|&c| land(r, c)) {
         let f = field[c] as f32 / 255.0;
-        cells[c] = f * left[c];
+        cells[c] = laid.get(c).copied().flatten().unwrap_or(f) * left[c];
         first += f;
         now += cells[c];
     }
     let share_left = (left_known && first > 0.0).then(|| now / first);
-    Some(GroundMap { cells, worked, share_left, standing: false })
+    let by_hand = laid.iter().any(|v| v.is_some());
+    Some(GroundMap { cells, worked, share_left, standing: false, by_hand })
+}
+
+/// GROUND-BRUSH: what a stroke of the brush would leave on the squares it
+/// changes, by the core's own reckoning (`edits::stroke`), on the ground of
+/// kind `i` as the viewer holds it in year `k` with the strokes already
+/// previewed laid over it: the squares and their new figures, and how rich it
+/// lays. `rich` is the richness a stroke under way lays at (None: reckoned
+/// from the ground as it stands, as the core reckons it). None where the run
+/// keeps nothing of the kind. The viewer's figures are worn and rounded to
+/// the fields' 256 steps, so this is a preview: the year's end brings the
+/// island's own.
+#[allow(clippy::too_many_arguments)]
+pub fn preview_stroke(r: &Replay, k: usize, i: usize, preview: &Preview, lay: bool, size: u8, squares: &[usize], rich: Option<f64>) -> Option<(Vec<(usize, f32)>, f64)> {
+    let g = ground_map(r, k, i)?;
+    let mut old: Vec<f64> = g.cells.iter().map(|&v| v as f64).collect();
+    if k >= preview.from {
+        for &(_, c, v) in preview.cells.iter().filter(|x| x.0 == i && x.1 < r.n) {
+            old[c] = v as f64;
+        }
+    }
+    let lands: Vec<bool> = (0..r.n).map(|c| land(r, c)).collect();
+    let (changed, rich) = if KINDS[i].field == "cover" {
+        let pot = r.holds.field("forest_pot")?;
+        // where woods may stand: the wood's and the heath's share, as the core asks of the wood's and the wild's
+        let top = |c: usize| if lands[c] && class_share(r, k, c, 3) + class_share(r, k, c, 4) > 0.02 { pot[c] as f64 / 255.0 } else { 0.0 };
+        (isostate_core::edits::stroke(&old, r.w, lay, size, squares, top), 0.0)
+    } else {
+        let rich = rich.unwrap_or_else(|| isostate_core::edits::richness(&old, &lands));
+        (isostate_core::edits::stroke(&old, r.w, lay, size, squares, |c| if lands[c] { rich } else { 0.0 }), rich)
+    };
+    Some((changed.into_iter().map(|(c, v)| (c, v as f32)).collect(), rich))
+}
+
+/// GROUND-BRUSH: the brush's preview painted over the Deposits view's tints,
+/// on the view's own scale: a deposit's square as one not worked, a square
+/// of timber keeping its market.
+fn paint_preview(cells: &mut [u8], p: &Preview, k: usize, which: usize, sc: &Scale) {
+    if k < p.from || p.cells.is_empty() {
+        return;
+    }
+    let i = which.min(KINDS.len() - 1);
+    let deposit = replay::DEPOSIT_FIELDS.contains(&KINDS[i].field);
+    for &(_, c, v) in p.cells.iter().filter(|x| x.0 == i) {
+        let Some(px) = cells.get_mut(c * 4..c * 4 + 4) else { continue };
+        let col = if v > 0.0 { ramp(&KINDS[i].stops, sc.at(v)) } else { rgb(BLANK) };
+        px[..3].copy_from_slice(&col);
+        if deposit {
+            px[3] = 1;
+        }
+    }
 }
 
 // ------------------------------------------------------------------ one year's figures
@@ -1134,6 +1230,8 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 ("soil", _) => "How fertile each square's soil is, on the scale the ground's richness is kept in, 1 the richest there could be.".to_string(),
                 ("grazing", _) => "How good each square's grazing is, on the scale the ground's richness is kept in, 1 the best there could be.".to_string(),
                 (_, true) => match g.share_left {
+                    // GROUND-BRUSH: with the hand's strokes it is no longer only what is left
+                    Some(s) if g.by_hand => format!("How rich the {lname} under each square is now: the richness the hands would meet there, which falls as it is worked, with what the hand has laid down or taken away. The squares ruled round in ink have been worked. With the hand's strokes, the ground holds {:.0}% of the {lname} the island began with.", s * 100.0),
                     Some(s) => format!("How rich the {lname} under each square is now: the richness the hands would meet there, which falls as it is worked. The squares ruled round in ink have been worked. Of the {lname} the island began with, {:.0}% is left.", s * 100.0),
                     None => format!("How rich the {lname} under each square was when the island was made: this record does not keep what has been worked out of it."),
                 },
@@ -1528,6 +1626,10 @@ pub(crate) fn paint(
             }
         }
     }
+    // GROUND-BRUSH: the brush's preview is let go once the year after its strokes has come with them
+    if !ov.preview.cells.is_empty() && r.filled > ov.preview.from + 1 {
+        ov.preview = Preview::default();
+    }
     let key = (ov.kind, which, k, r.filled, month, range, ov.ends.version);
     if ov.painted == Some(key) {
         return;
@@ -1548,6 +1650,10 @@ pub(crate) fn paint(
             None
         }
     };
+    let mut w = w;
+    if let (Some(w), Some(Overlay::Deposits), Some(sc)) = (w.as_mut(), ov.kind, ov.scale) {
+        paint_preview(&mut w.cells, &ov.preview, k, which, &sc);
+    }
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {

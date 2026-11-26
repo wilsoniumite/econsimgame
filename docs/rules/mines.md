@@ -259,6 +259,29 @@ spot of each working's cell, for workings with a hand or more. Without them
 (a port run, an old recording) pits are read off the mix as before. Size,
 pit heads, spoil heaps and idle or abandoned workings are not drawn.
 
+## Deposits laid down or taken away by hand
+
+Since 26 November 2026 the sandbox's brush (`edits::Ground`, the viewer's
+Ground tool; `docs/designs/sandbox.md`, "Built: the brush on the ground")
+changes the island's deposit fields themselves, between two months. Nothing
+in this rule changes for it, and nothing here is opened or closed by the hand:
+the fields are read at the year's review, so a deposit laid down is a prospect
+like any other at the next one, and is sunk where it would pay; a deposit
+taken away leaves its leases with nothing, `mine_rich` goes to nought, the
+working has no hands and counts idle years until D gives it up. A square laid
+down is fresh (its `mine_dug` is set back to nought); a square taken away
+keeps what was raised from it, which no longer matters.
+
+On island 7 under the game's rules (`cargo test --profile work -p
+isostate-core --test ground -- --nocapture`): coal laid on 26 squares by
+Glenwick, the most peopled town with no coal in its district, in January 1790
+was sunk at that year's review; three collieries stood on it by 1799, and coal
+in Glenwick cost 0.070 of a month's wage in December 1799 and 0.063 in
+December 1819, against 0.194 and 0.163 on the untouched island. The coal
+taken from under Dunheath's twelve collieries in January 1810 left them with
+640 hands that year, none the next, and all twelve were given up at the review
+of 1820, the tenth idle year.
+
 ## What the review found
 
 The mechanism was reviewed before it was merged, by another hand (branch

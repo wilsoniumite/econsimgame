@@ -154,6 +154,8 @@ pub fn before_words(s: &isostate_core::Sim, edit: &Edit) -> String {
             let label = s.content.good_name.iter().position(|n| n == good).map_or(good.replace('_', " "), |g| s.content.good_label[g].to_lowercase());
             format!("the works making {label} in {} were ordered closed and forbidden", town(*t))
         }
+        // GROUND-BRUSH (ground.rs)
+        Edit::Ground { kind, lay, squares, .. } => crate::ground::before_words(*kind, *lay, squares, &at, &near),
     }
 }
 

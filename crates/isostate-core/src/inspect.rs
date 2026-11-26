@@ -55,6 +55,9 @@ pub enum Thing {
     /// closed, by the town's slot, for the panel that draws it as a chart.
     /// Asked for only while the panel is open.
     Making(usize),
+    /// IDEAS-PLATE (island_ideas.rs): the island's ideas as a timeline, for
+    /// the panel that draws them. Asked for only while the panel is open.
+    Ideas,
 }
 
 /// What the simulation knows of a thing: a title, the month it stands at, and
@@ -70,6 +73,8 @@ pub struct Told {
     pub ideas: Option<Ideas>,
     /// MAKING (making.rs): a town's making, for `Thing::Making` alone.
     pub making: Option<crate::making::Making>,
+    /// IDEAS-PLATE (island_ideas.rs): the island's ideas, for `Thing::Ideas` alone.
+    pub timeline: Option<crate::island_ideas::IslandIdeas>,
 }
 
 /// A group of rows under a heading: each row a name and a figure in words.
@@ -106,20 +111,25 @@ pub fn tell_with(sim: &Sim, thing: Thing, learnt: Option<&Learnt>) -> Result<Tol
     // MAKING (making.rs): a town's making is a chart, not rows
     if let Thing::Making(t) = thing {
         let m = crate::making::town_making(sim, t)?;
-        return Ok(Told { title: m.name.clone(), as_of: as_of(sim), groups: Vec::new(), ideas: None, making: Some(m) });
+        return Ok(Told { title: m.name.clone(), as_of: as_of(sim), groups: Vec::new(), ideas: None, making: Some(m), timeline: None });
+    }
+    // IDEAS-PLATE (island_ideas.rs): the island's ideas are a timeline, not rows
+    if thing == Thing::Ideas {
+        let i = crate::island_ideas::island_ideas(sim, learnt);
+        return Ok(Told { title: "The island's ideas".to_string(), as_of: as_of(sim), groups: Vec::new(), ideas: None, making: None, timeline: Some(i) });
     }
     let (title, groups) = match thing {
         Thing::Town(t) => town(sim, t)?,
         Thing::Works(f) => works(sim, f)?,
         Thing::Cell(c) => cell(sim, c)?,
         Thing::Island => island(sim),
-        Thing::Making(_) => unreachable!("told above"),
+        Thing::Making(_) | Thing::Ideas => unreachable!("told above"),
     };
     let ideas = match thing {
         Thing::Town(t) => Some(town_ideas(sim, t, learnt)?),
         _ => None,
     };
-    Ok(Told { title, as_of: as_of(sim), groups, ideas, making: None })
+    Ok(Told { title, as_of: as_of(sim), groups, ideas, making: None, timeline: None })
 }
 
 /// The month about to be played, from the months played so far.
@@ -732,7 +742,7 @@ pub struct TownIdea {
 
 /// What a technique of the tree changes, since it adds no works of its own
 /// (the data says it only in its news); None for one not named here.
-fn technique_words(name: &str) -> Option<&'static str> {
+pub(crate) fn technique_words(name: &str) -> Option<&'static str> {
     Some(match name {
         "steam_pumping" => "steam engines drain the pits, so that the mines can go deeper",
         "wagonway" => "iron wagonways are laid at the pits, so that one horse hauls what four did",
@@ -948,7 +958,7 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
 /// it needs, and the idea before it where nobody can yet make one of them;
 /// the year it is first sought; a pin; the woods' rule; and the chance a
 /// draw finds it as things stand, reckoned as `tech::discovery` reckons it.
-fn tree_waits(sim: &Sim, k: usize) -> String {
+pub(crate) fn tree_waits(sim: &Sim, k: usize) -> String {
     let (st, C, P) = (&sim.st, &sim.content, &sim.params);
     let (start, now) = (C.start_year, sim.year);
     let mut waits: Vec<String> = Vec::new();

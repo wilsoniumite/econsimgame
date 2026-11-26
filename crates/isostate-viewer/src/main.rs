@@ -11,6 +11,8 @@
 
 mod ages_chart;
 mod back;
+// the backlog seen from the help card, with her notes of the day
+mod backlog_seen;
 mod purse_chart;
 mod boats;
 mod built;
@@ -24,9 +26,12 @@ mod fences;
 mod fields;
 mod frames;
 mod game;
+mod ground;
 mod hand_tab;
 mod handover;
 mod icons;
+// IDEAS-PLATE: the island's ideas as a timeline (ideas_plate.rs)
+mod ideas_plate;
 mod inspector;
 mod lab;
 mod live;
@@ -34,6 +39,8 @@ mod look;
 mod meshkit;
 mod network;
 mod newland;
+// a note in her words, kept where she stands (N)
+mod note;
 mod overlay;
 mod plan;
 mod profile;
@@ -1033,6 +1040,8 @@ fn main() {
         });
     }
     let headless = !views.is_empty() || args.script.is_some();
+    // what a note typed at the window says of the game (note.rs)
+    let about = note_about(&args, &r, families.as_ref(), live.is_some(), headless);
     // a game opens in the season of its date; pictures, a recorded run, and a game opened where
     // the bar shows a year and no month (on a year gone by, or with its last year played) in high summer
     let dated0 = live.is_some() && views.is_empty() && k0 == latest && r.filled < r.ny;
@@ -1087,13 +1096,18 @@ fn main() {
         .add_plugins(inspector::plugin)
         .add_plugins(town_ideas::plugin)
         .add_plugins(town_flow::plugin)
+        .add_plugins(ideas_plate::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(take_back::plugin)
+        .add_plugins(ground::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
+        .add_plugins(note::plugin)
+        .add_plugins(backlog_seen::plugin)
+        .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);
     // the seasons' clock is read by the ground, the trees, the sun and the date alike
@@ -1149,6 +1163,36 @@ fn main() {
     // nothing written where a scripted run or ISOSTATE_TIMING will ask what the frames cost
     frames::add(&mut app, args.script.is_some() || timing());
     app.run();
+}
+
+/// What a note typed at the window says of the game it was typed in, and
+/// where notes go (note.rs). A run nobody is at keeps a note only where
+/// `ISOSTATE_SAVES` names the folder, as `--keep` does, so a check never
+/// writes among the notes of whoever plays.
+fn note_about(args: &Args, r: &Replay, families: Option<&family::FamilyView>, live: bool, headless: bool) -> note::About {
+    // (a live game's land is the run's own; a recording's is in its header)
+    let land = if r.land.is_some() || r.header.land.is_some() { "on the new land" } else { "on the old island" };
+    let (island, kept_in) = if live {
+        let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
+        let rules = match rules {
+            isostate_core::params::Rules::Game => "the game's rules",
+            isostate_core::params::Rules::Port => "the port's rules",
+        };
+        let n = families.map_or(args.families, |f| f.families.len());
+        let kept = match opening(args).keeping() {
+            live::Keeping::Named(p) => format!("kept in {}", p.display()),
+            live::Keeping::Autosave => format!("kept in {}", saves::autosave(r.header.meta.seed, n).display()),
+            live::Keeping::Trial(_) => format!("kept in {}", saves::trial(r.header.meta.seed, n).display()),
+            live::Keeping::Session => format!("kept in {}", saves::session(r.header.meta.seed, n).display()),
+            live::Keeping::Nowhere => "not kept, since nobody is at it (a script or pictures)".to_string(),
+        };
+        (format!("Island {} with {}, under {rules}, {land}", r.header.meta.seed, families_words(n)), kept)
+    } else {
+        (format!("Island {} as recorded, {land}", r.header.meta.seed), format!("read from {}", args.run))
+    };
+    let named = std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty());
+    let folder = if headless && !named { Err("nobody is at this game, so a note is kept only where ISOSTATE_SAVES names the folder".to_string()) } else { Ok(saves::notes()) };
+    note::About { island, kept_in, folder }
 }
 
 /// `ISOSTATE_TIMING` is set: say on standard error what the heavy steps cost.
@@ -1749,8 +1793,11 @@ fn camera_input(
     data: Res<Data>,
     ui: Res<UiState>,
     mut on_map: Local<[bool; 2]>,
+    brush: Option<Res<ground::Brush>>,
 ) {
     let dt = time.delta_secs();
+    // (with the brush in hand a drag with the left button paints, ground.rs)
+    let painting = brush.is_some_and(|b| b.in_hand());
     let fwd = Vec3::new(-o.yaw.sin(), 0.0, -o.yaw.cos());
     let right = Vec3::new(o.yaw.cos(), 0.0, -o.yaw.sin());
     let pan = o.dist * 0.0016;
@@ -1760,7 +1807,7 @@ fn camera_input(
             on_map[i] = !ui.hover;
         }
     }
-    if buttons.pressed(MouseButton::Left) && on_map[0] {
+    if buttons.pressed(MouseButton::Left) && on_map[0] && !painting {
         let d = motion.delta;
         o.target -= right * d.x * pan;
         o.target += fwd * d.y * pan;
@@ -2269,7 +2316,7 @@ fn write_class_map(r: &Replay, g: &Ground, v: &ShotSpec, size: (u32, u32), defau
 
 // ------------------------------------------------------------------ click to inspect
 
-fn ground_hit(g: &Ground, ray: Ray3d) -> Option<Vec3> {
+pub(crate) fn ground_hit(g: &Ground, ray: Ray3d) -> Option<Vec3> {
     let dir = *ray.direction;
     let mut t = 0.0f32;
     let mut prev = ray.origin;
