@@ -582,6 +582,10 @@ fn route_rivers(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
 /// river to cross it square: at most this angle from the line (60 degrees),
 /// so that a river running nearly along the road does not twist it into an S.
 const SQUARE_MOST: f32 = 0.5;
+/// How far past a bridge's ramp (`isostate_gen::bridge::APPROACH`, 0.02)
+/// a road's curve runs straight on, so that a cart is square on the bridge
+/// before it climbs.
+const APPROACH_PAST: f32 = 0.03;
 
 /// The way of the road from `a` to `b` (two cells' middles) as a smooth
 /// curve (`road_course`): it leaves `a` along `da` and arrives at `b` along
@@ -601,10 +605,10 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool)
     }
     let chord = (b - a).normalize_or(Vec2::X);
     // the points the curve passes through, in order along the road, with its direction at each
-    let mut marks: Vec<(f32, Vec2, Vec2)> = straight
+    let mut marks: Vec<(f32, Vec2, Vec2, f32)> = straight
         .crossings
         .iter()
-        .map(|&(at, river, _, _, _)| {
+        .map(|&(at, river, half, _, _)| {
             let mut square = river.perp();
             if square.dot(chord) < 0.0 {
                 square = -square;
@@ -612,13 +616,22 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool)
             if square.dot(chord) < SQUARE_MOST {
                 square = (square + chord).normalize_or(chord);
             }
-            ((at - a).dot(chord), at, square)
+            // straight across the bridge or the ford and its ramps, from bank to bank and a little past
+            let reach = half / square.perp_dot(river).abs().max(0.34) + 0.0175 + APPROACH_PAST;
+            ((at - a).dot(chord), at, square, reach)
         })
         .collect();
     marks.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut stops: Vec<(Vec2, Vec2)> = vec![(a, da)];
-    stops.extend(marks.iter().map(|m| (m.1, m.2)));
+    for &(_, at, along, reach) in &marks {
+        stops.push((at - along * reach, along));
+        stops.push((at + along * reach, along));
+    }
     stops.push((b, db));
+    // (the straight lengths must leave room for the curve between them)
+    if stops.windows(2).any(|w| (w[1].0 - w[0].0).dot(chord) < 0.03) {
+        return route(g, a, b, round);
+    }
     let mut pts: Vec<Vec2> = vec![a];
     for w in stops.windows(2) {
         let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };

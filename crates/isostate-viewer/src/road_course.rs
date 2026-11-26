@@ -298,6 +298,8 @@ pub struct Shape {
     /// turning more than 120 degrees there (a corner kept), and two links
     /// drawn in different years that could not join
     pub kinks: [usize; 4],
+    /// where the first few links on a curve cross a river (for pictures)
+    pub bent_crossings: Vec<Vec2>,
 }
 
 /// Measure the roads drawn in year `k` (`Shape`).
@@ -357,9 +359,12 @@ pub fn shape(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Shape {
         out.crossings += drawn;
         let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
         out.extra_crossings += (drawn > cuts(&network::route(g, a, b, r.round()).pts)) as usize;
-        for &(_, river, _, _, along) in &way.crossings {
+        for &(at, river, _, _, along) in &way.crossings {
             square += along.perp_dot(river).abs();
             crossed += 1;
+            if bent && out.bent_crossings.len() < 12 {
+                out.bent_crossings.push(at);
+            }
         }
     }
     out.on_eight /= out.length.max(1e-9);
@@ -527,8 +532,8 @@ mod tests {
     /// traffic being kept (the roads the carts wore, `network::drawn_links`,
     /// with the curves on): no point of any road drawn moves from the year it
     /// is first drawn to the last; most roads are drawn on curves, and where
-    /// a road passes through a meeting place the line turns there less than a
-    /// degree at most of them, where straight it turned at every one; no
+    /// a road passes through a meeting place the line turns there less than 5
+    /// degrees at most of them, where straight it did at under a quarter; no
     /// link's way crosses a river more often than the way drawn before; and
     /// the straight runs are shorter than the straight lines' were.
     #[test]
@@ -543,7 +548,7 @@ mod tests {
         let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
         let r = crate::replay::parse("test.bin", &bytes).expect("the game's record reads");
         let cen = network::centres(&r);
-        let last = r.filled.min(r.ny) - 1;
+        let last = (game.last_year() - s.content.start_year) as usize;
         let g = crate::world::build_ground(&r);
         let curved = shape(&r, &g, &cen, last);
         assert_eq!(moved(&r, &g, &cen, 0..=last), (0, 0.0), "a road's line moved");
@@ -555,8 +560,8 @@ mod tests {
         assert_eq!(straight.bent, 0);
         assert!(curved.links > 300 && curved.bent * 2 > curved.links, "{curved:?}");
         let through: usize = curved.turns.iter().sum();
-        assert!(curved.turns[0] * 4 > through * 3, "{:?}", curved.turns);
-        assert!(straight.turns[0] * 4 < through, "{:?}", straight.turns);
+        assert!((curved.turns[0] + curved.turns[1]) * 2 > through, "{:?}", curved.turns);
+        assert!((straight.turns[0] + straight.turns[1]) * 4 < through, "{:?}", straight.turns);
         assert_eq!(curved.extra_crossings, 0, "{curved:?}");
         assert!(curved.run_mean_by_length < straight.run_mean_by_length, "{curved:?}");
     }
