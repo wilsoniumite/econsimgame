@@ -181,7 +181,175 @@ of eight has 3.28, in 1786). **The mend** is for the piece that opens land
 year by year: a market whose reach grows with its charting does not cart
 from 100 km in its first year. Freight that follows the wage
 (`longrun.freight_from`) would stop the carters swelling as the wage falls;
-it is the pass over the rules' stage 6.
+it is the pass over the rules' stage 6. Since 26 November the landfall start
+carts at prices from 1750 (next section), which is a step toward it.
+
+## Carriage that follows prices
+
+**A stopgap.** The landfall start sets `longrun.freight_from` to 1750
+(`landfall::FREIGHT_FROM`); the settled island keeps 1900. That makes the two
+starts differ in a rule, which the house does not want, and it stays only
+until the truer rule below is built for both. `--start landfall --set
+longrun.freight_from=1900` puts the colony back as it was.
+
+**Why.** Until `freight_from` a cart-load costs a fixed number of coins
+([longrun.md](longrun.md)), and carters are the carting bill over the wage
+([carting.md](carting.md)). On the settled island that does little harm,
+because its money and its people grow at about the same pace. The colony's
+people grow 3 to 4 per cent a year and its money 1.75 per cent
+([money.md](money.md)), so its prices and its wage in coins fall: the mean
+wage from 9.5 coins in 1750 to 1.0 in 1800 and 0.5 in 1900 on islands 1 to 8.
+At a freight fixed in coins a load then costs the colony six to nine times
+the hours it costs the settled island, and a quarter of its hands cart, for
+a century and a half. Found by the study of the landfall start (26 November
+2026), whose finder ran this very setting on islands 1 to 8 (its numbers
+came out the same to the last digit on this branch).
+
+**What it did.** Islands 1 to 8, the game's rules with six families, to 2050,
+`examples/landfall.rs`; "before" is `--start landfall --set
+longrun.freight_from=1900` on the same tree. Means, least and greatest in
+brackets. The wage in grain compares runs; the linked wage is each run's own
+path, 1750 = 1.
+
+| | landfall before (freight from 1900) | landfall now | now, no settlers | the settled island |
+|---|---|---|---|---|
+| people 1800 / 1900 / 2050 | 44k / 311k / 3,917k | 55k (44k to 64k) / 558k (448k to 679k) / 2,338k | 19k / 176k / 877k | 202k / 680k / 1,266k |
+| wage in grain 1800 / 1850 / 1900 / 2050 | 9.0 / 7.3 / 9.3 / 26.9 | 14.3 (12.7 to 15.4) / 10.7 / 32.3 (27.8 to 38.4) / 92.5 | 18.3 / 14.8 / 12.4 / 100.1 | 10.2 / 15.9 / 37.7 / 78.1 |
+| linked wage 1900 / 2050 | 1.11 / 2.56 | 2.33 / 8.99 | 1.45 / 9.23 | 6.05 / 15.89 |
+| carters over all hands, 1800 / 1900 | 0.27 / 0.21 | 0.12 (0.11 to 0.13) / 0.05 | 0.12 / 0.07 | 0.11 / 0.09 |
+| money a head, coins, 1800 / 1900 | 6.3 / 5.2 | 5.1 / 2.9 | 14.7 / 9.0 | 36.7 / 62.7 |
+| price level 1800 / 1900 | 0.18 / 0.093 | 0.084 / 0.022 | 0.23 / 0.10 | 0.76 / 0.32 |
+| first railway | 1890 (1869 to 1907) | 1858 (1846 to 1877) | 1892 (1869 to 1906) | 1828 (1815 to 1848) |
+| towns 1900 | 33.0 | 17.9 | 20.0 | 21.6 |
+| years with hunger, to 1900 / after | 1.5 / 17.4 | 1.0 / 1.0 | 1.5 / 3.2 | 0 / 0.4 |
+| merchants' debt over the money, worst December to 1800 | 3.40 (0.40 to 6.84) | 3.54 (0.40 to 6.73) | 3.16 (0.40 to 6.18) | 0.01 (0 to 0.03) |
+| largest yearly rise of a town's wage to 1900, `short_rise` 1.06 | 1.91, over 2 on 3 | 1.78, over 2 on 1 | 1.76, over 2 on 1 | 1.74 at 2, over 2 on 1 |
+| the same at `short_rise` 2, and its hunger to 1900 / after | | 2.03, over 2 on 3 (island 7 3.64); 0.5 / 0.1 | 1.99, over 2 on 2; 0.5 / 0.4 | |
+| runs failed or losing money | 0 of 8 | 0 of 8 (and 0 of 8 at 2) | 0 of 8 (and 0 of 8 at 2) | 0 of 8 |
+
+"Carters over all hands" counts the works' hands, the land's and the
+carters in December; "the price level" is the chained cost of living,
+the end of the warm-up = 1; "the merchants' debt" is the merchants' purses
+below nothing, summed over the towns, in December, over the island's money.
+The largest rise of a town's wage reads each town's mean wage over its last
+year's, for towns past their first two years.
+
+What it says:
+
+1. Carriage on prices takes the colony's carters from about a quarter of its
+   hands to 0.12 in 1800 and 0.05 in 1900, below the settled island's 0.09.
+   With the carters back at work the colony is richer than the settled
+   island in its first fifty years (14.3 in grain in 1800 against 10.2),
+   finds and builds its railway in the 1850s, and is as rich as the settled
+   island by 1900 (32.3 against 37.7) and richer by 2050.
+2. Its prices fall all the same: the price level (the chained cost of
+   living, end of the warm-up = 1) is 0.08 in 1800 and 0.02 in 1900, so the
+   freight that rides on it falls with it. A ton-kilometre takes fewer hands
+   every decade whatever the roads are; that is the stopgap's flaw (below).
+3. Hunger after 1900 goes from 17 years in 150 to 1, and the colony of 2050
+   has 2.3 million people, not 3.9.
+4. The colony founds its towns early and stops: 16 by 1850 and 18 in 1900,
+   where the colony carting in coins went on to 33. The founding rule
+   wants a district whose carting saved is 8 per cent of its wages
+   ([people.md](people.md), `found_saving`), and cheap carriage saves
+   little. The settled island with the same setting stops founding in 1823
+   (below).
+5. Without settlers (`--set immigration.enabled=false`) the colony is
+   richer longer and smaller: 18.3 in grain in 1800, then 14.8 and 12.4 in
+   1850 and 1900 as its first railway waits for 1892 on the mean; 176,000
+   people in 1900 and 877,000 in 2050.
+6. The merchants still owe several times the island's money in the first
+   years: the worst December to 1800 is 0.4 to 6.7 of the money (island 7
+   6.73), in more than ten Decembers on five islands of eight. That is the
+   pits' fault, the next piece's.
+7. The largest rise of a town's wage in a year to 1900 is 1.78 on the mean
+   with the guard (`hands.short_rise` 1.06), over 2 on one island of eight
+   (island 2, 2.19). At the game's own 2 it is 2.03, over 2 on three (island 7,
+   3.64), and the colony goes hungry less (half a year to 1900 and 0.1 after,
+   against 1.0 and 1.0): the guard's question, the piece after next.
+
+**The settled island with the same setting**, once, islands 1 to 8 to 1900
+(`sweep ... --set longrun.freight_from=1750 --standing --compare` today's):
+ten of the twelve standing facts are inside, and two are not. Towns in 1900
+fall from 21.6 to 13.6 on every island (the last founded in 1823, not 1890),
+and the railway in 1900 from 2,692 km to 2,086, with half the trunk lines.
+The people, the share in towns, the first railway (1829 against 1828) and
+the shares of income stay; the chained wage of 1900 over 1750 is 6.32
+against 5.96, and carters over hands 0.046 against 0.091. It is
+[longrun.md](longrun.md)'s table again, on today's island. So the setting
+cannot simply go to both starts: it would take half the settled island's
+towns.
+
+**What the colony is still short of**, set against the settled island in
+1850 and 1900 (the means of the table's runs; a ratio is the colony's over
+the settled island's):
+
+1. **Money.** 3.0 coins a head against 48.8 in 1850, 2.9 against 62.7 in
+   1900 (0.06 and 0.05), and so prices at a fifteenth of the settled
+   island's. Counted in grain the gap is a third (67 against 104 grain a
+   head, 189 against 274). New money is issued on the money, not on the
+   people, so a colony that grows faster deflates; carriage on prices takes
+   the worst of it out of carting, and nothing else.
+2. **The railway.** 25 km against 1,152 in 1850, 1,664 against 2,692 in
+   1900, the first line thirty years later. The idea is counted in rails and
+   machinery made on the island since 1750, which a small colony makes
+   slowly; ideas by sea are the piece for it.
+3. **Output and the wage.** Output a head (the series `gdp_pc`) is 0.97 of
+   the settled island's in 1850 and 0.71 in 1900; the wage in grain 0.67 and
+   0.86. The linked wage, each run against its own 1750, is 1.32 against
+   2.89 and 2.33 against 6.05: the colony starts richer in grain (11.7
+   against 5.7 in 1750) and gains less on it.
+4. **People, works and ways.** People 0.60 and 0.82 of the settled
+   island's, works 0.69 and 0.86, made roads 0.58 and 0.83; the colony
+   grows faster (its towns' rate of increase, 2.1 per cent a year in 1850
+   against 1.2) and is closing on it.
+5. **Towns and settled land.** As many towns in 1850 (15.9 against 16.2)
+   but almost none founded after about 1870, so 17.9 against 21.6 in 1900;
+   the land with five hands a cell 0.53 against 0.79 in 1850, and alike by
+   1900 (0.81 against 0.89).
+
+Beside these the merchants' debt, three and a half times the money in the
+worst December before 1800 on the mean, is the colony's own and the next
+piece's (the pits).
+
+**The truer rule: carriage costs the carters' wage.** Carting takes hands by
+the load and the distance, and costs their wage, from 1750 on both starts.
+
+- *What it is.* A unit of weight carried over a unit of path takes `h`
+  hands for a month; the carting bill is those hands times the town's wage,
+  and the carters are those hands. Then the carters follow the loads and
+  the ways, not the wage: they neither swell when the wage falls (the trap)
+  nor melt as prices fall (the stopgap), and roads, canals and rails, which
+  shorten the path, are what give hands back. `h` would be set so that the
+  settled island of 1750 carts with the hands it has now: the freight over
+  its mean wage of 1750, about 0.015 over 4.5 coins.
+- *What it would need.* The rule already exists from the lorry on
+  (`tasks::cart_hiring`, [lorry.md](lorry.md)): a unit of the carting's work
+  takes `cart_hands` hands and costs `cart_hands` times the wage plus
+  `cart_cost`, and the carters are the work times the hands. Carriage that
+  costs the carters' wage is that rule for the horse and cart from 1750: the
+  freight in the trade between towns, in a market's carting of its produce
+  and in a works' inputs (`econ::step_month`, where `tau` is reckoned) would
+  be `h` times the paying town's wage, where it is now `longrun::freight`;
+  `carting::take_carters` would count the work and not divide the bill by
+  the wage. The horses and their fodder, which a cart-load takes too, would
+  be the lorry's `cart_cost`: a part of the bill paid to the land for oats
+  and hay, if the content had them.
+- *Where the hands would come from.* From the town whose market the load
+  belongs to, as today (`carting::add_bill` charges the payer's town): a
+  farm's produce to its market town, a works' inputs and output to the
+  works' town, the trade between two towns to the one that sends. A truer
+  form would share a long haul's hands among the towns along its path, so
+  that the carting of a far district fed the villages it passes; that needs
+  the path's towns, which the cost graph's search has and does not keep.
+- *What it would move.* On the settled island the coin wage rises from
+  about 4.5 to 7.5 by 1850, so carriage would grow dearer in coins and the
+  hands a ton-kilometre takes would stay at 1750's until the ways change;
+  today they fall a quarter by 1900 (the sweep's
+  `carters_per_1000_weight_path`, 0.206 in 1800 to 0.154 in 1900). More
+  carters, dearer carting, and so more saved by a town or a line: the
+  settled island's first century would move, in the direction opposite to
+  the stopgap's. It waits for the stage that lays that century anew.
 
 ## Proposed standing facts for landfall
 
