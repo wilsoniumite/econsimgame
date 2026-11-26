@@ -224,6 +224,15 @@ pub(crate) fn taken_back(
 ) {
     let Some(to) = game.taken_back.take() else { return };
     let t0 = std::time::Instant::now();
+    // a scenery build and a reckoning of the map's colours are of a run that is gone, and are let go
+    // of. (One still running holds the run until it ends, and the run is then copied here, as a year
+    // copies it when a build holds it: 20 to 30 ms off the main thread on island 7 past 1900.)
+    if let Some(b) = others.builds.as_mut() {
+        b.task = None;
+    }
+    if let Some(o) = others.overlay.as_mut() {
+        o.forget(to.filled);
+    }
     // the months that came before the answer and wait to go into the run: those before the copy go in
     let held = game.forget(&to.standing.pegs);
     let Data { r, g, slots, .. } = &mut *data;
@@ -259,18 +268,13 @@ pub(crate) fn taken_back(
         p => p,
     };
 
-    // the scenery built or on its way for a year now gone, and the colours of the map views' years
-    if let Some(b) = others.builds.as_mut() {
-        b.task = None;
-    }
+    // the scenery built or on its way for a year now gone (the build itself was let go of above, with
+    // the colours of the map views' years)
     if let Some(s) = others.shown.as_mut() {
         s.forget();
     }
     if let Some(h) = others.hand.as_mut() {
         h.forget();
-    }
-    if let Some(o) = others.overlay.as_mut() {
-        o.forget(to.filled);
     }
     // the answers the panels hold, asked again
     if let Some(s) = others.sandbox.as_mut() {

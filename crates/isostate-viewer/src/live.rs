@@ -1472,7 +1472,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                     (game, cursor, learnt, begun) = (g, c, l, b);
                     answer.took = t0.elapsed().as_secs_f32() * 1e3;
                     if timing {
-                        eprintln!("take back: the island put back to {} months into {} in {:.0} ms on the game's thread", answer.months, answer.year + 1, answer.took);
+                        let now = crate::back::private_bytes().map_or(String::new(), |b| format!("; private bytes {:.0} MB", b as f64 / 1048576.0));
+                        eprintln!("take back: the island put back to {} months into {} in {:.0} ms on the game's thread{now}", answer.months, answer.year + 1, answer.took);
                     }
                     // the save that holds the edit is not written over: the saver looks at what is in
                     // its place again, and sets a save holding orders the game no longer does aside
