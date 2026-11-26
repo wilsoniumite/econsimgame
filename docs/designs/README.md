@@ -40,3 +40,9 @@ partly. Each says at its head what it is for and where it stands.
   each kind of way by era, the streets inside towns written to be built from,
   the motor age, the hand, and seven stages. Its first stage, town streets,
   is built the same night.
+- `words.md`: the rules for the words on the screen, agreed with Stella on
+  26 November 2026: three registers (a label, a tooltip, the news), how long a
+  label and a tooltip's sentences may be, the three kinds of link, the words
+  the game uses and those it keeps out. The glossary they point to is
+  `data/words.toml`, and a test of the viewer holds its terms and the firm's
+  card to the rules (`words.rs`).
