@@ -377,6 +377,7 @@ Until 19 November these waited on Stella's page for her. Her notes of that day (
 
 All the family game's rules and decisions are open to change, and nothing in it constrains other work. Its open items wait here, moved from Stella's page and from this one; none is taken up for its own sake while the game is in the back seat. The family game itself stays reachable whole: the sandbox's design makes it `--family` from the sandbox's stage 4.
 
+- **Two modes, the second a political one** (her note of 26 November, at the foot). The sandbox may be one mode to play in. The second is undecided: something more political than the family game, or the families kept and politics made much more central. It comes much later and nothing is built for it now. A thought of the session's, not hers: a rule declared once for the sandbox (the first step back) is also what a bill could be in a political game, so the sandbox's line already builds that game's matter.
 - **The core loop: what a family does from month to month, and why it is fun.** Until 19 November it was hers to think about. Twenty-five rows, nineteen faults, and none is to be taken up for its own sake before she has said what the loop is; where one stands in the way of other work it may be adjusted, with little time spent on it. Land beats works, and the landlord comes first on every island (R169). Families own 57 per cent of the works' capital by 1900 (R170). A family that takes every default ends fourth of six, and why has not been traced (R67). The default first trade is usually estates (R172). Industrial rivals are feeble, under a million in 1900 against 17 to 25 million for the landed (R173). AI families never wind down, move their seat or hold, and their choices under the works life cycle were never examined (R175, R124, C103). Hostile buyouts remain round the seat (R176). A player who founds a works every year loses most of them (the founder bot founds 126 to 162 and has 26 to 39 standing, and ends below the idle player on three islands of four), and there is no order to extend a works (R114, C37). A family's works are not rationed by the year's room (R115, C31). Prospects shown as percentages steer the player to tiny works; a hint in money a year would steer better (R171). Every child turning fourteen pauses the game (R174). Under the price rule a family's first purse is worth half as much again (R82, C4). Families cannot buy town ground, and there is five times as much of it round a seat (R110, C115). Families and landlords have no Engel curve (R43). The player's place in the history is nearly always a succession, nine of thirteen kept items on seed 7 (R26, C75). The scripted players' ranks shifted on seed 7, one run each (R20). The politics half is not started, nor research and patents (R165, R166). The four things that hung on the loop and on nothing else (the price of land, exports and the price rule, word given in the middle of a year, and a toast for a works ordered by hand) are just below, each with what has been decided. *19 November:* released, with the family game in the back seat; the loop and its nineteen faults are now the managing session's to decide.
 
 **From the core loop, since 13 November** (until 19 November on Stella's page, under "For the director"). Each hung on the loop and on nothing else; with the loop open to adjustment where it stands in the way, each has a line saying what has been decided.
@@ -385,6 +386,17 @@ All the family game's rules and decisions are open to change, and nothing in it 
 - *Exports and the price rule* (R78, C11). The rule's flow term cannot see exports, so an exporting town reads as a glut; mending it took the families' share of all money from 10 per cent to 66 in the probe. `docs/rules/prices.md`, "An open question for Stella". *Decided:* parked, because mending it rebalances the family game, which is the loop's own ground; the pass leaves it (section 6). *19 November:* now the managing session's to decide.
 - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year. *Open;* now the managing session's to decide.
 - *A toast for a works she orders by hand* (R31, C73). Today it may get none and no place in the major feed; the checked table files it with the core loop. Where: one condition in the viewer's `main.rs`, toasting the player's own items at a weight of 0.6 or more. *Open;* now the managing session's to decide.
+
+## Towards a release (26 November)
+
+A release on Steam is the far goal (her note of 26 November, at the foot). Nothing here is taken up for its own sake yet; the list is kept so that work in hand does not close a door. What the store page says and what the game costs are hers, and are not kept in this file.
+
+- **A first ten minutes a stranger enjoys without the README.** The store's one sentence and its half minute of film come from it. The sandbox played at a window is the nearest thing to it (Waiting on Stella).
+- **Sound.** There is none: Bevy's audio is not compiled in. Ambience made from the simulation's own numbers, as the art is, and music by a person.
+- **The store's pictures and film** from the game's own render, never from an image generator.
+- **Who made it, said plainly** (her note of 26 November). The README says it since that day, under "Who made it", in words she approved. A credits card in the game is still to come, in the same words.
+- **The licences of what a build carries** (Bevy and the other crates), gathered into the build beside the repository's own, which are at the root since 26 November.
+- **Saves that outlive an update,** settings (the size of the interface, the keys), text a Steam Deck can read, and the game's words kept out of the code so that they can be translated.
 
 ## For the managing session
 
@@ -735,3 +747,13 @@ Built the same day in the core (docs/rules/ground.md, "A town fills its ground")
 > I agree on the things that look a bit wrong, and it looks a bit too chaotic, but it sounds like the road works we have lined up (right?) will probably change a lot of things so best to leave it until then?
 
 Right. The chaos is mostly missing streets: a square of a town filled whole after 1900 has no streets of its own, only the lanes of the ways that pass, so its buildings stand in clusters with plain ground between. The ways page ([designs/ways.md](designs/ways.md), part 5) lays such a square out as one owner's estate of the year it filled, and is built first, on 25 November (The order of work, 3, "Ways").
+
+**26 November 2026, on a release, and on the game's modes.** From a talk about what a release on Steam would need:
+
+> In thinking about the pathway to releasing the game on steam. We've a long way to go still but I want to discuss it generally.
+
+> A huge amount of design decisions and ideas came from you, don't undersell yourself please.
+
+> I'm thinking that the sandbox part might be one mode that you can play in, and then I'm not sure about the second. I'm leaning something more political than the current family game, or just take the families and make politics much more central. Really undecided on that though, that comes much later.
+
+What a release needs is listed under "Towards a release"; none of it is started. The second was said of a draft of the store page's words that gave Claude the code and her the design: who made what is to be said plainly wherever it is said. The modes are filed with the family game, parked. What she said of the price and of the store page's wording is hers and is not kept here. Done the same day, since she agreed to it and it touches no code: the licence texts at the root, with the name kept out of the grant.
