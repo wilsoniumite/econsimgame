@@ -31,7 +31,9 @@ colony: births that answer to free land and hamlets (`frontier.enabled`,
 `frontier.hamlets`), settlers from abroad (`immigration.enabled`), and the
 guard on a short town's wage (`hands.short_rise` 1.06), and with carriage
 that follows prices from 1750 (`longrun.freight_from` 1750, below,
-"Carriage that follows prices"). Each can be set off
+"Carriage that follows prices"), and with pits and quarries that work at
+the size of their market (`mines.glut`, below, "Pits at the size of their
+market"). Each can be set off
 again after it: `--start landfall --set immigration.enabled=false` is the
 colony with nobody coming. `--set start.landfall=true` alone is the one town
 under today's rules of people. A saved game says its start
@@ -354,6 +356,53 @@ the load and the distance, and costs their wage, from 1750 on both starts.
   settled island's first century would move, in the direction opposite to
   the stopgap's. It waits for the stage that lays that century anew.
 
+## Pits at the size of their market
+
+**A marked difference between the starts.** The landfall start sets
+`mines.glut` ([mines.md](mines.md), G and "At the size of the market"); the
+settled island keeps it off, so its merchants still buy all a pit raises.
+It waits for the stage that lays the first century anew. `--start landfall
+--set mines.glut=false` puts the colony back as it was.
+
+**Why.** Within three years of landfall the colony's merchants owed several
+times the island's money and its prices trebled. The debt was goods nobody
+asked for: on island 7 a new iron-ore pit raised 90,190 units in 1751 against
+571 asked, and a new colliery 176,444 of coal in 1753 against 35,916. The
+first working of a year always opened at its full size, and the merchants
+bought all it raised. Under `mines.glut` they take a working's make only as
+far as the town asks for the good and their shelves have room, the working
+hires for that, and no town sinks a working into a glut. A first pit still
+opens into a small market, and works small. Found by the study of the
+landfall start, whose own mend (a first pit only into a market that takes
+its whole make) forbade a first pit and stalled two islands of four.
+
+**What it did.** Islands 1 to 8, the game's rules with six families, to
+2050, `examples/landfall.rs`; "before" is `--set mines.glut=false` on the
+same tree, which is the carriage arm above to the digit. Means, least and
+greatest in brackets.
+
+| | before | now | now, no settlers |
+|---|---|---|---|
+| the merchants owe over the money, worst December 1750 to 1800 | 3.54 (0.40 to 6.73) | 0.45 (0.37 to 0.56) | 0.45 (0.37 to 0.55) |
+| Decembers to 1800 when they owe more than the money | 0 to 23 | none | none |
+| price level, largest rise over three years to 1900 | 1.14 to 2.86 | 1.04 to 1.12 | 1.06 to 1.19 |
+| price level, largest fall over three years to 1900 | 0.61 to 0.70 | 0.54 to 0.68 | 0.56 to 0.72 |
+| coal made a head, 1800 / 1850 / 1900 | 8.9 / 11.2 / 16.1 | 8.8 / 11.8 / 17.1 | 10.1 / 12.1 / 14.0 |
+| iron made a head, 1800 / 1900 | 0.16 / 0.65 | 0.17 / 0.78 | 0.14 / 0.29 |
+| people, 1800 / 1900 / 2050 | 55k / 558k / 2,338k | 56k / 555k (0.79 to 1.22 of before) / 2,027k | 19k / 179k / 901k |
+| wage in grain, 1800 / 1900 / 2050 | 14.3 / 32.3 / 92.5 | 13.8 (13.3 to 15.2) / 33.9 / 94.3 | 18.3 / 12.2 / 105.0 |
+| first railway | 1857.6 | 1857.9 (1840 to 1864) | 1890.8 |
+| years with hunger to 1900 / after | 1.0 / 1.0 | 0.25 / 0.6 | 0 / 0.25 |
+| runs failed | 0 | 0 | 0 |
+
+The debt and the trebling are gone, and the colony grows as before: the
+bubble was not what it lived on (the study's doubt, "the colony's growth rode
+on the bubble", came from its blunter mend). What is left is a colony whose
+prices fall by a fifth or more a year in its first decade, with or without
+settlers and with more money too: its grain shelves stand a little over the
+merchants' aim while the farms spread over free land, and the anchors walk
+down ([mines.md](mines.md), "At the size of the market").
+
 ## Proposed standing facts for landfall
 
 For the next piece, which makes the two starts equals in the tests. Bands
@@ -395,11 +444,11 @@ arm C runs gave. Not tuned to.
 
 ## What worries me
 
-- The colony's merchants owe several times the island's money within three
-  years of landfall: they pay the carting and buy the produce whatever their
-  cash ([prices.md](prices.md) and `docs/probes/tr-loose-a.md` have the
-  same on the settled island at a smaller scale). The money check holds,
-  since every penny is counted, but the colony's prices treble by 1754.
+- The colony's merchants owed several times the island's money within three
+  years of landfall, for pits' make nobody asked for, and its prices trebled
+  by 1754; pits at the size of their market (above) end that. They still
+  pay the carting and buy the farms' produce whatever their cash, and the
+  colony's prices now fall by a fifth or more a year in its first decade.
 - After 1900 a landfall island grows past the settled one in people and
   stays poorer, with more hunger. That is not history's frontier, which
   grew rich; it is the island's transition reading how well townsfolk live.

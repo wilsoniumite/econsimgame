@@ -21,8 +21,8 @@
 //!   all of it while their stock of the good is under `glut_months` of sales,
 //!   less and less beyond that, and nothing more at `glut_stop_months`
 //!   ([`merchants_take`]). The works sees it as short time: it hires less, so
-//!   the town's wage sees it too. Works only: farms, pits and quarries still
-//!   sell all they raise.
+//!   the town's wage sees it too. Works only: farms still sell all they raise,
+//!   and pits and quarries do too unless `mines.glut` is on (mines.rs, G).
 //!
 //! And under `no_spoil_markup` a good that spoils carries no markup: its price
 //! is its anchor ([`markup_for`]).

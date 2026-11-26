@@ -525,6 +525,33 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // force, a unit that stood at it last month hires only the work it needs.
     // None, and the month as it was, while neither acts
     let lt = crate::tasks::land_month(st, C, P, &pe, &ex, &sec, &et, &A, &f, &lam, &alpha);
+    // mines (docs/rules/mines.md, "G. At the size of the market"): under
+    // `mines.glut` a working raises only the share s of its make at full time
+    // that the merchants will take, and wants the hands for that: s^(1/(1 - alpha))
+    // of them, which is its Cc times s^(alpha/(1 - alpha))
+    if P.mines.glut {
+        let make: Vec<f64> = (0..NE)
+            .map(|u| {
+                let (t, w) = (et[u], st.wage[et[u]]);
+                if crate::mines::row(st, sec[u]).is_none() || !(Cc[u] > 0.0 && lam[u] > 0.0 && w > 0.0) {
+                    return 0.0;
+                }
+                let work = match &lt {
+                    Some(l) if l.capped[u] => l.cap_work[u],
+                    Some(l) => lam[u] * (Cc[u] / l.mix_of(t, sec[u], NS).map_or(w, |m| m.cost_of_work(w))).powf(1.0 / alpha[u]),
+                    None => lam[u] * (Cc[u] / w).powf(1.0 / alpha[u]),
+                };
+                A[u] * f[u] * lam[u] * (work / lam[u]).powf(1.0 - alpha[u])
+            })
+            .collect();
+        if let Some(share) = crate::mines::merchants_take(st, C, P, &et, &sec, &make) {
+            for u in 0..NE {
+                if share[u] < 1.0 {
+                    Cc[u] *= share[u].powf(alpha[u] / (1.0 - alpha[u]));
+                }
+            }
+        }
+    }
 
     // ---------------- firms: unit economics at their own location
     let fi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
@@ -953,7 +980,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
     // goes with them when the district changes market
-    if families::active(st) || P.people.enabled {
+    // and the mines read it under `mines.glut` (docs/rules/mines.md, "G")
+    if families::active(st) || P.people.enabled || P.mines.glut {
         // what each town's buyers asked for, for the families' site sums
         st.requests = R.clone();
     }

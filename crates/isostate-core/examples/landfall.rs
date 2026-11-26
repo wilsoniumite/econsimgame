@@ -190,6 +190,10 @@ fn main() {
             ("price_level", st.longrun.chain),
             ("real_wage_linked", s("real_wage_linked")),
             ("grain_price", grain_p),
+            // pits (docs/rules/mines.md, "G"): coal, iron ore and iron made in the year, a head
+            ("coal_pc", 12.0 * s("out_coal") / pop.max(1.0)),
+            ("iron_ore_pc", 12.0 * s("out_iron_ore") / pop.max(1.0)),
+            ("iron_pc", 12.0 * s("out_iron") / pop.max(1.0)),
         ] {
             row[k] = serde_json::json!(v);
         }
