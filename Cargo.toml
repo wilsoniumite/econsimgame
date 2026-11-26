@@ -21,3 +21,17 @@ opt-level = 3
 [profile.release]
 codegen-units = 1
 lto = "thin"
+
+# The working loop: release, but built in 256 pieces and kept between builds, so that after a
+# one-line change to the core it builds again in about seven seconds where release takes three
+# minutes or more. Each piece is still optimised with what it calls in the others (the default
+# within the crate, `lto = false`); turning that off too saves two or three seconds and costs a
+# quarter more time in every run. Runs give the same results as release to the last digit, and
+# take 3 per cent longer: eight islands to 2050 took 72 s of processor time a run against 70 on
+# 26 November 2026. Release stays what the gate, the golden hashes and the game as played use.
+# cargo build --profile work -p isostate-core, then ./target/work/isostate-core.exe ...
+[profile.work]
+inherits = "release"
+codegen-units = 256
+lto = false
+incremental = true
