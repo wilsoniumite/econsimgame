@@ -302,15 +302,7 @@ pub fn pin_says(st: &State, idea: Idea, year: i64) -> Pinned {
 /// handled most of the idea's goods last year, against their thresholds),
 /// with no draw and no inventor named.
 pub fn find_pinned(st: &mut State, C: &Content, t: usize, year: i64, events: &mut Vec<Event>) {
-    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(t, g)] > 0.0).collect();
-    let mut best: Option<(f64, usize)> = None;
-    for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
-        let score: f64 = req.iter().map(|&g| st.town_prod_year[(i, g)] / st.disc_X0[(t, g)]).sum::<f64>() + 1e-9 * st.pop[i];
-        if best.is_none_or(|(b, _)| score > b) {
-            best = Some((score, i));
-        }
-    }
-    let Some((_, i)) = best else { return };
+    let Some(i) = pinned_town(st, C, t) else { return };
     st.know[(i, t)] = st.know[(i, t)].max(0.25);
     st.tech_year[t] = year;
     st.tech_town[t] = i as i64;
@@ -326,6 +318,22 @@ pub fn find_pinned(st: &mut State, C: &Content, t: usize, year: i64, events: &mu
     ev.cell = Some(st.town_node[i]);
     ev.tech = Some(t);
     events.push(ev);
+}
+
+/// The town a pin finds idea `t` of the tree in (`find_pinned`), which the
+/// island's timeline also finds it in when it is dragged to now
+/// (`island_ideas`): the town that handled most of the idea's goods last year,
+/// against their thresholds. It only reads.
+pub fn pinned_town(st: &State, C: &Content, t: usize) -> Option<usize> {
+    let req: Vec<usize> = (0..C.G).filter(|&g| st.disc_X0[(t, g)] > 0.0).collect();
+    let mut best: Option<(f64, usize)> = None;
+    for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
+        let score: f64 = req.iter().map(|&g| st.town_prod_year[(i, g)] / st.disc_X0[(t, g)]).sum::<f64>() + 1e-9 * st.pop[i];
+        if best.is_none_or(|(b, _)| score > b) {
+            best = Some((score, i));
+        }
+    }
+    best.map(|(_, i)| i)
 }
 
 /// An idea by its name, with its label: the tree's ideas first, then the

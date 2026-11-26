@@ -27,6 +27,8 @@ mod game;
 mod hand_tab;
 mod handover;
 mod icons;
+// IDEAS-PLATE: the island's ideas as a timeline (ideas_plate.rs)
+mod ideas_plate;
 mod inspector;
 mod lab;
 mod live;
@@ -1087,6 +1089,7 @@ fn main() {
         .add_plugins(inspector::plugin)
         .add_plugins(town_ideas::plugin)
         .add_plugins(town_flow::plugin)
+        .add_plugins(ideas_plate::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(take_back::plugin)
         .add_plugins(overlay::plugin)

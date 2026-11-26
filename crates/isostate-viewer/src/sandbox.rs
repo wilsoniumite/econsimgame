@@ -1024,6 +1024,11 @@ fn choices(p: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
     }))
     .with_children(|c| {
         if sb.tool == Tool::Idea {
+            // IDEAS-PLATE: the island's ideas as a timeline, with the hand on it (ideas_plate.rs)
+            chip_row(c, |row| {
+                chip_button(row, f, crate::ideas_plate::OPEN_CHIP, false, HAND_INK, crate::ideas_plate::OpenPlate);
+                row.spawn(text(f, "when each was found, and drag one to a year", 11.5, MUTED));
+            });
             // one row of the ideas not yet found, by their labels, wrapping; "asking..." until they come
             chip_row(c, |row| match &sb.ideas {
                 None => {
