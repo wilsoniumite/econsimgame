@@ -1008,6 +1008,11 @@ fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
         // TOWN-FLOW-HAND (town_flow.rs)
         Edit::Forbid { town: t, method } => format!("By hand: {} turned off in {}", (n.method)(method), town(*t)),
         Edit::Allow { town: t, method } => format!("By hand: {} turned on again in {}", (n.method)(method), town(*t)),
+        // GROUND-BRUSH (ground.rs)
+        Edit::Ground { kind, lay, squares, .. } => {
+            let at = squares.get(squares.len() / 2).map_or(String::new(), |c| format!(" round {}, {}", c % n.width.max(1), c / n.width.max(1)));
+            format!("By hand: {} {}{at}", kind.label(), if *lay { "laid down" } else { "taken away" })
+        }
         // (said by `waiting_what`)
         Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } | Edit::CloseKind { .. } => String::new(),
     }
@@ -1802,7 +1807,16 @@ pub fn holds_year(sim: &iso::Sim) -> replay::HoldsYear {
             }
         }
     }
-    replay::HoldsYear { made, cover, left }
+    // GROUND-BRUSH: the squares whose deposit the hand changed, as they stand (ground.rs)
+    let mut now = Vec::new();
+    for &(kind, c) in &st.by_hand.ground {
+        let Some(g) = iso::edits::Ground::ALL.get(kind as usize) else { continue };
+        let Some(d) = replay::DEPOSIT_FIELDS.iter().position(|&f| f == g.field()) else { continue };
+        if let Some(&v) = st.world.field(g.field()).get(c) {
+            now.push((c as u32, d as u8, iso::record::field_bytes(&[v])[0]));
+        }
+    }
+    replay::HoldsYear { made, cover, left, now }
 }
 
 /// Add news to the run's list, each item with its place in the simulation's list.

@@ -456,6 +456,10 @@ pub struct Holds {
     /// kind (`DEPOSIT_FIELDS`) and the share of its first richness the hands
     /// still meet there, 0 to 255. Empty where it is not known (a recorded run).
     pub left: Vec<Vec<(u32, u8, u8)>>,
+    /// GROUND-BRUSH: for each year, the cells whose deposit the hand changed
+    /// (ground.rs): the cell, the kind (`DEPOSIT_FIELDS`) and what it holds
+    /// as the year ends, 0 to 255, in place of the field the island was made with.
+    pub now: Vec<Vec<(u32, u8, u8)>>,
 }
 
 /// The fields that are deposits, in the order `Holds::left` numbers them.
@@ -500,6 +504,13 @@ impl Holds {
             self.left.resize(ny, Vec::new());
         }
         self.left[k] = y.left.clone();
+        // (kept only once the hand has touched the ground, as the workings are)
+        if !y.now.is_empty() || !self.now.is_empty() {
+            if self.now.len() < ny {
+                self.now.resize(ny, Vec::new());
+            }
+            self.now[k] = y.now.clone();
+        }
     }
 }
 
@@ -511,6 +522,8 @@ pub struct HoldsYear {
     /// `[cell]`
     pub cover: Vec<u8>,
     pub left: Vec<(u32, u8, u8)>,
+    /// GROUND-BRUSH: the cells whose deposit the hand changed, and what they hold
+    pub now: Vec<(u32, u8, u8)>,
 }
 
 /// The cell field a land sector works, by the sector's name: the farms the

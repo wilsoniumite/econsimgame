@@ -79,10 +79,12 @@ pub enum Tool {
     Idea,
     Town,
     Works,
+    /// GROUND-BRUSH: the brush on the ground (ground.rs)
+    Ground,
 }
 
 impl Tool {
-    const ALL: [Tool; 7] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest, Tool::Idea, Tool::Town, Tool::Works];
+    const ALL: [Tool; 8] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest, Tool::Idea, Tool::Town, Tool::Works, Tool::Ground];
 
     fn word(self) -> &'static str {
         match self {
@@ -93,6 +95,7 @@ impl Tool {
             Tool::Idea => "Idea",
             Tool::Town => "Town",
             Tool::Works => "Works",
+            Tool::Ground => "Ground",
         }
     }
 
@@ -106,6 +109,7 @@ impl Tool {
             Tool::Harvest => &[&["This district", "The whole island"], &["A poor year", "A failure", "A bumper year"]],
             Tool::Town => &[&["Found a town here"]],
             Tool::Works => &[&["Build a works", "Close a works", "Found a university", "Close a university"]],
+            Tool::Ground => &[&crate::ground::KIND_WORDS, &crate::ground::SIZE_WORDS, &["Lay down", "Take away"]],
         }
     }
 
@@ -124,6 +128,7 @@ impl Tool {
             Tool::Idea => (&icons.lamp, false),
             Tool::Town => (&icons.cross, false),
             Tool::Works => (&icons.works, false),
+            Tool::Ground => (&icons.land, false),
         }
     }
 }
@@ -219,7 +224,7 @@ struct RunOn {
 pub struct Sandbox {
     pub tool: Tool,
     /// the chip chosen in each row of each tool's choices
-    choice: [[usize; 3]; 7],
+    choice: [[usize; 3]; 8],
     run: Option<RunOn>,
     /// the last click seen (`Picked::stamp`)
     stamp: Option<u32>,
@@ -354,7 +359,16 @@ impl Sandbox {
             },
             // (a square is taken by `click`, and the works is built from its chip, `build`)
             Tool::Works => Err("Click a square of land, then choose a works and Build it here."),
+            // (the brush paints by its own presses and drags, ground.rs)
+            Tool::Ground => Err(""),
         }
+    }
+
+    /// GROUND-BRUSH: with the brush in hand, the kind (its place in
+    /// `edits::Ground::ALL`), the size and whether it lays down, as its chips say.
+    pub fn brush(&self) -> Option<(usize, usize, bool)> {
+        let c = self.choice[Tool::Ground.index()];
+        (self.tool == Tool::Ground).then_some((c[0], c[1], c[2] == 0))
     }
 
     /// A click on `what` with the tool in hand: the edit it makes (Some), or
@@ -497,6 +511,7 @@ impl Sandbox {
             Tool::Works if c[0] == 2 => "Click a square of land: a university is founded at the year's turn in the town whose district it is, paid for by the treasury. The tool is put down after.".to_string(),
             Tool::Works if c[0] == 3 => "Click in a town's district: its university is closed at the year's turn. The tool is put down after.".to_string(),
             Tool::Works => "Click a square of land: the works that could stand on it are listed here, each with what it costs and should return.".to_string(),
+            Tool::Ground => crate::ground::hint(c[0], c[1], c[2] == 0),
         }
     }
 }
@@ -655,8 +670,8 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
         return;
     }
     sb.stamp = Some(picked.stamp);
-    // (the click the game opened with, if any, is not a use of a tool)
-    if first || sb.tool == Tool::Look {
+    // (the click the game opened with, if any, is not a use of a tool; the brush paints by its own presses)
+    if first || sb.tool == Tool::Look || sb.tool == Tool::Ground {
         return;
     }
     let now = time.elapsed_secs();
@@ -726,7 +741,7 @@ pub(crate) fn send_as(tool: Tool, edit: Edit, sb: &mut Sandbox, tl: &Timeline, d
 
 /// The hand works only in the present, and one thing at a time: the tray's
 /// two refusals before anything is sent, or Ok.
-fn may_act(sb: &Sandbox, tl: &Timeline, data: &Data, live: &Live, game: &Game) -> Result<(), &'static str> {
+pub(crate) fn may_act(sb: &Sandbox, tl: &Timeline, data: &Data, live: &Live, game: &Game) -> Result<(), &'static str> {
     if (tl.t.floor() as usize) < data.latest() || data.r.filled >= data.r.ny {
         return Err(PAST);
     }
@@ -1214,7 +1229,14 @@ mod tests {
         assert_eq!(sb.click(Some(4), Some(Pick::Town(4))), Ok(Some(Edit::CloseUniversity { town: 4 })));
         assert_eq!(sb.tool, Tool::Look);
         // the words scripts click by
-        assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town", "Works"]);
+        assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town", "Works", "Ground"]);
+        // the brush: its chips say the kind, the size and which way, and a click makes no edit
+        sb.tool = Tool::Ground;
+        sb.choice[Tool::Ground.index()] = [1, 2, 1];
+        assert_eq!(sb.brush(), Some((1, 2, false)));
+        assert_eq!(sb.edit(Some(1), Some(Pick::Cell(2950))), Err(""));
+        assert!(sb.hint().contains("iron ore") && sb.hint().contains("taken away"), "{}", sb.hint());
+        assert_eq!(Tool::Ground.rows()[0].len(), isostate_core::edits::Ground::ALL.len());
         // every row's chips have a factor and a word
         assert_eq!(Tool::Money.rows()[2].len(), MONEY_FACTORS.len());
         assert_eq!(Tool::People.rows()[0].len(), PEOPLE_FACTORS.len());

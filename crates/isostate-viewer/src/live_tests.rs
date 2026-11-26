@@ -1795,3 +1795,44 @@ fn a_drag_on_the_ideas_timeline_goes_through_the_thread_and_taken_back_leaves_th
     drop(u);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// GROUND-BRUSH (ground.rs): a stroke of the brush goes through the thread as one
+// edit, the year after it holds the squares it changed (`Holds::now`), and taken
+// back the island is the one never painted.
+#[test]
+fn a_stroke_of_the_brush_shows_in_the_years_ground_and_taken_back_leaves_the_untouched_island() {
+    use isostate_core::edits::{Edit, Ground};
+    // island 7, six families, the game's rules as they stand, played to January 1791
+    // through the thread, set beside the same island with no edit: it leans on no
+    // one island's history
+    let o = Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() };
+    let mut u = Table::open(&o);
+    let mut a = Table::open(&o);
+    let k = a.r.filled - 1;
+    // two squares of land with no coal under them, side by side, the first the viewer finds
+    let coal = a.r.holds.field("coal").expect("the ground's coal").to_vec();
+    let w = a.r.w;
+    let square = (w..a.r.n - w).find(|&c| (0..4).all(|d| a.r.terrain[c + d] > 0 && coal[c + d] == 0)).expect("land with no coal");
+    let edit = Edit::Ground { kind: Ground::Coal, lay: true, size: 1, squares: vec![square + 1, square + 2] };
+    // the preview the viewer paints is what the island then holds, to the fields' 256 steps
+    let (preview, rich) = crate::overlay::preview_stroke(&a.r, k, 0, &Default::default(), true, 1, &[square + 1, square + 2], None).unwrap();
+    assert!(a.order("by_hand", Cmd::ByHand(edit)), "{}", a.said);
+    assert!(a.said.starts_with(&format!("By hand: coal laid down on {} squares", preview.len())), "the preview reaches the squares the stroke did: {} against {}", preview.len(), a.said);
+    a.step();
+    let k = a.r.filled - 1;
+    let now = &a.r.holds.now[k];
+    assert_eq!(now.len(), preview.len(), "the year holds every square the stroke changed");
+    let g = crate::overlay::ground_map(&a.r, k, 0).unwrap();
+    for &(c, v) in &preview {
+        assert!((g.cells[c] - v).abs() <= 0.02 + 0.02 * rich as f32, "square {c}: the preview said {v}, the year holds {}", g.cells[c]);
+    }
+    assert!(g.by_hand && crate::overlay::ground_map(&u.r, u.r.filled - 1, 0).is_some_and(|g| !g.by_hand));
+    // taken back, the island that was never painted
+    a.take_back().expect("the stroke is taken back");
+    same(&a, &u, "the stroke taken back");
+    assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new(), "the run taken back is the run never painted");
+    a.step();
+    u.step();
+    same(&a, &u, "a year after the stroke was taken back");
+    assert!(a.r.holds.now.is_empty());
+}
