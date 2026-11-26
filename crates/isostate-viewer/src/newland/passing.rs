@@ -50,7 +50,7 @@ use crate::world::{self, Ground};
 
 /// Squares along a cell's side that the ground is read at (125 m): half the
 /// step of the ground's mesh, which is as fine as the land's heights are drawn.
-const FINE: usize = 16;
+pub(crate) const FINE: usize = 16;
 
 /// What a cell of length costs over ground where nothing else is wrong: 1.
 /// Everything else is priced against it, as so many cells of way round.
@@ -92,7 +92,8 @@ struct Patch {
     extra: Vec<f32>,
 }
 
-/// The lie of the land for a way: what `choose` reads. Each cell's ground is
+/// The lie of the land for a way: what `choose` reads (and a road's search,
+/// `road_ground`). Each cell's ground is
 /// read the first time a line comes to it and kept, and the rivers are marked
 /// once on a grid of the whole map.
 pub struct Lie {
@@ -141,7 +142,7 @@ impl Lie {
 
     /// Read the ground of a cell and of the cells round it (a way may stray
     /// into their edges), if it has not been yet.
-    fn know(&mut self, g: &Ground, c: usize) {
+    pub(crate) fn know(&mut self, g: &Ground, c: usize) {
         let (cx, cy) = ((c % self.w) as isize, (c / self.w) as isize);
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -159,7 +160,7 @@ impl Lie {
 
     /// The ground a way would lie on at a square of the whole map, and what
     /// lying there costs besides for each cell of length.
-    fn at(&self, g: &Ground, sx: usize, sy: usize) -> (f32, f32) {
+    pub(crate) fn at(&self, g: &Ground, sx: usize, sy: usize) -> (f32, f32) {
         let k = (sy % FINE) * FINE + sx % FINE;
         match &self.patches[(sy / FINE) * self.w + sx / FINE] {
             Some(patch) => (patch.ground[k], patch.extra[k]),
@@ -169,7 +170,7 @@ impl Lie {
     }
 
     /// The way a river runs at a square of the whole map, if one does.
-    fn river_at(&self, sx: usize, sy: usize) -> Option<Vec2> {
+    pub(crate) fn river_at(&self, sx: usize, sy: usize) -> Option<Vec2> {
         match self.river[sy * self.w * FINE + sx] {
             0 => None,
             mark => Some(Vec2::from_angle((mark - 1) as f32 / 249.0 * std::f32::consts::PI)),
