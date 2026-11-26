@@ -342,6 +342,22 @@ pub struct LiveYear {
     /// (`traffic::year_pairs`; empty without them). A recorded run has the
     /// same in its books' tables, which the viewer sums the same way.
     pub pairs: Vec<crate::traffic::Pair>,
+    /// squares (docs/rules/squares.md, "In the record"): what the year's end
+    /// changed of the squares, the same changes the record's log keeps for
+    /// the year (None while the rule is off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub squares: Option<LiveSquares>,
+}
+
+/// squares: one year's changes, as `LiveYear::squares` hands them over.
+#[derive(Clone, Debug, Serialize)]
+pub struct LiveSquares {
+    /// The changes are the whole book and not the year's alone: every square
+    /// something holds, for a viewer that has not been told the year before
+    /// (the cursor missed a year's end). A reader then forgets what it held.
+    pub whole: bool,
+    /// By `squares::Change::at`.
+    pub changes: Vec<crate::squares::Change>,
 }
 
 /// traffic: what each link carried in the year, as the record keeps it.
@@ -451,12 +467,14 @@ pub struct LiveCursor {
     alive: Vec<bool>,
     /// Chronicle: the `kept` mark each event had when it was last sent.
     kept: Vec<Option<bool>>,
+    /// squares: the year's ends of the squares' log told so far (`SquareBook::told`).
+    squares: u64,
 }
 
 impl LiveCursor {
     /// A cursor that has sent nothing; its first `live_year` reports the first year.
     pub fn new(C: &Content) -> LiveCursor {
-        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new() }
+        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new(), squares: 0 }
     }
 
     /// How many works, towns and items of news have been sent, for a viewer
@@ -584,5 +602,17 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         owners: st.owners.years.last().filter(|y| y.year == year).cloned(),
         traffic: crate::traffic::layers(st, P).map(|(goods, mode)| LiveTraffic { goods, mode }),
         pairs: crate::traffic::year_pairs(st, C, year),
+        squares: live_squares(cursor, st),
     }
+}
+
+/// squares: the changes since the cursor last told them: the year's end's, or
+/// the whole book where the cursor has missed one.
+fn live_squares(cursor: &mut LiveCursor, st: &State) -> Option<LiveSquares> {
+    if !st.sq.kept() {
+        return None;
+    }
+    let whole = cursor.squares + 1 != st.sq.told;
+    cursor.squares = st.sq.told;
+    Some(LiveSquares { whole, changes: if whole { st.sq.whole() } else { st.sq.changes.clone() } })
 }

@@ -437,6 +437,11 @@ pub struct Params {
     /// docs/rules/care.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub care: crate::care::CareParams,
+    /// Squares of 125 m kept where something is built: which works, house
+    /// blocks, park, pit or derelict ground stands where in its cell, and since
+    /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub squares: crate::squares::SquaresParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -670,6 +675,7 @@ pub fn default_params() -> Params {
         frontier: crate::frontier::FrontierParams::default(),
         immigration: crate::immigration::ImmigrationParams::default(),
         care: crate::care::CareParams::default(),
+        squares: crate::squares::SquaresParams::default(),
     }
 }
 
@@ -765,6 +771,9 @@ pub fn game_params() -> Params {
     // presence in the towns, which richer and older households buy more of and no
     // machine takes
     P.care = crate::care::CareParams::game();
+    // squares (docs/rules/squares.md): the place of everything built, kept in
+    // squares of 125 m from 1750; a shadow that no rule reads
+    P.squares = crate::squares::SquaresParams::game();
     P
 }
 

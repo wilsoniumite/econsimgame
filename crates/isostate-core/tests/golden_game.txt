@@ -324,10 +324,20 @@
 # only; trend and whats-new touch only the viewer. Against main the second
 # era's economy, books, news and run.bin moved; the first era held; the hashes
 # are those tending-again took on its own tree.
+# Taken: on the merge of main (care, the works' machines on their own making)
+# into night/g-squares-record: 1901-2050 run.bin alone moved against main, by
+# the squares' log (sq_first, sq_log) and the header's word of its layout
+# (docs/rules/squares.md, 'In the record'); the squares are read by no rule,
+# so the economy, the books and the news of both eras are main's
+# Taken: Taken again on the merged tree of night/g-batch-settle-a (one-town,
+# squares-shadow, squares-record on main f8bf321): only 1901-2050 run.bin
+# moves against main, by the squares' log in the record; the landfall start
+# and its rules are off in game_params(), and the squares' shadow is read by
+# no rule.
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
 1901-2050 economy  0x5875ceddf2e1f730
 1901-2050 books    0x7d790c5aace7b340
 1901-2050 news     0xf39bc02c0208303d
-1901-2050 run.bin  0xf942c238ac918984
+1901-2050 run.bin  0xbab63b3e26770556
