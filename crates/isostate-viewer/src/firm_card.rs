@@ -51,6 +51,21 @@ pub struct Section {
     /// a small heading in capitals: the good's name, or when the figures are of
     pub heading: Option<String>,
     pub lines: Vec<Line>,
+    /// a rule is drawn above it (a sub-heading and the row after it have none)
+    pub rule: bool,
+}
+
+/// Why a firm's amounts a unit are not its method's recipe's, as the code
+/// has it (econ.rs `firm_coefficients`, works.rs `walk_to_work`, tasks.rs
+/// `at_target`): each is the recipe's times a factor that falls with the
+/// firm's size and its productivity, and labour's also by machines and the
+/// walk to work.
+pub const WHY_NOT_THE_RECIPE: &str = "Size and productivity move a firm's figures from the recipe, and labour also by machines and walking.";
+
+/// A row of the simulation's that says only that nothing is there: nothing on
+/// order, no dividends paid. Its figure has no digit but naught.
+pub fn says_nothing(name: &str, figure: &str) -> bool {
+    matches!(name, "On order" | "Dividends") && figure.chars().any(|c| c.is_ascii_digit()) && figure.chars().filter(|c| c.is_ascii_digit()).all(|c| c == '0')
 }
 
 /// The whole card, but for its title, which is the firm's name.
@@ -262,7 +277,7 @@ pub fn plan(r: &Replay, f: usize, k: usize, fam: Option<&FamilyView>, told: Opti
     top.push(Piece::Text(format!(" \u{b7} {year}")));
 
     let mut sections = Vec::new();
-    // capacity and size, and the return the founders expected
+    // first, of the year shown: capacity and its size, and the owner
     let kk = replay::firm_k(r, f, k) as f64;
     let size = kk / (m.k0 as f64).max(1e-6);
     let cap = format!("{} {good_l}/mo", qty(kk));
@@ -279,12 +294,45 @@ pub fn plan(r: &Replay, f: usize, k: usize, fam: Option<&FamilyView>, told: Opti
             row("Year", (r.y0 + k as i32).to_string()),
         ],
     )];
-    let mut rest = Vec::new();
+    // the owner: as the simulation says, else as the family's books say, else the town's savers
+    let live_owner = told.and_then(|t| t.groups.first()).and_then(|gr| gr.rows.iter().find(|r| r.0 == "Owner")).map(|r| r.1.clone());
+    let owner = live_owner.or_else(|| firm.owner.and_then(|o| fam.and_then(|v| v.families.get(o)).map(|x| format!("{} family", x.name)))).or_else(|| town.map(|t| format!("Savers of {}", r.header.towns[t].name)));
+    if let Some(o) = owner {
+        first.push(line(g, "", term_label(g, "owner"), None, plain(o), "owner", Vec::new()));
+    }
+    sections.push(Section { heading: None, lines: first, rule: true });
+
+    // then, in a live game, the simulation's rows under the months they are of; capacity is above,
+    // and a row whose figure is nothing at all is left out (`says_nothing`)
+    if let Some(t) = told {
+        for gr in &t.groups {
+            let lines: Vec<Line> = gr
+                .rows
+                .iter()
+                .filter(|(n, v)| !matches!(n.as_str(), "Owner" | "Market town" | "Capacity") && !says_nothing(n, v))
+                .map(|(n, v)| {
+                    let key = g.key_of(n).unwrap_or(n).to_string();
+                    let parts = if key == "site" { vec![row("Measured from", "North-west corner")] } else { Vec::new() };
+                    line(g, &gr.name, plain(n.clone()), None, plain(v.clone()), &key, parts)
+                })
+                .collect();
+            if !lines.is_empty() {
+                sections.push(Section { heading: Some(gr.name.clone()), lines, rule: true });
+            }
+        }
+    }
+
+    // last, the founders' sums, under the year they were made in
     if let Some(rs) = &firm.reason {
         let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
         let kind = rs.get("kind").and_then(|v| v.as_str()).unwrap_or("new");
         let built = num("year") as i64;
         let (roi, margin, pout, rent, k_at) = (num("roi"), num("margin"), num("pout"), num("rent"), num("K"));
+        let heading = match kind {
+            "old" => format!("At work {}", r.y0),
+            "expansion" => format!("Second site {built}"),
+            _ => format!("Built {built}"),
+        };
         // the start, as each of the three kinds told it
         let mut rrows = match kind {
             "old" => vec![row("Start", format!("At work in {}", r.y0)), row("Priced as", "Built new")],
@@ -306,77 +354,61 @@ pub fn plan(r: &Replay, f: usize, k: usize, fam: Option<&FamilyView>, told: Opti
             rrows.push((vec![Piece::Link(Link::Term("ground_rent".into()), "Ground rent".into()), Piece::Text("/yr".into())], plain(money(-12.0 * rent))));
             rrows.push(row("Cost to build", money((year_margin - 12.0 * rent) / roi)));
         }
-        first.push(line(g, "", term_label(g, "return"), None, plain(format!("{}{:.0}%/yr", if roi < -0.005 { "\u{2212}" } else { "" }, roi.abs() * 100.0)), "return", rrows));
+        let ret = line(g, &heading, term_label(g, "return"), None, plain(format!("{}{:.0}%/yr", if roi < -0.005 { "\u{2212}" } else { "" }, roi.abs() * 100.0)), "return", rrows);
+        sections.push(Section { heading: Some(heading.clone()), lines: vec![ret], rule: true });
 
-        // a unit's sums: the price, each cost as an amount times a price, the margin
+        // a unit's sums: the price, each cost as an amount times a price beside the recipe's amount, the margin
         let per = format!("Per {good_l}");
-        let mut costs: Vec<(Vec<Piece>, String, f64, &str)> = Vec::new();
+        let recipe_in = |gd: usize| m.inputs.iter().flatten().find(|x| x.0 == gd).map(|x| x.1 as f64);
+        let mut costs: Vec<(Vec<Piece>, String, f64, &str, f64, Option<f64>)> = Vec::new();
         if let Some(ins) = rs.get("inputs").and_then(|v| v.as_array()) {
             for q in ins {
                 let gd = q.get(0).and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let a = q.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let p = q.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0);
-                costs.push((vec![Piece::Link(Link::Good(gd), good_label(r, gd))], format!("{} \u{d7} {}", qty(a), money(p)), a * p, "materials"));
+                costs.push((vec![Piece::Link(Link::Good(gd), good_label(r, gd))], format!("{} \u{d7} {}", qty(a), money(p)), a * p, "materials", a, recipe_in(gd)));
             }
         }
         if let Some(h) = rs.get("heat").and_then(|v| v.as_array()) {
             let (a, p) = (h.first().and_then(|v| v.as_f64()).unwrap_or(0.0), h.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0));
             if a > 0.0 {
-                costs.push((term_label(g, "heat"), format!("{} \u{d7} {}", qty(a), money(p)), a * p, "heat"));
+                costs.push((term_label(g, "heat"), format!("{} \u{d7} {}", qty(a), money(p)), a * p, "heat", a, m.heat.map(f64::from)));
             }
         }
         if let Some(l) = rs.get("labor").and_then(|v| v.as_array()) {
             let (a, w) = (l.first().and_then(|v| v.as_f64()).unwrap_or(0.0), l.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0));
             if a > 0.0 {
-                costs.push((term_label(g, "labour"), format!("{} mo \u{d7} {}", qty(a), money(w)), a * w, "labour"));
+                costs.push((term_label(g, "labour"), format!("{} mo \u{d7} {}", qty(a), money(w)), a * w, "labour", a, m.labor.map(f64::from)));
             }
         }
         let pence = pence_that_add_up(pout, margin, &costs.iter().map(|c| c.2).collect::<Vec<_>>());
         let mut lines = vec![line(g, &per, term_label(g, "price"), None, plain(money(pout)), "price", town.map(|t| vec![(plain("Market town"), vec![Piece::Link(Link::Town(t), r.header.towns[t].name.clone())])]).unwrap_or_default())];
         let mut margin_rows = vec![row("Price", money(pout))];
-        for ((label, detail, _, key), p) in costs.iter().zip(&pence) {
+        for ((label, detail, _, key, a, recipe), p) in costs.iter().zip(&pence) {
             let (amount, price) = detail.split_once(" \u{d7} ").unwrap_or((detail.as_str(), ""));
-            let parts = vec![row("Amount", amount), row("Price", price), row("Cost", pence_money(*p))];
-            lines.push(line(g, &per, label.clone(), Some(detail.clone()), plain(pence_money(-*p)), key, parts));
+            let mut parts = vec![row("Amount", amount), row("Price", price), row("Cost", pence_money(*p))];
+            let unit = if *key == "labour" { " mo" } else { "" };
+            if let Some(rc) = recipe {
+                parts.push((vec![Piece::Link(Link::Method(firm.method), "Recipe".into())], plain(format!("{}{unit}", qty(*rc)))));
+                parts.push(row("This firm", format!("{}{unit}", qty(*a))));
+            }
+            let mut l = line(g, &per, label.clone(), Some(detail.clone()), plain(pence_money(-*p)), key, parts);
+            if recipe.is_some() {
+                // why the firm's figure is not the recipe's (econ.rs, `firm_coefficients`)
+                let says = g.get(key).map_or(String::new(), |t| t.says.clone());
+                l.tip.says = g.pieces(&format!("{says} {WHY_NOT_THE_RECIPE}"), Some(key));
+            }
+            lines.push(l);
             margin_rows.push((label.clone(), plain(pence_money(-*p))));
         }
         lines.push(line(g, &per, term_label(g, "margin"), None, plain(money(margin)), "margin", margin_rows));
-        sections.push(Section { heading: None, lines: std::mem::take(&mut first) });
-        sections.push(Section { heading: Some(per), lines });
+        sections.push(Section { heading: Some(per), lines, rule: false });
 
         // the ground: the rent bid and the use it outbid
         let displaced = rs.get("displaced").and_then(|v| v.as_str()).unwrap_or("wild");
         let bid_year = if kind == "old" { r.y0 as i64 } else { built };
-        rest.push(line(g, "", term_label(g, "ground_rent"), None, plain(format!("{}/mo", money(rent))), "ground_rent", vec![row(format!("Bid in {bid_year}"), format!("{}/mo", money(rent))), (plain("Outbid"), outbid(displaced))]));
-    } else {
-        sections.push(Section { heading: None, lines: std::mem::take(&mut first) });
-    }
-    // the owner: as the simulation says, else as the family's books say, else the town's savers
-    let live_owner = told.and_then(|t| t.groups.first()).and_then(|gr| gr.rows.iter().find(|r| r.0 == "Owner")).map(|r| r.1.clone());
-    let owner = live_owner.or_else(|| firm.owner.and_then(|o| fam.and_then(|v| v.families.get(o)).map(|x| format!("{} family", x.name)))).or_else(|| town.map(|t| format!("Savers of {}", r.header.towns[t].name)));
-    if let Some(o) = owner {
-        rest.push(line(g, "", term_label(g, "owner"), None, plain(o), "owner", Vec::new()));
-    }
-    if !rest.is_empty() {
-        sections.push(Section { heading: None, lines: rest });
-    }
-    // the simulation's rows, under the months they are of
-    if let Some(t) = told {
-        for gr in &t.groups {
-            let lines: Vec<Line> = gr
-                .rows
-                .iter()
-                .filter(|(n, _)| n != "Owner" && n != "Market town")
-                .map(|(n, v)| {
-                    let key = g.key_of(n).unwrap_or(n).to_string();
-                    let parts = if key == "site" { vec![row("Measured from", "North-west corner")] } else { Vec::new() };
-                    line(g, &gr.name, plain(n.clone()), None, plain(v.clone()), &key, parts)
-                })
-                .collect();
-            if !lines.is_empty() {
-                sections.push(Section { heading: Some(gr.name.clone()), lines });
-            }
-        }
+        let gr = line(g, &heading, term_label(g, "ground_rent"), None, plain(format!("{}/mo", money(rent))), "ground_rent", vec![row(format!("Bid in {bid_year}"), format!("{}/mo", money(rent))), (plain("Outbid"), outbid(displaced))]);
+        sections.push(Section { heading: None, lines: vec![gr], rule: false });
     }
     Some(Plan { top, sections, foot })
 }
@@ -450,7 +482,9 @@ const HEAD_SIZE: f32 = 11.0;
 fn spawn_plan(p: &mut ChildSpawnerCommands, f: &Handle<Font>, plan: &Plan) {
     tips::spawn_pieces(p, f, &plan.top, TOP_SIZE, MUTED, None, Node::default());
     for s in &plan.sections {
-        rule(p);
+        if s.rule {
+            rule(p);
+        }
         if let Some(h) = &s.heading {
             p.spawn((Text::new(h.to_uppercase()), TextFont { font: f.clone().into(), font_size: FontSize::Px(HEAD_SIZE), ..default() }, TextColor(MUTED), Node { margin: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(2.0), Val::Px(2.0)), ..default() }));
         }
@@ -494,6 +528,20 @@ mod tests {
                        "displaced": "urban", "agglo": 1.0, "dist": 1.2, "n_cand": 14}
         }])).unwrap();
         r
+    }
+
+    #[test]
+    fn a_row_of_nothing_is_left_out_and_the_recipes_sentence_keeps_the_rules() {
+        assert!(says_nothing("On order", "0.00 steel/mo") && says_nothing("Dividends", "\u{a3}0.00"));
+        assert!(!says_nothing("On order", "0.50 steel/mo") && !says_nothing("Workers", "0"));
+        let n = WHY_NOT_THE_RECIPE.split_whitespace().count();
+        assert!(n <= 18 && words::kept_out_in(WHY_NOT_THE_RECIPE).is_empty() && words::sentences(WHY_NOT_THE_RECIPE).len() == 1, "{n} words");
+        // the founders' sums come last, under the year, and a cost row's tooltip sets the recipe beside the firm
+        let p = plan(&fairfax(), 0, 0, None, None, None).unwrap();
+        let heads: Vec<Option<&str>> = p.sections.iter().map(|s| s.heading.as_deref()).collect();
+        assert_eq!(heads, vec![None, Some("Built 1750"), Some("Per cloth"), None]);
+        let wool = &p.sections[2].lines[1].tip;
+        assert!(wool.words().contains("Recipe: 1.40 | This firm: 1.42"), "{}", wool.words());
     }
 
     #[test]

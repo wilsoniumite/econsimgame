@@ -66,7 +66,12 @@ pub const WIKI_PLUM: Color = Color::srgb(0x7a as f32 / 255.0, 0x4f as f32 / 255.
 /// A tooltip's paper (the cards' paper, solid), its border open and locked, and its shadow.
 pub const TIP_PAPER: Color = Color::srgb(0.99, 0.975, 0.94);
 pub const BORDER: Color = Color::srgb(0.84, 0.79, 0.70);
-pub const BORDER_LOCKED: Color = Color::srgb(0.36, 0.31, 0.26);
+pub const BORDER_LOCKED: Color = INK;
+/// The border's width, open and locked alike, so that locking moves nothing.
+pub const BORDER_W: f32 = 2.0;
+/// A term's dotted line: each dot's length and the step from one to the next, in logical pixels.
+pub const DOT: f32 = 1.6;
+pub const DOT_STEP: f32 = 3.2;
 /// The ring's dots before and after they fill.
 pub const RING_EMPTY: Color = Color::srgb(0.86, 0.81, 0.72);
 pub const RING_FULL: Color = Color::srgb(0.36, 0.31, 0.26);
@@ -200,7 +205,12 @@ pub fn spawn_pieces(p: &mut ChildSpawnerCommands, font: &Handle<Font>, pieces: &
         });
     }
     let tf = TextFont { font: font.clone().into(), font_size: FontSize::Px(size), ..default() };
-    let mut e = p.spawn((Text::new(""), tf.clone(), TextColor(colour), node, Linked(links)));
+    // the text stands in a box of its own, so that a term's dotted line can be laid under it once
+    // the text is laid out (`dot_lines`)
+    let mut boxed = p.spawn(Node { flex_direction: FlexDirection::Column, ..node });
+    let mut id = Entity::PLACEHOLDER;
+    boxed.with_children(|b| {
+    let mut e = b.spawn((Text::new(""), tf.clone(), TextColor(colour), Node::default(), Linked(links)));
     if let Some(l) = level {
         e.insert(InTip(l));
     }
@@ -214,13 +224,54 @@ pub fn spawn_pieces(p: &mut ChildSpawnerCommands, font: &Handle<Font>, pieces: &
                     // (its arrow is an icon after the text, drawn by `spawn_card`: the type has no ↗)
                     t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(link_colour(l))));
                 }
+                // a term's line is dotted (`dot_lines`), a thing's solid
+                Piece::Link(l @ (Link::Term(_) | Link::Method(_)), s) => {
+                    t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(link_colour(l))));
+                }
                 Piece::Link(l, s) => {
                     t.spawn((TextSpan::new(s.clone()), tf.clone(), TextColor(link_colour(l)), Underline, UnderlineColor(link_colour(l).with_alpha(0.75))));
                 }
             }
         }
     });
-    e.id()
+    id = e.id();
+    });
+    id
+}
+
+/// A text whose terms' dotted lines are laid.
+#[derive(Component)]
+struct Dotted;
+
+/// Lay a term's dotted line under each run of it, once its text is laid out:
+/// a row of short nodes in the box the text stands in, from the text's own
+/// layout. Each text is done once.
+fn dot_lines(mut commands: Commands, q: Query<(Entity, &Linked, &TextLayoutInfo, &ComputedNode, &ChildOf), Without<Dotted>>) {
+    for (e, linked, layout, node, parent) in &q {
+        let terms: Vec<(Rect, f32, Color)> = layout
+            .run_geometry
+            .iter()
+            .filter_map(|run| match linked.0.get(run.section_index as usize) {
+                Some(Some(l @ (Link::Term(_) | Link::Method(_)))) => Some((run.bounds, run.underline_y + run.underline_thickness, link_colour(l))),
+                _ => None,
+            })
+            .collect();
+        let none = linked.0.iter().all(|l| !matches!(l, Some(Link::Term(_) | Link::Method(_))));
+        if !none && (layout.run_geometry.is_empty() || node.size.x <= 0.0) {
+            continue; // not laid out yet
+        }
+        commands.entity(e).insert(Dotted);
+        let inv = node.inverse_scale_factor;
+        commands.entity(parent.parent()).with_children(|b| {
+            for (bounds, y, colour) in terms {
+                let mut x = bounds.min.x * inv;
+                while x + DOT <= bounds.max.x * inv + 0.5 {
+                    b.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(y * inv), width: Val::Px(DOT), height: Val::Px(1.0), ..default() }, BackgroundColor(colour.with_alpha(0.85))));
+                    x += DOT_STEP;
+                }
+            }
+        });
+    }
 }
 
 // ------------------------------------------------------------------ the stack
@@ -318,7 +369,7 @@ impl Tips {
 pub fn plugin(app: &mut App) {
     app.init_resource::<Tips>()
         .add_systems(PreUpdate, escape.after(bevy::input::InputSystems).before(crate::note::keys))
-        .add_systems(Update, (update, lit_rows).chain().after(crate::ui::ui_hover));
+        .add_systems(Update, (update, lit_rows, dot_lines).chain().after(crate::ui::ui_hover));
 }
 
 /// Esc closes the whole stack, and nothing else sees the key in that frame.
@@ -408,7 +459,7 @@ fn spawn_card(commands: &mut Commands, font: &Handle<Font>, out: Option<&Handle<
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(5.0),
                 padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(12.0)),
-                border: UiRect::all(Val::Px(1.0)),
+                border: UiRect::all(Val::Px(BORDER_W)),
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
@@ -504,6 +555,32 @@ pub fn place(src: Rect, size: Vec2, view: Vec2) -> Vec2 {
     }
     // nowhere it fits whole: at the side with more room, inside the view
     Vec2::new(clamp_x(first), clamp_y(src.min.y))
+}
+
+/// Where a tooltip opened from a word of another stands: wholly beside its
+/// parent, left or right as there is room, its top level with the word's
+/// line; else wholly under or over that line; and only if neither fits, where
+/// `place` puts it, never over the word itself.
+pub fn place_nested(src: Rect, parent: Rect, size: Vec2, view: Vec2) -> Vec2 {
+    let fits_x = |x: f32| x >= EDGE && x + size.x <= view.x - EDGE;
+    let fits_y = |y: f32| y >= EDGE && y + size.y <= view.y - EDGE;
+    let clamp_x = |x: f32| x.clamp(EDGE, (view.x - EDGE - size.x).max(EDGE));
+    let clamp_y = |y: f32| y.clamp(EDGE, (view.y - EDGE - size.y).max(EDGE));
+    let left = parent.min.x - GAP - size.x;
+    let right = parent.max.x + GAP;
+    let sides = if parent.min.x > view.x - parent.max.x { [left, right] } else { [right, left] };
+    for x in sides {
+        if fits_x(x) {
+            return Vec2::new(x, clamp_y(src.min.y - 10.0));
+        }
+    }
+    if fits_y(src.max.y + GAP) {
+        return Vec2::new(clamp_x(src.min.x), src.max.y + GAP);
+    }
+    if fits_y(src.min.y - GAP - size.y) {
+        return Vec2::new(clamp_x(src.min.x), src.min.y - GAP - size.y);
+    }
+    place(src, size, view)
 }
 
 /// Open a link a click lands on: a town or a good is gone to, a Wikipedia article opened in the browser.
@@ -671,10 +748,16 @@ fn update(
     // each open tooltip: placed once its size is known, its ring and its border
     let view = cams.iter().find_map(|c| c.logical_viewport_size()).unwrap_or(Vec2::new(1600.0, 1000.0));
     let n = tips.stack.len();
+    // each tooltip's own rectangle, in logical pixels, for the one opened from it
+    let rects: Vec<Option<Rect>> = tips.stack.iter().map(|o| cards.get(o.card).ok().filter(|(_, _, nd, ..)| nd.size.x > 0.0).map(|(_, _, nd, gt, ..)| { let r = node_rect(nd, gt); Rect { min: r.min * nd.inverse_scale_factor, max: r.max * nd.inverse_scale_factor } })).collect();
     for (idx, o) in tips.stack.iter_mut().enumerate() {
         let Ok((e, _, node, _, mut nd, mut vis, mut border)) = cards.get_mut(o.card) else { continue };
         if !o.placed && node.size.x > 0.0 {
-            let at = place(o.rect, node.size * node.inverse_scale_factor, view);
+            let size = node.size * node.inverse_scale_factor;
+            let at = match idx.checked_sub(1).and_then(|p| rects.get(p).copied().flatten()) {
+                Some(parent) => place_nested(o.rect, parent, size, view),
+                None => place(o.rect, size, view),
+            };
             nd.left = Val::Px(at.x);
             nd.top = Val::Px(at.y);
             *vis = Visibility::Inherited;
@@ -739,6 +822,25 @@ mod tests {
             assert!(tip.intersect(src).is_empty(), "{src:?}: the tooltip at {at:?} covers its source");
             assert!(tip.min.x >= EDGE - 0.01 && tip.min.y >= EDGE - 0.01 && tip.max.x <= view.x - EDGE + 0.01 && tip.max.y <= view.y - EDGE + 0.01, "{src:?}: {tip:?} leaves the view");
         }
+    }
+
+    #[test]
+    fn a_nested_tooltip_stands_beside_its_parent_and_never_over_its_word() {
+        let view = Vec2::new(1600.0, 1000.0);
+        let size = Vec2::new(300.0, 180.0);
+        // a parent to the left of the card: the child goes to its left, level with the word's line
+        let parent = Rect::new(900.0, 500.0, 1200.0, 700.0);
+        let word = Rect::new(1100.0, 580.0, 1160.0, 596.0);
+        let at = place_nested(word, parent, size, view);
+        let child = Rect::from_corners(at, at + size);
+        assert!(child.intersect(parent).is_empty(), "{child:?} covers its parent");
+        assert!((at.y - (word.min.y - 10.0)).abs() < 0.01);
+        // with no room beside it, under the word's line and not over the word
+        let parent = Rect::new(200.0, 300.0, 1400.0, 500.0);
+        let word = Rect::new(600.0, 340.0, 660.0, 356.0);
+        let at = place_nested(word, parent, size, view);
+        let child = Rect::from_corners(at, at + size);
+        assert!(child.intersect(word).is_empty() && at.y >= word.max.y, "{child:?}");
     }
 
     #[test]
