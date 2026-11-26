@@ -418,6 +418,20 @@ pub struct Params {
     /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub highways: crate::highways::HighwayParams,
+    /// Which start: the settled island, or landfall, one town in a corner (not
+    /// in the Python; a choice, not a rule: the settled island under both sets
+    /// of rules; see docs/rules/landfall.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub start: crate::landfall::StartParams,
+    /// Births that answer to free land, and towns founded at a hamlet's size
+    /// where land is free (not in the Python; off under the game's rules, on
+    /// with the landfall start; see docs/rules/frontier.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub frontier: crate::frontier::FrontierParams,
+    /// Settlers who come by ship from abroad (not in the Python; off under the
+    /// game's rules, on with the landfall start; see docs/rules/immigration.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub immigration: crate::immigration::ImmigrationParams,
     /// Care: a need for work of presence in the towns, which richer and older
     /// households buy more of and no machine takes (not in the Python; see
     /// docs/rules/care.md).
@@ -652,6 +666,9 @@ pub fn default_params() -> Params {
         pace: crate::pace::PaceParams::default(),
         haulage: crate::haulage::HaulageParams::default(),
         highways: crate::highways::HighwayParams::default(),
+        start: crate::landfall::StartParams::default(),
+        frontier: crate::frontier::FrontierParams::default(),
+        immigration: crate::immigration::ImmigrationParams::default(),
         care: crate::care::CareParams::default(),
     }
 }

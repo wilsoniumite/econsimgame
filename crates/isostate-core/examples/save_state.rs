@@ -516,6 +516,9 @@ macro_rules! state_parts {
                 hl: Default::default(),
                 // highways (docs/rules/highways.md): carried across as the roads are
                 hw: Default::default(),
+                // frontier and immigration (docs/rules/frontier.md, immigration.md): carried across as the roads are
+                frontier: Default::default(),
+                immigration: Default::default(),
                 // care (docs/rules/care.md): carried across as the roads are
                 care: Default::default(),
             }
@@ -652,6 +655,8 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.who_works = carry.who_works.clone();
     st.hl = carry.hl.clone();
     st.hw = carry.hw.clone();
+    st.frontier = carry.frontier.clone();
+    st.immigration = carry.immigration.clone();
     st.care = carry.care.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
