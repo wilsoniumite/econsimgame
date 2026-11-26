@@ -195,8 +195,12 @@ Without care, tending takes the townsfolk of 2050 from 0.559 to 0.469 (islands 1
 fewer on 17 to 32 (0.525 and 0.542 against 0.559 and 0.555). With the wide
 reach the towns stand at 0.569 and 0.566, above main's on both sets, two to three points below care alone.
 Care's hands rise where machines tend (0.163 to 0.176 and 0.196 in 2050), but not by all the hands the
-machines free: hands follow pay bills, and with work's share of income falling from 0.62 to 0.50 more of the
-island's income is rent and profit, which the owners spend at their own shares, which have no care. The
+machines free. From the books (the trace's probe, `examples/tending_trace.rs`, islands 1 to 8, 2050), care
+against care with tending: the works but care give up 0.096 of all hands, of which care takes 0.015, the land
+0.051 and the carts 0.035. Hands follow pay bills, and with work's share of income falling from 0.62 to 0.50
+more of the island's income is rent and profit: households' share of all spending falls from 0.59 to 0.54
+(0.51 with the wide reach) and the landlords' rises from 0.14 to 0.17 (0.18), and the landlords' shares have
+nothing on care. The
 slumps in the news double with tending, with care or without (16 to 19 verdicts against 8 to 11). The next
 piece decides whether to switch tending on; the four arms are in the sweeps named in this page's notes.
 
