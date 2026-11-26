@@ -371,7 +371,7 @@ struct EntryRow(usize);
 struct EntryText(usize);
 /// The chip on the screen a game starts from.
 #[derive(Component)]
-struct StartChip;
+pub struct StartChip;
 #[derive(Component)]
 struct StartCount;
 

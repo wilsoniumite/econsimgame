@@ -72,7 +72,7 @@ impl Overlay {
     pub const ALL: [Overlay; 10] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Made, Overlay::Wages, Overlay::Growth, Overlay::Residents, Overlay::Deposits, Overlay::Traffic];
 
     /// The word on its chip.
-    fn chip(self) -> &'static str {
+    pub fn chip(self) -> &'static str {
         match self {
             Overlay::Rent => "Rent",
             Overlay::Areas => "Markets",

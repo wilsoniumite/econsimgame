@@ -504,6 +504,107 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool)
     out
 }
 
+// ------------------------------------------------------------------ the saved games, listed
+
+/// Which of the three places a listed game is kept in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    /// an island's own family game (`autosave`)
+    Family,
+    /// a sandbox's session (`session`)
+    Sandbox,
+    /// a family game begun some years in, or with the demo's orders (`trial`)
+    Trial,
+}
+
+/// A saved game as the start page lists it (start_page.rs): where it is,
+/// what it is, and when it was last written.
+#[derive(Clone, Debug)]
+pub struct Listed {
+    pub path: PathBuf,
+    pub place: Place,
+    pub seed: u64,
+    pub families: usize,
+    /// the last year played, and the months of the next one played after it
+    pub year: i64,
+    pub month: usize,
+    /// the year it is played to
+    pub to: i64,
+    /// the player's family ("Fairfax"); empty in a sandbox
+    pub family: String,
+    /// on the old island (a save made before 19 November, or begun with --old-land)
+    pub old_land: bool,
+    /// when the file was last written, in seconds since 1970
+    pub when: u64,
+}
+
+impl Listed {
+    /// The arguments that go on with it, as the start page runs them. A
+    /// family game and a session are gone on with by name and kept where they
+    /// are, as a plain start keeps them (`--load` keeps a family game in its
+    /// island's autosave and a session in its session, which is where they
+    /// were read from). A trial is kept where it is too (`--save` the same
+    /// file), so that going on with one never sets the island's own game aside.
+    pub fn args(&self) -> Vec<String> {
+        let path = self.path.to_string_lossy().into_owned();
+        match self.place {
+            Place::Family => vec!["--family".into(), "--load".into(), path],
+            Place::Sandbox => vec!["--sandbox".into(), "--load".into(), path],
+            Place::Trial => vec!["--family".into(), "--load".into(), path.clone(), "--save".into(), path],
+        }
+    }
+}
+
+/// The island and the number of families in a save's own name,
+/// `island-7-families-6.json`; None for any other name, among them the
+/// earlier years and the games set aside beside it (`island-7-families-6.1.json`).
+pub fn named_for(name: &str) -> Option<(u64, usize)> {
+    let rest = name.strip_prefix("island-")?.strip_suffix(".json")?;
+    let (seed, families) = rest.split_once("-families-")?;
+    // (digits only: "7" and "6", never "6.previous")
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    (digits(seed) && digits(families)).then(|| Some((seed.parse().ok()?, families.parse().ok()?))).flatten()
+}
+
+/// Every saved game in `folder` that a plain start or the start page would
+/// go on with, the newest first: each island's family game, its sandbox's
+/// session and its trial. The earlier years kept beside each and the games
+/// set aside are not listed (they are there to fall back on, and `--load`
+/// opens any of them). A file that cannot be read is passed over with a line
+/// on standard error. Reading is quick (a save is a few hundred kilobytes of
+/// orders): nothing is played.
+pub fn listed_in(folder: &Path) -> Vec<Listed> {
+    let mut out = Vec::new();
+    for (dir, place) in [(folder.to_path_buf(), Place::Family), (folder.join("sandbox"), Place::Sandbox), (folder.join("trials"), Place::Trial)] {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if named_for(&name).is_none() {
+                continue;
+            }
+            let path = entry.path();
+            let when = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            match read(&path) {
+                Ok(s) => out.push(Listed {
+                    place,
+                    seed: s.seed,
+                    families: s.families,
+                    year: s.year,
+                    month: s.month,
+                    to: s.last_year_of_game(),
+                    family: if place == Place::Sandbox { String::new() } else { s.family.clone() },
+                    old_land: !s.land,
+                    when,
+                    path,
+                }),
+                Err(e) => eprintln!("the start page passes over a saved game it cannot read: {e}"),
+            }
+        }
+    }
+    out.sort_by(|a, b| b.when.cmp(&a.when).then_with(|| a.path.cmp(&b.path)));
+    out
+}
+
 /// A folder of a test's own, empty: under `ISOSTATE_TEST_DIR` if that is set
 /// (so that a helper's runs stay where it was told to keep them), else under
 /// the system's folder for temporary files.
