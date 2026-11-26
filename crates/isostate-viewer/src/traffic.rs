@@ -290,8 +290,8 @@ fn line(g: &Ground, a: (f32, f32), b: (f32, f32)) -> Vec<Vec3> {
 /// A link carted along between two squares of made road is drawn only where
 /// the map draws the road (`network::drawn_links`), so that no ribbon runs
 /// where there is no road under it: what the year's carting took over a
-/// link the carts had not yet worn is left out (on island 7, 11 per cent of
-/// the carting's weight by length in 1850, 1 in 1900 and none in 2050), and
+/// link the carts had not yet worn is left out (on island 7, 6.7 per cent
+/// of the carting's weight by length in 1850, 0.5 in 1900, 0.1 in 2050), and
 /// what is drawn follows the road's own way (`network::route`). Carting over
 /// tracks and open ground, which the map has never drawn as a road, is
 /// drawn as before.

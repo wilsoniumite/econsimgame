@@ -273,7 +273,10 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
             out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
-    for (c, m, lv) in crate::network::drawn_links(r, &g.worn, k) {
+    // (every road between road squares, drawn or not (`network::drawn_links`): a works placed
+    // where a road the carts did not wear runs would take the ground of houses a town lays
+    // along that road, so the works stand where they stood before the roads were thinned)
+    for (c, m, lv) in crate::network::road_segments(r, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
     // the railway where it really runs, with room for its banks: every point of every line that
@@ -1598,7 +1601,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // (office works drawn as buildings of the forms, for ISOSTATE_TIMING)
     let mut offices = 0usize;
     // the year's roads, which an office building turns to face (`towns::lots::facing`)
-    let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::drawn_links(r, &g.worn, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
+    // (every road between road squares, as the works' ground keeps clear of them: see `ways`)
+    let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::road_segments(r, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
     // what each works' plan is made from this year, and the plans themselves. Where many are
     // not made yet (a game just opened, a replay opened on a late year or moved a long way)
     // they are made on every core; most years want a handful

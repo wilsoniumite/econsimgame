@@ -2382,6 +2382,41 @@ mod tests {
         }
     }
 
+    /// The same on island 7 under the game's rules, played to 1900 and read
+    /// back from its record: in 1870 and 1900 every house of its towns stands
+    /// where it stood with every road drawn, the same house, though some
+    /// roads through its towns are not worn and are drawn as the towns'
+    /// streets. (It leans on no history of the island but the traffic being
+    /// kept and some road through a town not being worn; the works' yards are
+    /// left out, as in the made-up town, and keep clear of every road between
+    /// road squares as before, `scatter::ways`.)
+    #[test]
+    fn the_houses_of_island_7_stand_where_they_stood_with_the_roads_the_carts_wore() {
+        let mut game = isostate_core::save::Game::new(7, 6, 0);
+        assert!(game.sim.params.traffic.enabled, "the case is played with the traffic kept");
+        for _ in 0..151 {
+            game.year().unwrap();
+            game.turn();
+        }
+        let s = &game.sim;
+        let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+        let r = replay::parse("test.bin", &bytes).expect("the game's record reads");
+        let g = world::build_ground(&r);
+        let houses = |l: &Layout| -> Vec<(((i32, u8), i32), u32, [u32; 2], i32, What)> {
+            l.standing.iter().zip(&l.whats).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), s.lot.cell, [s.lot.pl.p.x.to_bits(), s.lot.pl.p.y.to_bits()], s.year, *w)).collect()
+        };
+        for k in [120, 150] {
+            let worn = laid(&r, &g, k, &|_, _| false);
+            crate::network::ALL_IN_TEST.with(|a| a.set(true));
+            let before = laid(&r, &g, k, &|_, _| false);
+            crate::network::ALL_IN_TEST.with(|a| a.set(false));
+            let streets = worn.lane_of.iter().filter(|of| of.unworn).count();
+            eprintln!("{}: {} houses, {streets} lengths of road not worn drawn as streets", r.y0 + k as i32, before.standing.len());
+            assert!(before.standing.len() > 2000 && streets > 0, "year {k}: {} houses, {streets} streets", before.standing.len());
+            assert!(houses(&worn) == houses(&before), "year {k}: a house moved");
+        }
+    }
+
     /// An estate has streets of its own, of the pattern of its year, laid on
     /// its own square's built-up ground and never over its park; its plots
     /// front them and are all built the year it was laid out; and once laid,
