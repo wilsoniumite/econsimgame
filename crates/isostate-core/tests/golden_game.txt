@@ -290,6 +290,14 @@
 # are road works of the towns' stone and men paid out of the treasury, and the
 # record marks trunk roads and bypasses in the road byte; 1750-1900 held,
 # since nothing of it acts before 1909
+# Taken: Taken again on night/g-batch-core-b (26 November 2026), the batch of
+# where the hands go when machines tend, the railway's handling and the roads'
+# wear, and the state's ways, with main at cb9e692 merged in: against main
+# 1901-2050 economy, books, news and run.bin moved, by haulage
+# (haulage.handling, haulage.wear) and the state's ways (highways.trunk,
+# highways.bypass), on under the game's rules from 1901 and 1909; 1750-1900
+# held; tasks.tending_wide stands off and out of the params' file, so it moves
+# none, and the merged tree's eight are the state's ways' own
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
