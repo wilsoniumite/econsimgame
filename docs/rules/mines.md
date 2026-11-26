@@ -1400,7 +1400,17 @@ off on the settled start, which therefore still buys all a pit raises. That
 is a difference in a rule between the two starts, which the house does not
 want; it stays until the stage that lays the first century anew takes the
 settled island's first century up again. With the switch on the settled
-island moves (below), and nothing here is tuned to it.
+island moves, a little, and nothing here is tuned to it. Islands 1 to 8,
+the game's rules with six families, `sweep --seeds 1-8 --rules game
+--families 6 --set mines.glut=true --standing` against the same without:
+11 of the twelve standing facts inside, and one outside, the work's share of
+income in 1900 (0.663 against 0.649, band 0.614 to 0.661; five islands over
+it). People in 1900 664,245 against 672,930; towns 22.2 against 21.6; works
+1,232 against 1,216; workings 443 against 437; railway 2,708 km against
+2,692; the chained real wage 6.22 times 1750's against 5.96; coal a head the
+same within 5 per cent in 1800, 1850 and 1900, stone 18 per cent less in
+1900. Of 1,239 facts 1,021 differ, one starred (the owners' dividends over the
+landlords' in 1750, 0.679 against 0.644, which the warm-up sets).
 
 ## Checking it
 
