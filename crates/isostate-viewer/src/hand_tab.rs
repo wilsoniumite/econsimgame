@@ -88,7 +88,7 @@ impl Pending {
     }
 }
 
-/// A row of the Hand tab about a place: the square the news is about.
+/// A row of the Hand tab about a place: the simulation's cell the news is about.
 #[derive(Component)]
 pub struct HandRow(pub usize);
 
@@ -320,11 +320,12 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, _k: usi
     }
 }
 
-/// The town whose node is this square, if any; else the square itself.
-fn pick_at(r: &Replay, cell: usize) -> Pick {
+/// The town whose market place stands in this cell, if any; else the spot
+/// of open country at the cell's meeting place, `at`.
+fn pick_at(r: &Replay, cell: usize, at: (f32, f32)) -> Pick {
     match r.header.towns.iter().position(|t| t.node == cell) {
         Some(t) => Pick::Town(t),
-        None => Pick::Cell(cell),
+        None => Pick::Place { x: at.0, z: at.1, cell },
     }
 }
 
@@ -341,7 +342,8 @@ fn hand_clicks(mut q: Query<(&Interaction, &HandRow, &mut BackgroundColor), Chan
             if let Some(&(x, z)) = data.cen.get(row.0) {
                 o.target = Vec3::new(x, world::height_at(&data.g, x, z).max(0.0), z);
                 o.dist = o.dist.min(9.0);
-                picked.what = Some(pick_at(&data.r, row.0));
+                picked.what = Some(pick_at(&data.r, row.0, (x, z)));
+                picked.at = None;
             }
         }
     }
@@ -359,11 +361,11 @@ mod tests {
         let titles: Vec<&str> = done_by_hand(&r).map(|e| e.title.as_str()).collect();
         assert_eq!(titles, ["second", "first"]);
         assert_eq!(clock::news_month(1761.5), "July 1761");
-        // a square that is a town's node is the town; another is the square
+        // a cell that is a town's node is the town; another is the spot at its meeting place
         if let Some(t) = r.header.towns.first() {
             let node = t.node;
-            assert!(matches!(pick_at(&r, node), Pick::Town(0)));
+            assert!(matches!(pick_at(&r, node, (0.5, 0.5)), Pick::Town(0)));
         }
-        assert!(matches!(pick_at(&r, usize::MAX), Pick::Cell(_)));
+        assert_eq!(pick_at(&r, usize::MAX, (3.5, 4.25)), Pick::Place { x: 3.5, z: 4.25, cell: usize::MAX });
     }
 }

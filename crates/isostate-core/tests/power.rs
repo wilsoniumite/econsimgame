@@ -25,13 +25,15 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     assert_eq!(game_params().tree.stage, 6);
     let one = tree::game_content_at(1);
     let six = tree::game_content_at(6);
-    // four goods (electricity, electrical goods, oil and fertiliser), six methods (the offices and
-    // the steel-frame builders among them: docs/rules/tree.md, "Offices and steel frames") and two
+    // five goods (electricity, electrical goods, oil, fertiliser and care: docs/rules/care.md), one
+    // need (care's, laid by a change of stage 6 to the needs' lists), seven
+    // methods (the offices and the steel-frame builders among them: docs/rules/tree.md, "Offices and
+    // steel frames"; and the hospitals and homes of care) and two
     // inventions (breeding: docs/rules/tree.md, "Oil, nitrogen and the land"; managed woodland:
     // docs/rules/woods.md), the four ideas the machines that tend wait on (docs/rules/tending.md)
     // and the motor vehicle, which the lorry waits on (docs/rules/lorry.md), nothing else; the
     // tree's stages 2 to 5 have no entries
-    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 4, one.S, one.NS, one.M + 6));
+    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 5, one.S + 1, one.NS, one.M + 7));
     assert_eq!(six.tech_name.len() - six.M, one.tech_name.len() - one.M + 7);
     for k in 2..=5 {
         assert_eq!(format!("{:?}", tree::game_content_at(k).good_name), format!("{:?}", one.good_name), "stage {k}");
@@ -252,10 +254,12 @@ fn the_gap_of_a_good_that_does_not_keep_is_asking_against_making() {
     for (stock, of) in [(0.0, 5.0), (10.0, 5.0), (30.0, 5.0), (0.0, 0.0)] {
         assert_eq!(tree::price_gap(&C, &P, coal, stock, of, 99.0, 1.0), port(stock, of));
     }
-    // the loss at a month's end: all that is left of electricity, each other good's decay
+    // the loss at a month's end: all that is left of electricity and of care (docs/rules/care.md),
+    // the two goods that do not keep, each other good's decay
     let loss = tree::month_loss(&C, &P);
     let decay = tree::decay(&C, &P);
+    let care = C.gi("care");
     for g in 0..C.G {
-        assert_eq!(loss[g], if g == e { 1.0 } else { decay[g] }, "{}", C.good_name[g]);
+        assert_eq!(loss[g], if g == e || g == care { 1.0 } else { decay[g] }, "{}", C.good_name[g]);
     }
 }

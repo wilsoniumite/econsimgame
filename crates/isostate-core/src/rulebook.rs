@@ -209,6 +209,7 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "pace" => to_json(&P.pace),
         "haulage" => to_json(&P.haulage),
         "highways" => to_json(&P.highways),
+        "care" => to_json(&P.care),
         "start" => to_json(&P.start),
         "frontier" => to_json(&P.frontier),
         "immigration" => to_json(&P.immigration),
@@ -225,10 +226,12 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
 /// (`tasks.lorry`, docs/rules/lorry.md), which is left out of the params' file
 /// while it is off; and last the later machines that tend reaching the land
 /// and the carts (`tasks.tending_wide`, docs/rules/tending.md, "Where the hands
-/// go"), off with them.
+/// go"), off with them; and a works' machines running on its own making
+/// (`tasks.own_run`, docs/rules/tending.md, "The slumps"), on under the game's
+/// rules and left out of the port's file.
 fn skipped_inside(P: &Params, rule: &str) -> Vec<(&'static str, Value)> {
     match rule {
-        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from)), ("tending", json!(P.tasks.tending)), ("lorry", json!(P.tasks.lorry)), ("tending_wide", json!(P.tasks.tending_wide))],
+        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from)), ("tending", json!(P.tasks.tending)), ("lorry", json!(P.tasks.lorry)), ("tending_wide", json!(P.tasks.tending_wide)), ("own_run", json!(P.tasks.own_run))],
         _ => Vec::new(),
     }
 }

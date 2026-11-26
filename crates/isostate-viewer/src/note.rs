@@ -327,10 +327,11 @@ impl Where<'_, '_> {
         let chosen = self.picked.what.map(|p| match p {
             Pick::Town(t) => format!("the town of {}", r.header.towns.get(t).map_or("?", |t| t.name.as_str())),
             Pick::Firm(f) => match r.header.firms.get(f) {
-                Some(firm) => format!("the works {} on the square at {}, {}", firm.name, firm.cell % r.w, firm.cell / r.w),
+                Some(firm) => format!("the works {}, about {} km east and {} km south of the north-west corner", firm.name, (firm.cell % r.w) * 2 + 1, (firm.cell / r.w) * 2 + 1),
                 None => "a works".to_string(),
             },
-            Pick::Cell(c) => format!("the square at {}, {}", c % r.w, c / r.w),
+            Pick::Pit { cell, class } => format!("the {} about {} km east and {} km south of the north-west corner", crate::DISP_NAMES[class as usize % 12], (cell % r.w) * 2 + 1, (cell / r.w) * 2 + 1),
+            Pick::Place { x, z, .. } => format!("the spot at {x:.2}, {z:.2} on the map, {:.1} km east and {:.1} km south of the north-west corner", x * 2.0, z * 2.0),
         });
         let panel = self.ui.tab.map(|t| {
             let name = match t {

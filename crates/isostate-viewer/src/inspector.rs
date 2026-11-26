@@ -110,12 +110,14 @@ pub fn said(told: &Result<Told, String>) -> String {
 }
 
 /// The question for a thing picked on the map. A works is asked for by its
-/// slot, which is its place in the record's list of works (`inspect`).
+/// slot, which is its place in the record's list of works (`inspect`). A pit
+/// and a spot in open country are asked about by the simulation's cell under
+/// them, whose rows the card shows as "Round here" (pick.rs).
 pub(crate) fn thing_of(p: Pick) -> Thing {
     match p {
         Pick::Town(t) => Thing::Town(t),
         Pick::Firm(f) => Thing::Works(f),
-        Pick::Cell(c) => Thing::Cell(c),
+        Pick::Pit { cell, .. } | Pick::Place { cell, .. } => Thing::Cell(cell),
     }
 }
 
@@ -295,7 +297,8 @@ fn draw(
         }
     }
     let f = font.0.clone();
-    commands.entity(e).with_children(|p| block(p, &f, &mut images, data.r.y0, &now.0, now.1.as_deref()));
+    let round_here = matches!(thing, Some(Thing::Cell(_)));
+    commands.entity(e).with_children(|p| block(p, &f, &mut images, data.r.y0, &now.0, now.1.as_deref(), round_here));
     drawn.shown = Some(now);
     drawn.at = Some(Instant::now());
 }
@@ -307,7 +310,7 @@ fn rule(p: &mut ChildSpawnerCommands) {
 /// What a past year shows in place of the block.
 pub const PAST: &str = "What the simulation knows is of the present: come back to it to see.";
 
-fn block(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, y0: i32, shown: &Shown, edit: Option<&str>) {
+fn block(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, y0: i32, shown: &Shown, edit: Option<&str>, round_here: bool) {
     match shown {
         Shown::Nothing => return,
         Shown::Past => {
@@ -324,7 +327,9 @@ fn block(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Ima
         }
         Shown::Told { told: Ok(told), lines } => {
             rule(p);
-            p.spawn(text(f, &format!("As it stands, {}", told.as_of), 15.5, INK));
+            // the rows of the ground under a spot or a pit are of the country round it
+            let head = if round_here { format!("Round here, as it stands, {}", told.as_of) } else { format!("As it stands, {}", told.as_of) };
+            p.spawn(text(f, &head, 15.5, INK));
             for g in &told.groups {
                 group(p, f, &g.name, &g.rows);
             }
@@ -413,7 +418,10 @@ mod tests {
         assert_eq!(said(&Err("The square at 3, 4 is sea.".into())), "refused: The square at 3, 4 is sea.");
         assert_eq!(thing_of(Pick::Firm(12)), Thing::Works(12));
         assert_eq!(thing_of(Pick::Town(3)), Thing::Town(3));
-        assert_eq!(thing_of(Pick::Cell(40)), Thing::Cell(40));
+        // a spot in open country and a pit are asked about by the cell under them
+        assert_eq!(thing_of(crate::pick::at_cell(40, 14)), Thing::Cell(40));
+        assert_eq!(thing_of(Pick::Place { x: 12.3, z: 2.9, cell: 40 }), Thing::Cell(40));
+        assert_eq!(thing_of(Pick::Pit { cell: 41, class: crate::world::COALMINE }), Thing::Cell(41));
     }
 
     #[test]

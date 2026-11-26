@@ -608,6 +608,11 @@ pub struct State {
     /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
     pub hw: crate::highways::HighwayState,
 
+    // ---------------- care (docs/rules/care.md; empty while `care.enabled` is off)
+    /// What the watcher of care keeps of each year: its hands, its spending
+    /// and its price. The observer's alone.
+    pub care: crate::care::CareState,
+
     // ---------------- frontier (docs/rules/frontier.md; empty while `frontier.enabled` is off)
     /// Each town's share of free land within its reach, as the year's people were reckoned.
     pub frontier: crate::frontier::FrontierState,

@@ -107,6 +107,16 @@ name = "offices"
 tasks = [0.05, 0.10, 0.55, 0.30, 0.0]
 methods = ["offices"]
 
+# Care (docs/rules/care.md): nursing, doctoring and minding the old and the sick. Every hour of it is
+# presence, the class the file closes to machines, so no machine of this rule takes any of it, today's or a
+# later one's: the rule is told so by the class alone, not by a list of machines it may not use. (A real
+# hospital has its clerks and its porters, whom machines did reach; they are counted with the offices and
+# the carts here, and care is the work of being there.)
+[[kind]]
+name = "care"
+tasks = [0.0, 0.0, 0.0, 0.0, 1.0]
+methods = ["care_homes"]
+
 [[kind]]
 name = "steel-frame builders"
 tasks = [0.40, 0.40, 0.03, 0.17, 0.0]

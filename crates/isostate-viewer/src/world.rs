@@ -108,6 +108,9 @@ pub struct Ground {
     /// The roads' ways round lakes and tideways, kept as they are found
     /// (`network::route`): the ground never changes, so neither do they.
     pub detours: crate::network::Detours,
+    /// The roads the carts wore, as far as the record has been gone through
+    /// (`network::drawn_links`).
+    pub worn: crate::network::Worn,
 }
 
 /// Land height in world units (one unit = one 2 km cell) from the stored elevation byte.
@@ -355,7 +358,7 @@ fn finish_ground(r: &Replay, hgt: Vec<f32>, rivers: Vec<River>, floodplain: Vec<
     samples.sort_by(|a, b| a.total_cmp(b));
     let quant: Vec<f32> = (0..=256).map(|q| samples[(q * (samples.len() - 1)) / 256]).collect();
     let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water, laid: laid.as_ref() }, &quant, &cen));
-    Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain, laid, detours: Default::default() }
+    Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain, laid, detours: Default::default(), worn: Default::default() }
 }
 
 /// A value of a vertex grid at a map position (in cells), between its vertices.

@@ -42,7 +42,15 @@
 //!                     is on screen is that; stops the run if it is not
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none;
 //!                     a sandbox's hand and rules, and families for its family tab)
-//!     pick:X,Z        click the map at this spot
+//!     pick:X,Z        click the map at this spot (pick.rs says what that picks);
+//!                     pick:town:NAME and pick:works:NAME pick a town or a
+//!                     standing works by the start of its name, pick:pit:KIND
+//!                     the first pit at work of stone, clay, iron or coal
+//!                     (pick:pit:coal:3 the third), and fly the camera to it
+//!     hover:X,Z       rest the pointer on this spot of the map, which lights
+//!                     what is under it (cursor.rs); hover:none gives it back
+//!                     to the mouse. print says what it rests on and what
+//!                     asking cost
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
 //!     card:PIXELS     scroll the card of what was clicked down this far (a
@@ -88,7 +96,12 @@
 //!     range:year      the legend's chip for how the colours' ends are taken:
 //!     range:30        this year, thirty years gliding, the whole run
 //!     range:all
-//!     row:GOOD        click a good's row in the Markets panel (row:coal)
+//!     trend:10        the legend's Trend chip: off, 5, 10 or 30 years; map
+//!                     then adds the span, the ends and the movers
+//!     mover:N         click a town among the movers on the legend card:
+//!                     0 to 2 rising fastest, 3 to 5 falling; it says which
+//!                     town, and map then says where the camera points
+//!     row:GOOD       click a good's row in the Markets panel (row:coal)
 //!     half:island     click a chip of the Markets panel: the island's charts,
 //!     half:goods      the goods, or the island's work and owners (print on
 //!     half:work       that half gives its figures, a line for each fifty
@@ -132,7 +145,9 @@ enum Step {
     Print(String),
     Scenery(String),
     Tab(Option<ui::Tab>),
-    Pick(f32, f32),
+    Pick(PickAt),
+    /// the pointer rests on this spot of the map (cursor.rs), or goes back to the mouse
+    Hover(Option<(f32, f32)>),
     Look(f32, f32, f32),
     Scroll(f32),
     /// scroll the card of what was clicked down this far
@@ -144,6 +159,11 @@ enum Step {
     Good(i32),
     /// the legend's chip for how the colours' ends are taken
     Range(crate::ranges::Range),
+    /// the legend's Trend chip: off, or its years
+    Trend(Option<crate::overlay::trend::Span>),
+    /// a town among the movers on the legend card, by its place among them
+    /// (0 to 2 rising, 3 to 5 falling)
+    Mover(usize),
     /// a good's row in the Markets panel, by name
     Row(String),
     Half(MarketsShow),
@@ -160,6 +180,13 @@ enum Step {
     Stroke(Vec<(f32, f32)>),
     /// letters typed as the keyboard gives them, into the note's line (note.rs)
     Type(String),
+}
+
+/// What a `pick` step clicks: a spot on the map, or a town or works by its name (pick.rs).
+#[derive(Clone, Debug, PartialEq)]
+enum PickAt {
+    Spot(f32, f32),
+    Named(String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -295,9 +322,15 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             // a panel that is none of these is refused, and not taken for closing the panel
             "tab" if ui::Tab::parse(arg).is_some() || arg.eq_ignore_ascii_case("none") => Step::Tab(ui::Tab::parse(arg)),
             "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news, hand, rules, families and none")),
+            "pick" if arg.starts_with("town:") || arg.starts_with("works:") || arg.starts_with("pit:") =>Step::Pick(PickAt::Named(arg.to_string())),
             "pick" => match nums()?.as_slice() {
-                [x, z] => Step::Pick(*x, *z),
-                _ => return Err(format!("{part}: pick takes x,z")),
+                [x, z] => Step::Pick(PickAt::Spot(*x, *z)),
+                _ => return Err(format!("{part}: pick takes x,z, town:NAME or works:NAME")),
+            },
+            "hover" if arg.eq_ignore_ascii_case("none") => Step::Hover(None),
+            "hover" => match nums()?.as_slice() {
+                [x, z] => Step::Hover(Some((*x, *z))),
+                _ => return Err(format!("{part}: hover takes x,z or none")),
             },
             "look" => match nums()?.as_slice() {
                 [x, z, d] => Step::Look(*x, *z, *d),
@@ -309,6 +342,11 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') && !arg.contains('+') => Step::Chip(arg.to_ascii_lowercase()),
             "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, traffic, plain and pill")),
             "range" => Step::Range(crate::ranges::Range::parse(arg).ok_or_else(|| format!("{part}: range:year, range:30 or range:all"))?),
+            "trend" => Step::Trend(crate::overlay::trend::parse_word(&format!("trend{}", arg.to_ascii_lowercase())).ok_or_else(|| format!("{part}: trend:off, trend:5, trend:10 or trend:30"))?),
+            "mover" => match num("the mover's place")? {
+                i if (0.0..6.0).contains(&i) => Step::Mover(i as usize),
+                _ => return Err(format!("{part}: mover:0 to mover:2 are the towns rising fastest, mover:3 to mover:5 those falling fastest")),
+            },
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
                 "back" => Step::Good(-1),
@@ -586,6 +624,12 @@ fn print_state(world: &mut World, note: &str) {
     if note.iter().any(|s| !s.trim().is_empty()) {
         println!("script:   the inspector says: {}", said_in_one_line(&note, usize::MAX));
     }
+    // what the pointer rests on, and what asking cost (cursor.rs)
+    if let Some(p) = world.get_resource::<crate::cursor::ScriptPointer>().and_then(|p| p.0) {
+        let over = world.get_resource::<crate::cursor::Hovered>().and_then(|h| h.0);
+        let made = world.get_resource::<crate::pick::Pits>().map_or(0.0, |p| p.took_ms);
+        println!("script:   the pointer rests at {:.2},{:.2}, over {:?}; {}; the year's pits and works were listed for it in {made:.1} ms off the main thread", p.0, p.1, over, world.resource::<crate::cursor::HoverCost>().said());
+    }
     // a sandbox's tray as it is laid out, and the hand's ticks on the timeline
     if world.contains_resource::<crate::sandbox::Sandbox>() {
         if let Some(line) = crate::sandbox::tray_measure(world) {
@@ -680,11 +724,15 @@ fn print_map(world: &World, note: &str) {
     // a view that colours by a number adds its range, its ends and its round figures
     let k = (world.resource::<Timeline>().t.floor() as usize).min(data.r.ny - 1);
     let range = if ov.kind.is_some_and(|k| k.scaled()) { format!(" {}", ov.range_said(&data.r, k)) } else { String::new() };
+    let o = world.resource::<Orbit>();
     println!(
-        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}{range}",
+        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}{range} camera: {:.1},{:.1} at {:.1}",
         if note.is_empty() { String::new() } else { format!("[{note}] ") },
         good(ov.good),
-        ui.good.map_or("none", good)
+        ui.good.map_or("none", good),
+        o.target.x,
+        o.target.z,
+        o.dist
     );
 }
 
@@ -1047,13 +1095,37 @@ fn step(world: &mut World, sc: &mut Script) {
                 world.resource_mut::<UiState>().tab = t;
                 frame = true;
             }
-            Step::Pick(x, z) => {
+            Step::Pick(at) => {
                 let (k, _) = clock_year(world);
                 let data = world.resource::<Data>();
-                let what = crate::choose(&data.r, &data.slots, &data.cen, Vec3::new(x, world::height_at(&data.g, x, z), z), k);
+                let near = crate::pick::near_of(&data.r, &data.slots, k);
+                let named = matches!(at, PickAt::Named(_));
+                let (what, spot) = match at {
+                    // a spot on the map, as a click there (an old script's click on a square's middle is a spot)
+                    PickAt::Spot(x, z) => (crate::pick::choose(&data.r, &data.g, &data.slots, &data.cen, &near, x, z, k), Some((x, z))),
+                    PickAt::Named(name) => match crate::pick::by_name(&data.r, &near.pits, k, &name) {
+                        Ok(p) => (Some(p), None),
+                        Err(why) => {
+                            println!("script: no pick: {why}");
+                            (None, None)
+                        }
+                    },
+                };
+                let stands = what.and_then(|p| crate::pick::spot_of(&data.r, &data.slots, &data.cen, &near.pits, p));
+                println!("script: picked {what:?}{}", stands.map_or(String::new(), |(x, z)| format!(", which stands at {x:.2},{z:.2}")));
+                // a thing picked by its name is flown to, as a row of a list flies to it
+                if let Some((x, z)) = stands.filter(|_| named) {
+                    let y = world::height_at(&data.g, x, z).max(0.0);
+                    world.resource_mut::<Orbit>().target = Vec3::new(x, y, z);
+                }
                 let mut picked = world.resource_mut::<Picked>();
                 picked.what = what;
+                picked.at = spot;
                 picked.stamp = picked.stamp.wrapping_add(1);
+                frame = true;
+            }
+            Step::Hover(at) => {
+                world.resource_mut::<crate::cursor::ScriptPointer>().0 = at;
                 frame = true;
             }
             // GROUND-BRUSH: the brush drawn through the spots, a square a frame (ground.rs)
@@ -1123,6 +1195,30 @@ fn step(world: &mut World, sc: &mut Script) {
                 match find_marked::<crate::overlay::RangeChip>(world, &format!("range:{}", range.word()), |c| c.0 == range) {
                     Ok(e) => press(world, sc, e),
                     Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Trend(span) => {
+                let what = format!("trend:{}", span.map_or("off", |s| s.word()));
+                match find_marked::<crate::overlay::TrendChip>(world, &what, |c| c.0 == span) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Mover(i) => {
+                // the town in that place among the movers the card shows, and where the camera went
+                let town = world.resource::<MapOverlay>().mover(i);
+                match town {
+                    Some(t) => match find_marked::<crate::overlay::MoverRow>(world, &format!("mover:{i}"), |m| m.0 == t) {
+                        Ok(e) => {
+                            press(world, sc, e);
+                            let name = world.resource::<Data>().r.header.towns.get(t).map_or(String::new(), |t| t.name.clone());
+                            println!("script: mover:{i} is {name}");
+                        }
+                        Err(why) => println!("script: no click: {why}"),
+                    },
+                    None => println!("script: no click: mover:{i}: the card names no town there"),
                 }
                 frame = true;
             }
@@ -1239,7 +1335,11 @@ mod tests {
         assert_eq!(steps[0], Step::Key(KeyCode::Space, false));
         assert_eq!(steps[2], Step::Click("Next year".into()));
         assert_eq!((&steps[6], &steps[7]), (&Step::Sample(5.0, false), &Step::Sample(10.0, true)));
-        assert_eq!(steps[10], Step::Pick(31.5, 27.5));
+        assert_eq!(steps[10], Step::Pick(PickAt::Spot(31.5, 27.5)));
+        // a town or a works by its name, and the pointer resting on a spot
+        let named = parse("pick:town:Oakbury;pick:works:Fairfax Mill;hover:43.5,37.2;hover:none").unwrap();
+        assert_eq!(named, vec![Step::Pick(PickAt::Named("town:Oakbury".into())), Step::Pick(PickAt::Named("works:Fairfax Mill".into())), Step::Hover(Some((43.5, 37.2))), Step::Hover(None)]);
+        assert!(parse("pick:31").is_err() && parse("hover:1").is_err());
         // the map views and the Markets panel
         let steps = parse("key:M;key:Shift+M;key:shift+g;chip:rent;chip:Plain;chip:pill;good:next;good:back;row:coal;half:island;half:goods;map;map:after;half:Work").unwrap();
         assert_eq!(steps.last(), Some(&Step::Half(MarketsShow::Work)));
