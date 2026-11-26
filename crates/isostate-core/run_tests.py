@@ -312,6 +312,7 @@ QUICK_SKIPS = [
 
     # tending
     'island_7_to_1935',
+    'own_run_feeds_no_shortage_of_its_own_good',
 
     # towns
     'a_long_deep_decline_gives_ground_up_one_cell_a_year',
