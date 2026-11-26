@@ -451,7 +451,122 @@ five histories of today's sixteen islands that differ only in their draws:
 iron's swing reads 0.170 to 0.174 in them, inside this card's tolerance in
 every one and met by two islands of sixteen.
 
+## The colony's check
+
+The landfall start ([landfall.md](landfall.md)) is an island settled from one
+town of 5,000 in a corner, and the pass's aims, written for six towns of
+135,000, do not fit it. Its own check is a list of what colonies of settlement
+did, written from history first and not fitted to the runs: a fact today's
+colony misses stays in the list as a miss, with its number beside its band, so
+that the list is what this start must still learn. A fact is struck only where
+no honest run of any colony could be held to it. The code is
+`standing::COLONY`; the sweep prints it for every landfall setting with
+`--standing` (docs/rules/README.md, "The two starts"), and it fails the sweep
+only with `--colony`.
+
+The bands come from the study of the landfall start of 26 November 2026, which
+read and searched for the history of colonies of settlement and wrote a table
+of 24 facts (kept with the night's reports, not in the repository); "row" is
+its number there. How sure: **read**, the study read it in the source named;
+**memory**, the study's or mine, not checked that day (bands taken from memory
+are marked so, as the convention asks); **reasoned**, no source, reasoned from
+the island. A fact is met when the mean of the islands lies in its band.
+
+| row | fact | band | source | sure |
+|---|---|---|---|---|
+| 1 | births less deaths, per cent a year, 1751-1800 | 2.3 to 3.0 | New France 2.5 to 2.7; Cape settlers 2.6 (Ross); the colonies 2.4 to 2.9 (McCusker and Menard, in Lindert and Williamson 2014) | read |
+| 2 | people grow, births and ships, per cent a year, 1750-1800 | 3.5 to 8 | Pennsylvania 1690-1750 3.9; Upper Canada 1791-1841 about 7; South Australia 1841-91 6.2 | memory |
+| 3 | people in 1900, year 150 | 100,000 to 500,000 | New France about 450,000 on more land; Prince Edward Island's plateau scaled to the island's land, about 450,000 | memory |
+| 4 | births less deaths as the land fills, 1851-1880 | 1.5 to 2.0 | United States whites, births 55 to 35 a thousand 1800 to 1880 (Coale and Zelnik) | memory |
+| 5 | people grow once the land is full, 1950-2050 | 0 to 0.5 | Prince Edward Island 1881-1951; the Quebec seigneuries from the 1830s: the increase went away | memory |
+| 6 | settlers' share of the growth, 1750-1770 | 0.5 to 0.9 | South Australia, New Zealand, Upper Canada in their first decades | memory |
+| 7 | settlers' share of the growth, 1750-1850 | 0.2 to 0.6 | the thirteen colonies a quarter to a third; Australia to 1913 0.30; the United States 1870-1910 0.28 (Easterlin, in Williamson 1992) | read |
+| 10 | under 15, share of people, 1800 and 1850 | 0.33 to 0.45 | colonies while the ships came (men 3.2 to every woman in Australia in 1828) | memory |
+| 11 | under 15, 1900 | 0.32 to 0.40 | United States 0.344 in 1900; Australia about 0.35 in 1901 | memory |
+| 12 | second town founded | 1750 to 1755 | Parramatta 1788, Germantown 1683, Geelong 1838, Gawler 1839 | memory |
+| 15 | share in towns, 1850 less 1750 | -0.05 to 0.05 | the thirteen colonies grew more rural 1680-1790 (Lindert and Williamson) | read |
+| 16 | years with hunger, 1770-1900 and 1901-2050 | none | no colony of settlement was hungry after its first decade, 1650 to 1900 | memory |
+| 18 | wage in grain over the settled island's, 1760 | 0.6 to 1.1 | Boston 1600-49 at 0.59 of London's labourers; New South Wales towns in the 1820s 0.69 (Allen, Murphy and Schneider; Panza and Williamson) | read |
+| 17 | the same, 1800 and 1850 | 1.1 to 1.7 | Philadelphia 1.52, Boston 1.18 of London, 1750-99 (Allen, Murphy and Schneider, table 4) | read |
+| a | the same, 1900 | 1.2 to 2.4 | real wages of the New World over the Old 1.87 to 2.36 in 1870-1913; the United States over Britain 1.44 to 1.67 (Williamson 1992) | read |
+| 19 | the real wage's growth while land feeds it, per cent a year, 1750-1850 | 0 to 0.5 | Boston 1650-99 to 1750-99 about 0.35; colonial income a head grew "only very slowly" | read |
+| 21 | the cost of living over three years, to 1900 | 0.7 to 1.5 times | prices trebled in three years only under war paper or in a gold rush; Massachusetts' Old Tenor lost 8 to 10 per cent a year at its worst | memory |
+| 22 | first railway, years after the settled island's | 20 to 35 | the colonies' first lines 20 to 35 years after Britain's | memory |
+| | people in 2050 over the settled island's | 0.5 to 1.5 | the same land three centuries on; history's colonies sent their increase away once their farms were full (row 5) | reasoned |
+| | towns in 1900 over the settled island's | 0.5 to 1.5 | the same land; a colony has as many market towns as its country needs | reasoned |
+| 20 | a town's wage over the year before, at most, to 1900 (held to both starts, shown, not counted) | 1.33 or less | annual wage series; Victoria in 1852 the exception | memory |
+
+Struck, and why: row 8 (settlers in a year, a share of the colony: the
+immigration rule's own caps hold it, so it checks a number of the rule); row 9
+(under 15 with births alone: the start brings settlers, so rows 10 and 11 are
+read); row 13 (new towns at a few hundred to 2,000 people: the hamlets' own
+number, 500); row 14 (the share in places of 2,500 and more: the game's
+`urban_share` is another measure, so row 15 reads its change); row 23 (a
+machine that saves hands on land comes no later than on the settled island: no
+fact says yet when the first one runs; not measured, kept for the fact that
+will); row 24 (runs failing their money check: the sweep fails them itself).
+Row 20 is shown for both starts and not counted, since the settled island
+misses it too (3.28 on island 8 in 1786).
+
+**What it reads.** Eleven facts were added for it (`landfall::facts`, under
+People and towns), given for every run of either start and changing no run:
+`natural_increase_pct_1751_1800` and `_1851_1880` (the ages' births less
+deaths a thousand, over ten, the years' mean); `settlers_share_of_growth_1750_1770`
+and `_1750_1850` (only with settlers); `town_second_year`;
+`famine_years_1770_1900` and `_1901_2050`; `wage_in_grain_Y` for 1760, every
+fifty years from 1800, and 2050 (the island's mean wage over the price of
+grain, the measure that compares two islands); `town_wage_rise_max_1752_1900`
+(towns with people in the two years before); and `price_level_3y_max_1750_1900`
+and `_min_` (the chained cost of living over three years). The rows that set
+the colony beside the settled island pair them island by island.
+
+**What the first runs showed** (26 November 2026, the landfall start as built
+on night/g-one-town, with main's care merged in; `sweep --start
+settled,landfall --end-year 2050 --standing`): 10 of 24 met on islands 1 to 8,
+and 10 of 24 on islands 17 to 32, the same ten. Met: the people's pace to 1800
+(4.37 per cent a year) and their number in 1900 (306,000), births less deaths
+falling to 1.56 by 1851-1880, the settlers' share of the growth (0.59 to 1770,
+0.26 to 1850), the children (0.39, 0.38, 0.36), the second town in the first
+winter, the towns' share holding still. Missed, the list of what the start
+must learn:
+
+| fact | islands 1 to 8 | 17 to 32 | band |
+|---|---|---|---|
+| births less deaths, 1751-1800 | 2.23 | 2.25 | 2.3 to 3.0 |
+| people grow, 1950-2050 | 1.75 | 1.70 | 0 to 0.5 |
+| years with hunger, 1770-1900 | 0.9 | 1.5 | none |
+| years with hunger, 1901-2050 | 17.4 (7 to 44) | 17.9 (3 to 30) | none |
+| wage in grain over the settled island's, 1760 | 1.77 | 1.74 | 0.6 to 1.1 |
+| the same, 1800 | 0.88 | 0.97 | 1.1 to 1.7 |
+| the same, 1850 | 0.52 | 0.66 | 1.1 to 1.7 |
+| the same, 1900 | 0.24 | 0.24 | 1.2 to 2.4 |
+| the real wage's growth, 1750-1850 | -0.06 | -0.07 | 0 to 0.5 |
+| the cost of living over three years, most | 1.80 | 1.73 | 1.5 or less |
+| the same, least | 0.67 | 0.66 | 0.7 or more |
+| first railway after the settled island's | 62 years | 54 | 20 to 35 |
+| people in 2050 over the settled island's | 3.06 | 2.88 | 0.5 to 1.5 |
+| towns in 1900 over the settled island's | 1.54 | 1.54 | 0.5 to 1.5 |
+
+The wage tells the story in one line: the colony starts richer in grain than
+history's colonies did (1.77 times the settled island in 1760, where history
+has 0.6 to 1.1), falls behind it by 1800, and in 1900 earns a quarter of what
+the settled island's people earn in grain, where history's colonies earned 1.2
+to 2.4 times the old country. The design's growth after 1900 is met on islands
+1 to 8 (1.27 per cent a year to 1970, 1.03 in 2050 over 1970) and half met on
+17 to 32 (1.39, but 0.92 in 2050 over 1970). A town's wage more than doubling
+in a year happens on both starts: the colony's worst rise to 1900 is 1.91 on
+the mean of islands 1 to 8, the settled island's 1.74.
+
 ## What worries me
+
+- **The colony's bands are mostly from memory.** Eight of the 24 are read in
+  a source; fourteen are the study's memory or mine, and two are reasoned.
+  Before `--colony` is made a gate, each band from memory should be read.
+- **The colony is set beside the settled island, not the old country.** History
+  sets a colony beside the country its settlers left; the game has no such
+  country, only the settlers' `abroad` (a level of living, not a wage in grain).
+  The settled island is the nearest thing: an island already dotted with towns
+  in 1750, which by density is itself a colony of about 1790.
 
 - **The tolerances are the design's, and nothing else holds them.** They were
   chosen, aim by aim, for what a reader would believe of an island; the card
