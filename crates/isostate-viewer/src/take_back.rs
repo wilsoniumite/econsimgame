@@ -118,6 +118,7 @@ pub fn before_words(s: &isostate_core::Sim, edit: &Edit) -> String {
     let at = |c: usize| format!("{}, {}", c % w, c / w);
     let near = |c: usize| s.st.catch.get(c).and_then(|&t| (t >= 0).then(|| town(t as usize)));
     let idea = |name: &str| s.content.tech_name.iter().position(|n| n == name).and_then(|i| s.content.tech_label.get(i).cloned()).unwrap_or_else(|| name.replace('_', " "));
+    let way = |name: &str| s.content.method_name.iter().position(|n| n == name).and_then(|m| s.content.method_label.get(m).cloned()).unwrap_or_else(|| name.replace('_', " "));
     match edit {
         Edit::Money { purse, town: t, factor } => {
             let whose = match purse {
@@ -146,6 +147,13 @@ pub fn before_words(s: &isostate_core::Sim, edit: &Edit) -> String {
             None => "a university was founded".to_string(),
         },
         Edit::CloseUniversity { town: t } => format!("the University of {} was closed", town(*t)),
+        // the hand on a town's making (town_flow.rs, edits.rs TOWN-FLOW-HAND)
+        Edit::Forbid { town: t, method } => format!("{} was turned off in {} by hand", way(method), town(*t)),
+        Edit::Allow { town: t, method } => format!("{} was turned on again in {} by hand", way(method), town(*t)),
+        Edit::CloseKind { town: t, good } => {
+            let label = s.content.good_name.iter().position(|n| n == good).map_or(good.replace('_', " "), |g| s.content.good_label[g].to_lowercase());
+            format!("the works making {label} in {} were ordered closed and forbidden", town(*t))
+        }
     }
 }
 
