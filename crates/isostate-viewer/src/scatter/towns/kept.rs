@@ -2421,7 +2421,7 @@ mod tests {
     /// runs named in `ISOSTATE_CURVE_RUNS` (paths to `run.bin`, apart by
     /// `;`): in 1850, 1900 and 2050, every house laid out, and how many stand
     /// within 0.02 of a square (40 m) of the middle line of a road drawn,
-    /// straight as before and on curves. No house moves either way (the town
+    /// straight as before, on the curves alone and over the ground. No house moves either way (the town
     /// reads no course); what the count says is how many a curve runs over.
     /// Run by hand, with
     /// `cargo test -p isostate-viewer houses_beside_the_curves -- --ignored --nocapture`.
@@ -2439,8 +2439,9 @@ mod tests {
                     continue;
                 }
                 let mut said = Vec::new();
-                for straight in [true, false] {
-                    crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(straight));
+                for how in ["straight", "curves", "ground"] {
+                    crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(how == "straight"));
+                    crate::road_course::CURVES_ALONE_IN_TEST.with(|a| a.set(how == "curves"));
                     let g = world::build_ground(&r);
                     let l = laid(&r, &g, k, &|_, _| false);
                     let mut segs: std::collections::HashMap<(i32, i32), Vec<(Vec2, Vec2)>> = Default::default();
@@ -2460,8 +2461,9 @@ mod tests {
                             p.distance(a + ab * t) < 0.02
                         })
                     }).count();
-                    said.push(format!("{} {near} of {} houses", if straight { "straight" } else { "curves" }, l.standing.len()));
+                    said.push(format!("{how} {near} of {} houses", l.standing.len()));
                     crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(false));
+                    crate::road_course::CURVES_ALONE_IN_TEST.with(|a| a.set(false));
                 }
                 println!("{path} {year}: within 0.02 of a road's middle line: {}", said.join(", "));
             }
