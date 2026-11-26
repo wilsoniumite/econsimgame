@@ -198,7 +198,9 @@ pub struct SquareBook {
     /// By cell: its table's place in `tables` plus one, or 0 where it has none.
     pub index: Vec<u32>,
     pub tables: Vec<Table>,
-    /// Places in `tables` given up, to be used again.
+    /// By cell with no table now: the place of the table it last had, plus one,
+    /// or 0. A table given up stays in `tables`, empty, with its ground worked
+    /// out, for when its cell is built on again.
     spare: Vec<u32>,
     /// By works: its squares.
     pub works: Vec<Holding>,
@@ -462,6 +464,14 @@ fn score(t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
     }
 }
 
+/// `score`, kept in `memo` once worked out.
+fn scored(memo: &mut [f32; PER_CELL], t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
+    if memo[k].is_nan() {
+        memo[k] = score(t, fr, k, want);
+    }
+    memo[k]
+}
+
 /// What a works of method m looks for.
 fn works_want(C: &Content, m: usize) -> Want {
     if C.good_name[C.method_out[m]] == "services" {
@@ -513,7 +523,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
 fn start_book(st: &mut State) {
     let N = st.N;
     let w = st.world.W;
-    let mut book = SquareBook { index: vec![0; N], rivers: vec![Vec::new(); N], ..SquareBook::default() };
+    let mut book = SquareBook { index: vec![0; N], spare: vec![0; N], rivers: vec![Vec::new(); N], ..SquareBook::default() };
     if let Some(lf) = st.world.landform.as_deref() {
         for r in &lf.rivers {
             for i in 1..r.x.len() {
@@ -539,19 +549,17 @@ fn table_of(st: &mut State, c: usize) -> usize {
     if k > 0 {
         return k as usize - 1;
     }
-    let t = new_table(st, &st.sq, c);
-    let book = &mut st.sq;
-    let k = match book.spare.pop() {
-        Some(k) => {
-            book.tables[k as usize] = t;
-            k as usize
+    // a cell that had a table before has it again, with its ground worked out
+    // already (a table given up is left empty in its place, never handed to another cell)
+    let k = match st.sq.spare[c] {
+        0 => {
+            let t = new_table(st, &st.sq, c);
+            st.sq.tables.push(t);
+            st.sq.tables.len() - 1
         }
-        None => {
-            book.tables.push(t);
-            book.tables.len() - 1
-        }
+        k => k as usize - 1,
     };
-    book.index[c] = k as u32 + 1;
+    st.sq.index[c] = k as u32 + 1;
     k
 }
 
@@ -655,25 +663,27 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
     let code = tenant.code();
     let SquareBook { tables, split, short, .. } = &mut st.sq;
     let t = &mut tables[ti];
-    let base: Vec<f32> = (0..PER_CELL).map(|k| score(t, &fr, k, want)).collect();
+    // each square's score, worked out when first asked for (it reads the ground and the ways, not the tenants)
+    let mut memo = [f32::NAN; PER_CELL];
     let mut mine = [false; PER_CELL];
     for &k in &h.squares {
         mine[k as usize] = true;
     }
-    // how many sides of each square another works or a pit holds
-    let others = |t: &Table, mine: &[bool; PER_CELL], k: usize| {
-        let (x, y) = ((k % SIDE) as isize, (k / SIDE) as isize);
-        [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)]
-            .iter()
-            .filter(|(dx, dy)| {
-                let (a, b) = (x + dx, y + dy);
-                a >= 0 && b >= 0 && a < SIDE as isize && b < SIDE as isize && {
-                    let j = b as usize * SIDE + a as usize;
-                    !mine[j] && displace(t.tenant[j]).is_none()
-                }
-            })
-            .count() as f32
-    };
+    // the free squares beside what it holds, and what each is worth to it
+    let mut near_mine = [false; PER_CELL];
+    let mut cs = [0.0f32; PER_CELL];
+    for &q in &h.squares {
+        for j in beside(q as usize) {
+            if !mine[j] && displace(t.tenant[j]).is_some() {
+                near_mine[j] = true;
+            }
+        }
+    }
+    for k in 0..PER_CELL {
+        if near_mine[k] {
+            cs[k] = beside_score(&mut memo, t, &fr, &mine, k, want);
+        }
+    }
     for _ in 0..need {
         let pick = if h.squares.is_empty() {
             // where it first stands. The free ground of the cell falls into pieces
@@ -741,7 +751,7 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
                 if n < fits {
                     continue;
                 }
-                let s = base[k] - cost + 0.6 * (apart[k] as f32).min(reach) - 0.02 * (n - fits).min(150) as f32;
+                let s = scored(&mut memo, t, &fr, k, want) - cost + 0.6 * (apart[k] as f32).min(reach) - 0.02 * (n - fits).min(150) as f32;
                 if best.is_none_or(|(b, j)| s > b || (s == b && k < j)) {
                     best = Some((s, k));
                 }
@@ -750,30 +760,9 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
         } else {
             // beside its own: the best free neighbour, the more of its own beside it the better
             let mut best: Option<(f32, usize)> = None;
-            for &q in &h.squares {
-                let q = q as usize;
-                let (qx, qy) = ((q % SIDE) as isize, (q / SIDE) as isize);
-                for (dx, dy) in [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)] {
-                    let (x, y) = (qx + dx, qy + dy);
-                    if x < 0 || y < 0 || x >= SIDE as isize || y >= SIDE as isize {
-                        continue;
-                    }
-                    let k = y as usize * SIDE + x as usize;
-                    if mine[k] {
-                        continue;
-                    }
-                    let Some(cost) = displace(t.tenant[k]) else { continue };
-                    let own = [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)]
-                        .iter()
-                        .filter(|(ex, ey)| {
-                            let (a, b) = (x + ex, y + ey);
-                            a >= 0 && b >= 0 && a < SIDE as isize && b < SIDE as isize && mine[b as usize * SIDE + a as usize]
-                        })
-                        .count();
-                    let s = base[k] - cost + 1.5 * own as f32 - 0.8 * others(t, &mine, k);
-                    if best.is_none_or(|(b, j)| s > b || (s == b && k < j)) {
-                        best = Some((s, k));
-                    }
+            for k in 0..PER_CELL {
+                if near_mine[k] && best.is_none_or(|(b, _)| cs[k] > b) {
+                    best = Some((cs[k], k));
                 }
             }
             match best {
@@ -788,7 +777,7 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
                     };
                     let k = (0..PER_CELL)
                         .filter(|&k| !mine[k] && displace(t.tenant[k]).is_some())
-                        .map(|k| (base[k] - displace(t.tenant[k]).unwrap() - 2.0 * near(k), k))
+                        .map(|k| (scored(&mut memo, t, &fr, k, want) - displace(t.tenant[k]).unwrap() - 2.0 * near(k), k))
                         .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
                         .map(|(_, k)| k);
                     if k.is_some() {
@@ -814,8 +803,40 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
         t.year[k] = year;
         t.face[k] = fr.face(k).0;
         mine[k] = true;
+        near_mine[k] = false;
         h.squares.push(k as u8);
+        // the squares beside it are open to it now, and those it was beside have one more of its own
+        for j in beside(k) {
+            if !mine[j] && displace(t.tenant[j]).is_some() {
+                near_mine[j] = true;
+                cs[j] = beside_score(&mut memo, t, &fr, &mine, j, want);
+            }
+        }
     }
+}
+
+/// The squares that share a side with square k.
+fn beside(k: usize) -> impl Iterator<Item = usize> {
+    let (x, y) = ((k % SIDE) as isize, (k / SIDE) as isize);
+    [(1isize, 0isize), (-1, 0), (0, 1), (0, -1)].into_iter().filter_map(move |(dx, dy)| {
+        let (a, b) = (x + dx, y + dy);
+        (a >= 0 && b >= 0 && a < SIDE as isize && b < SIDE as isize).then(|| b as usize * SIDE + a as usize)
+    })
+}
+
+/// What free square k is worth to a holding (`mine`) growing beside it: its
+/// score, less what it costs to take, more for each side its own squares hold
+/// and less for each another works or a pit holds.
+fn beside_score(memo: &mut [f32; PER_CELL], t: &Table, fr: &Frame, mine: &[bool; PER_CELL], k: usize, want: Want) -> f32 {
+    let (mut own, mut others) = (0.0f32, 0.0f32);
+    for j in beside(k) {
+        if mine[j] {
+            own += 1.0;
+        } else if displace(t.tenant[j]).is_none() {
+            others += 1.0;
+        }
+    }
+    scored(memo, t, fr, k, want) - displace(t.tenant[k]).unwrap_or(0.0) + 1.5 * own - 0.8 * others
 }
 
 fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
@@ -1004,7 +1025,11 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
         let c = st.sq.tables[ti].cell;
         if st.sq.index[c] as usize == ti + 1 && st.sq.tables[ti].tenant.iter().all(|&x| x == 0) {
             st.sq.index[c] = 0;
-            st.sq.spare.push(ti as u32);
+            st.sq.spare[c] = ti as u32 + 1;
+            let t = &mut st.sq.tables[ti];
+            t.houses.clear();
+            t.park.clear();
+            t.year = [0; PER_CELL];
         }
     }
     st.sq.year = year;
