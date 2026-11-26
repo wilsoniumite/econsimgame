@@ -325,6 +325,25 @@ including the core's few dependencies, then 210 seconds, about as long as the
 longest program, `tests/edits.rs`), with every test passing in both. One file
 alone is `cargo test -p isostate-core --test money`.
 
+While working on the core, `--profile work` builds under the workspace's
+working profile (release in 256 pieces kept between builds; the top README,
+"Building quickly"), and `--quick` leaves out the slowest tests, named in the
+script's `QUICK_SKIPS`, and the examples:
+
+```bash
+python crates/isostate-core/run_tests.py --profile work --quick
+```
+
+On 26 November 2026, after a one-line change to `econ::step_month`, that built
+and ran 226 tests from every program in 27 to 52 seconds (66 to 108 on a
+machine wholly busy with other builds). The tests it leaves out are 209 that
+each took more than ten seconds, 98 per cent of the tests' processor time; most
+run an island for a century or more, and the golden tests are among them, so
+the quick set does not hold the port. Run the whole set (`--profile work`
+alone, about five minutes) once before a piece is handed over: every test
+passed under `work` as under dev and release. `--slowest N` lists the N tests
+that took longest, which is how the list was made.
+
 ## The sweep
 
 ```bash
