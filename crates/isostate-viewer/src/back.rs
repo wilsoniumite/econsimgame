@@ -270,6 +270,9 @@ pub(crate) fn taken_back(
     // and the roads the carts wore (`network::drawn_links`)
     g.worn.forget_from(to.filled);
     g.courses.forget_from(to.filled);
+    // and where the pits were placed: a working opened after the year gone back to may open again
+    // with the same name on another history (`scatter::pits`)
+    slots.pits.forget();
     if unis == 0 {
         slots.forget(to.firms);
     } else if slots.firm_pos.len() >= unis_from + unis {

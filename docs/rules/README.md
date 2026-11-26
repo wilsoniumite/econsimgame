@@ -934,7 +934,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
 - **works**: a life cycle for works. They grow where they stand, take land
   by their hands and stand by their town, so the island has hundreds of works
   of every size instead of thousands of small ones. [works.md](works.md),
-  `works.enabled`.
+  `works.enabled`; the ground each takes by its method and its hands at work,
+  part I there, `works.by_method`.
 - **railways**: branch lines to towns and districts, every line priced on the
   carting it saves, at five times the port's cost. [railways.md](railways.md),
   `railways.enabled`.
