@@ -437,6 +437,11 @@ pub struct Params {
     /// game's rules, on with the landfall start; see docs/rules/immigration.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub immigration: crate::immigration::ImmigrationParams,
+    /// Ideas by sea: every port has abroad for one more neighbour (not in the
+    /// Python; off under the game's rules, the isolated state, and on with the
+    /// landfall start; see docs/rules/abroad.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub abroad: crate::abroad::AbroadParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -670,6 +675,7 @@ pub fn default_params() -> Params {
         start: crate::landfall::StartParams::default(),
         frontier: crate::frontier::FrontierParams::default(),
         immigration: crate::immigration::ImmigrationParams::default(),
+        abroad: crate::abroad::AbroadParams::default(),
     }
 }
 

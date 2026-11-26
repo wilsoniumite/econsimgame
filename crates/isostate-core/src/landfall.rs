@@ -77,6 +77,8 @@ pub fn landfall(P: &mut Params) {
     P.immigration = crate::immigration::ImmigrationParams::game();
     // the trap (docs/rules/landfall.md): a short town's wage at most doubles in a year
     P.hands.short_rise = SHORT_RISE;
+    // ideas by sea (docs/rules/abroad.md): every port has abroad for a neighbour
+    P.abroad = crate::abroad::AbroadParams::game();
 }
 
 /// The people the start shares among its towns.
