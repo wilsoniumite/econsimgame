@@ -68,6 +68,7 @@ goods = [
   { name = "electricals", label = "Electrical goods", weight = 0.5, price = 7.0, color = "#b8733b", decay = 0.003, stock0 = 0.0, opens_dear = true, stage = 6 },
   { name = "oil", label = "Oil", weight = 1.0, price = 1.0, color = "#5a4a2e", decay = 0.002, stock0 = 0.0, opens_dear = true, stage = 6 },
   { name = "fertiliser", label = "Fertiliser", weight = 1.0, price = 1.0, color = "#9fb86a", decay = 0.002, stock0 = 0.0, opens_dear = true, stage = 6 },
+  { name = "care", label = "Care", weight = 0.5, price = 3.0, color = "#d9839b", stock0 = 0.0, traded = false, stock_months = 0.0, opens_dear = true, begins = "care_homes", stage = 6 },
 ]
 # The sixteen goods of the port take decay and stock0 from the tables they have always been in
 # (P.decay in params.rs, `guess` in sim.rs). Building work and town gas are not carried between
@@ -84,10 +85,16 @@ goods = [
 # Fertiliser (stage 6, the land's twentieth century: docs/rules/tree.md, "Oil, nitrogen and the land"):
 # nitrogen fixed from the air, which only the nitrogen works make and only the farms that keep nitrogen
 # buy. It keeps, and it opens at its ceiling price, as oil does: nobody has it until a works makes it.
+# Care (stage 6, docs/rules/care.md): nursing, doctoring and minding the old and the sick, done where the
+# people are. It is not carried between towns and not kept (`stock_months = 0`): an hour of a nurse's
+# time is had in the month and the town it is given, or not at all. It opens at its ceiling price, as
+# electricity does, and begins with its method (`begins`), so that it moves nothing before the island finds
+# it. Its weight is small: people come to a hospital, the hospital is not carried to them.
 
 [services]
 # Two needs are added. "warmth" keeps its name and is shown as "Fuel and light": gas sells into it, and
 # after 1900 so will whatever a household burns or switches on.
+# A third need, care, comes with stage 6 (`[[services.change]]`, at the end of this table).
 names = ["food", "warmth", "shelter", "clothing", "implements", "comfort", "table", "wares"]
 labels = ["Food", "Fuel and light", "Shelter", "Clothing", "Implements", "Comfort", "Drink and groceries", "Household goods"]
 subsistence = [1.0, 0.25, 0.06, 0.03, 0.002, 0.0, 0.0, 0.0]   # per head per month; unchanged, none for the new needs
@@ -103,6 +110,21 @@ shares_rich = [0.05, 0.06, 0.2, 0.17, 0.07, 0.28, 0.07, 0.1]   # far above it, f
 shares_lean = [0.05, 0.06, 0.14, 0.03, 0.07, 0.48, 0.07, 0.1]
 lord_shares = [0.03, 0.07, 0.28, 0.19, 0.07, 0.24, 0.04, 0.08]   # (the port: 0.04, 0.08, 0.30, 0.22, 0.08, 0.28)
 theta = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 2.0]   # household goods are unlike each other: at 2.0 each keeps its share of the money
+
+# Stage 6, care (docs/rules/care.md): a ninth need, which only the good care serves. It has no share in any
+# set here, so that nothing moves before the island finds care: its rule (`care.enabled`) gives it a share
+# of the richer set town by town, by how old the town is and how far the idea has reached it, and the other
+# needs give it room in proportion. Below stage 6 there is no good to serve it, so it is not laid at all.
+[[services.change]]
+stage = 6
+names = ["food", "warmth", "shelter", "clothing", "implements", "comfort", "table", "wares", "care"]
+labels = ["Food", "Fuel and light", "Shelter", "Clothing", "Implements", "Comfort", "Drink and groceries", "Household goods", "Care"]
+subsistence = [1.0, 0.25, 0.06, 0.03, 0.002, 0.0, 0.0, 0.0, 0.0]
+shares = [0.25, 0.13, 0.2, 0.17, 0.07, 0.09, 0.06, 0.03, 0.0]
+shares_rich = [0.05, 0.06, 0.2, 0.17, 0.07, 0.28, 0.07, 0.1, 0.0]
+shares_lean = [0.05, 0.06, 0.14, 0.03, 0.07, 0.48, 0.07, 0.1, 0.0]
+lord_shares = [0.03, 0.07, 0.28, 0.19, 0.07, 0.24, 0.04, 0.08, 0.0]
+theta = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 2.0, 0.25]
 
 [services.props]
 building = { shelter = 3.0 }   # stone, brick and timber put up by men who know how
@@ -131,6 +153,7 @@ paper = { wares = 1.3 }
 electricity = { warmth = 11.0 }
 electricals = { wares = 5.0 }
 oil = { warmth = 3.5 }   # stage 6: lamp oil and paraffin; the travel it serves is a later stage's
+care = { care = 1.0 }   # stage 6: the one good that serves the need of care
 
 [heat]
 # None of stage 1's goods is burnt for heat in a works: gas warms and lights houses only. Electricity
@@ -1276,3 +1299,44 @@ found_after = 1905
 stage = 6
 headline = "Motor lorries on the road at {town}"
 story = "{who} bolts an oil engine to a steel chassis at {town} and sells the first motor lorries to the carriers. One driver takes in a morning what a carter and two horses took in a week, if the road will bear it."
+
+# ====================================================================================================
+# Stage 6, care (docs/rules/care.md): nursing, doctoring and minding the old and the sick, made in towns by
+# hands and a little plant. Not a works of machines: every hour of it is presence (data/tasks.toml), so no
+# machine of the tasks' rule takes any of it, and it learns nothing by doing (no `Q0` or `b`): a nurse in
+# 2050 sees to as many patients in an hour as one in 1911. Nor has it economies of size: its hands a unit
+# are the 0.8 below in a works of any size and in any town (`econ::firm_coefficients`), where every other
+# works takes more hands a unit below its usual size and fewer in a large town. Its good, care, begins with
+# this method.
+# Found as an invention is, by the tree's hazard, on services and chemicals made since 1750 (the trade of
+# counters and the chemists' trade: medicines, soap, antiseptics), with a floor (`found_after` 1908); it is
+# sought only while its rule is on (`care.enabled`) and draws its numbers from a stream of its own
+# (`rng::idea_stream`), as the tending ideas do, so that every other idea is found when it was. By 1908
+# every island has made far more than both thresholds (the offices, found from 1901, wait on the same
+# 41 million of services), so the hazard is near its most and the island finds care some five years on.
+# History's year (`target`): 1911, when the insurance of the working man against sickness was made law
+# and paid the panel doctor and the district nurse; the cottage hospitals and the trained nurse came in the
+# decades before it.
+# At base prices: sells 3.00; inputs 0.18 (chemicals 0.04), heat 0.11 (0.3 a unit, wards and laundries),
+# labour 2.00 (0.8 at a wage of 2.5); cost 2.29; margin +0.71 (24%): seven eighths of its cost is hands.
+# Plant 12.9 a unit of monthly capacity at base prices (0.36 years of output; wards and homes: building 5.0,
+# steel 0.1, machinery 0.04). K0 400: some 320 hands at its usual size, a hospital of a large town.
+# ====================================================================================================
+
+[[method]]
+name = "care_homes"
+label = "Hospitals and homes of care"
+output = "care"
+inputs = { chemicals = 0.04 }
+heat = 0.3
+labor = 0.8
+capital = { building = 5.0, steel = 0.1, machinery = 0.04 }
+K0 = 400.0
+known = false
+A0 = 1.0
+discover = { services = 41000000.0, chemicals = 6200000.0 }
+target = 1911
+found_after = 1908
+stage = 6
+headline = "A hospital and a nurses' home at {town}"
+story = "{who} opens wards and a home for the old at {town}, staffed by trained nurses, with a doctor paid by the members' pennies. The sick who were nursed at home by their daughters are nursed here by strangers who know how."

@@ -56,7 +56,7 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         let s: f64 = C.tasks.method[m].iter().sum();
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
-    assert_eq!(C.M, 50, "the 44 of the tree's stage 1 and the six of stage 6 (docs/rules/tree.md, \"After 1900: electricity\", \"Oil, nitrogen and the land\" and \"Offices and steel frames\")");
+    assert_eq!(C.M, 51, "the 44 of the tree's stage 1 and the seven of stage 6 (docs/rules/tree.md, \"After 1900: electricity\", \"Oil, nitrogen and the land\" and \"Offices and steel frames\"; docs/rules/care.md)");
     // the content after 1900 lays the electric drive, the tractor, the cutter and
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it
@@ -602,7 +602,9 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // history after 1900 founds such a saw pit too (in 1971). And with who works by
     // age off (docs/rules/who-works.md), which came after: with the purse off it
     // still counts the hands by age from 1901, and its history founds such a saw pit
-    // in 1971 too
+    // in 1971 too. And with care off (docs/rules/care.md), which came after: its works
+    // have no clerking either (every hour of theirs is presence), and one founded after
+    // office computing raised its town's target means to hold it, as such a saw pit does
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
@@ -613,6 +615,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
         P.city.dear_room = false;
         P.state = Default::default();
         P.who_works = Default::default();
+        P.care = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end

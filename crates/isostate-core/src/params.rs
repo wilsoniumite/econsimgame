@@ -432,6 +432,11 @@ pub struct Params {
     /// game's rules, on with the landfall start; see docs/rules/immigration.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub immigration: crate::immigration::ImmigrationParams,
+    /// Care: a need for work of presence in the towns, which richer and older
+    /// households buy more of and no machine takes (not in the Python; see
+    /// docs/rules/care.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub care: crate::care::CareParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -664,6 +669,7 @@ pub fn default_params() -> Params {
         start: crate::landfall::StartParams::default(),
         frontier: crate::frontier::FrontierParams::default(),
         immigration: crate::immigration::ImmigrationParams::default(),
+        care: crate::care::CareParams::default(),
     }
 }
 
@@ -755,6 +761,10 @@ pub fn game_params() -> Params {
     // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
     // street, where what they save pays
     P.highways = crate::highways::HighwayParams::game();
+    // care (docs/rules/care.md): from the island's find of it, a need for work of
+    // presence in the towns, which richer and older households buy more of and no
+    // machine takes
+    P.care = crate::care::CareParams::game();
     P
 }
 

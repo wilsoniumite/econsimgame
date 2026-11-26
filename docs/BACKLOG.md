@@ -276,7 +276,7 @@ Every fault and line for the backlog that the builders' and landers' notes have 
 - `examples/save_state.rs` carries `city: Default::default()` but never `st.city = carry.city`, so the city's state is dropped by the probe's round trip (ages-watch).
 - **Dear years told as news of their own,** now that the news reads what is made (30324eb): the dear years of timber are no longer told as slumps, and so are not told at all (ranked on 20 November).
 - **The machines' month kept between months.** The tasks rule's month is a fifth of a run and of the viewer's year of about half a second; reckoning it once and keeping it should save most of that. The game's golden must hold (ranked on 20 November).
-- **The month's long function split** into phases (the first step back).
+- **The month's long function split** into phases (the first step back). *26 November:* the form it takes is one ledger of buyers ("Agreed in the same talk", 1).
 
 **The loop** (the gate, the builds, the tests and the documents):
 
@@ -386,6 +386,57 @@ All the family game's rules and decisions are open to change, and nothing in it 
 - *Exports and the price rule* (R78, C11). The rule's flow term cannot see exports, so an exporting town reads as a glut; mending it took the families' share of all money from 10 per cent to 66 in the probe. `docs/rules/prices.md`, "An open question for Stella". *Decided:* parked, because mending it rebalances the family game, which is the loop's own ground; the pass leaves it (section 6). *19 November:* now the managing session's to decide.
 - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year. *Open;* now the managing session's to decide.
 - *A toast for a works she orders by hand* (R31, C73). Today it may get none and no place in the major feed; the checked table files it with the core loop. Where: one condition in the viewer's `main.rs`, toasting the player's own items at a weight of 0.6 or more. *Open;* now the managing session's to decide.
+
+## The language and interface pass (her notes of 26 November)
+
+Her notes are at the foot. She agreed to the outline on 26 November: "It looks good, and I like what you added".
+
+- **What she asked.** A matter-of-fact, descriptive tone. Tooltips inside tooltips that lock on a timer. Links of more than one kind in different colours, one kind to Wikipedia. Terms, numbers and symbols on the panels and sentences in the tooltips, so that the tooltips form a graph a player can learn from. No tutorial where curiosity can do the job.
+- **What a first count found** ([probes/words.md](probes/words.md)). About 3,300 strings and 15,000 words that a player can meet, 330 of them over 12 words, and no tooltip anywhere to hold them. The commonest faults: one word with several meanings (hand, works, found, way), one thing with several words (the year's turn, a town's district), and a description where a name exists ("What a wage buys" for the real wage).
+- **Agreed in outline.** The tone of the sketch she was shown: terms and numbers on the card, short plain sentences in the tooltips. Three kinds of link: a term, a thing on the island, Wikipedia. Every number explained in its tooltip. The game's text moved out of the code into data, begun with a glossary. The news kept as prose. A test that holds the rules.
+- **In flight: `night/g-tips`.** The tooltip that locks and nests, the first glossary (`data/words.toml`, thirty terms), and the firm's card as terms and numbers. Started on 26 November by the session that talked the pass through, with a builder's usual instructions; it builds only, on `night/g-batch-grid-a`. Brief: `.claude/night/briefs/tips.md`. Notes: `.claude/night/reports/go/tips/build.md`. **For the managing session: the landing is yours,** alone or in a batch, when the builder has reported. With it comes `docs/designs/words.md`, the rules for words on the screen. Once that page is on `main`, go.js's VOICE paragraph should send a builder to it for any text the game shows.
+- **Hers to strike:** the first table of terms in that page, told to her on 26 November. Firm for works, worker for hand, edit for "by hand", discovered for found, market area for district, site for square, 1 January for the year's turn. A row she strikes is changed in one file.
+- **After it, in Claude's order:** the cards of a town and of the country; the tools' messages and the Hand tab's log; the map views' captions; the top bar and the island half of Markets; the news, shortened and linked; the Rules panel with real names; the family game's cards last, since that game is parked. The rest of the game's text moves into data as each panel is turned over.
+- **Held from 26 November, so that the pass does not grow while it waits (Claude's decision).** New text for a panel, a card or a toast is a term and a number where it can be, and no new sentence there is longer than 12 words. A piece that needs to explain more says so in its report, and the explanation waits for the tooltips.
+
+## The clean-out (her notes of 26 November, after a talk about the architecture)
+
+Her notes are at the foot. They came from a fork in which the architecture was walked through and what breaks from the game's own ideas was named. Nothing is built for them and nothing is started. What is said to be so was counted on `main` at fb4e82b.
+
+- **1. Forget the Python, and the port with it.** *What she asked:* the Python model no longer constrains the game, and the repository need keep no memory of it or of the port; the paper and its ideas guide. *What is so:* the default parameters and content are still the Python's (`default_params`, `default_content`, `Rules::Port`), and the game is laid over them by its switches. 57 of the core's source files say "Not in the Python" at their head. 42 of the core's 65 test files play under the port's rules. The documents say "the port" about a thousand times. Some 8,000 tracked lines exist for the Python alone: the package `isostate/`, the web viewer, the notebook, `PORTING.md`, `tests/parity.rs` and most of `parity/`. Sums are added in numpy's order, which is why a good added later had to be kept from moving the run (`Content::G_base`). *Proposed by Claude, not agreed,* as three pieces that can land apart:
+  - (a) What moves no hash. The Python's own files leave the tree (git's history keeps them), with the parity tests and their page. The words go too: no module is described by what the Python lacked. `parity/tree_fit.py` and `parity/check_facts.py` are tools of the game and stay, in a folder with another name.
+  - (b) The game's rules become the only rules. `default_params` is the game; the port's golden test goes; the tests that play the port move onto the game, a file at a time; `data/content.toml` and `data/game.toml` become one file. The switches stay, since the core's table and the Rules tab turn them.
+  - (c) Rule by rule, at a pass of the simple core. Where "off" asks a question of the island (carting that takes hands, canals, the harvest), the switch stays. Where "off" is only the Python's older arithmetic (money counted while the month's incomes are between purses; six works of one trade on one square), the switch and the old arithmetic go. Her note of 19 November, to turn a rule off and not cut it, is about rules found idle, and still holds for them.
+
+  Pieces (a) and (b) touch most files of the core, in comments or in tests, so each goes as one piece when no builder is in the core.
+- **2. One run, 1750 to 2050.** *What she asked:* the pages that speak only of 1750 to 1900 brought to speak of the whole run, since the years after 1900 matter as much. *What is so:* the head of the core's `lib.rs` and the crate's description say "1750 to 1900" and "a Rust port". The README's "Where it stands" is of 13 November and `PLAN.md` of 12 November, both of an island that ends in 1900. "The played century" stands 57 times in the documents and 9 in the source. `isostate-core run` and `sweep` end in 1900 unless told `--end-year 2050`. The standing check's twelve facts and the scorecard's twenty aims are all of 1750 to 1900. *Proposed by Claude, not agreed:* the pages first (the README's account, `PLAN.md`, the crates' own pages, the heads in the code); then 2050 as the year a bare command ends in; then facts of the years after 1900 among the standing check's own, once note 3 is done.
+- **3. No seam at 1901.** *What she asked:* rules should not switch on at 1901, which is arbitrary; a rule that must begin later can come in as an idea does. *What is so:* about a dozen rules act only from 1901, each so that 1750 to 1900 could not move while the run to 2050 was built. Six are settings today: `ground.from`, `city.from`, `pace.from`, `engel.lean_from`, `longrun.freight_from` and `ground.tram_after`. The others are constants in the code: who works by age, the railway's handling and a road's own wear, made roads kept, the land machines' ramp (all 1901), trunk roads (1909) and bypasses (1920), and the state's book, which enacts nothing before 1900. Eleven ideas of the content also carry a year before which they cannot be found (1895 to 2030). So to 1900 a town's hands are half its people whatever their ages and people move toward income a head, and from 1901 hands are counted by age and people follow jobs. *From her note, at once:* no new rule is gated on a year. *Proposed by Claude, not agreed:*
+  - A table first, like the core's: each gate set back to 1750, one at a time and then together, on islands 1 to 8 to 2050, read against the standing check. It needs the constants made settings. It says which rules go back cheaply and which need a cause.
+  - Then rule by rule. An account of the world that is simply truer runs from 1750 (the pace of building, the railway's handling, a road's own wear, hands counted by age, people who follow jobs, rent that clears the room there is), and the standing check's reference is taken again with the reason said. A rule that stands for something the island comes to have begins with it, as a good may already begin with an idea (`begins`): made roads kept and trunk roads with the motor vehicle, the lean in what households buy with their income and not a year. The state's book of acts is the politics to come and stays a book.
+
+  It belongs with the simple core (The order of work, 4), after the ablation pass over the week's rules and before more rules for the years after 1900 are tuned on the seam.
+- **4. Progress on a schedule.** *What she said:* it is somewhat all right and a possible weak spot, and it may stand while it follows history. Later the same day she agreed to machines that learn, with conditions ("Agreed in the same talk", 4, below). *What is so, for whoever takes it up:* a machine for tasks is better by a fixed share a year from its find to a cap (2 per cent for office machines, 5 for office computing, 9 for the lorry: `pace` and `cap` in `data/tasks.toml`); the ceiling on the land machines' quality rises a tenth a year from 1901 (`machines.ramp`, called a stand-in on its page); eleven ideas have a year before which they are not found; medicine in the people's ages is known by the year. The methods' own learning is by what has been made, and the land machines' by the steel poured. *What is to be built:* "Agreed in the same talk", 4, below.
+- **5. The look follows the methods people use.** *What she asked:* that the look and feel follow the methods people actually use. *What is so:* after 1900 a lot's form reads its town's knowledge for the steel frame and electricity, and stand-in years for the lift, concrete, the curtain wall and the motor car. Before 1900, and in the estates and streets after, the picture goes by the calendar: thatch gone by 1800, slate from 1815, brick for works from 1790 and iron and glass from 1840, estates by the years 1918, 1944 and 1969, tar from 1920, enclosure between 1755 and 1835. An island that finds an idea forty years late is drawn on England's dates. *Proposed by Claude, not agreed:* the record already holds each town's knowledge and prices by the year, so (1) a wall or a roof takes the material that is made or cheap in its town the year it is built; (2) the forms' four stand-in years become ideas of the content as each is added, the motor car with the car; (3) estates and street surfaces go by what the town knows. It belongs with the look (The order of work, 3), after the streets' surface.
+- **Truth in systems, kept in view.** She hopes these improve as the game is developed, with no rush, and no piece is owed. The three named in the talk: a town's townsfolk are a formula on the hands in its works, so nobody lives anywhere; the people's ages are fitted under a town's one number, and who works, the pensions and the university now read them; pay by class of task is reckoned from the island's one wage a town and not played. The small squares' residents and the people's line are where the first two are met.
+
+## Agreed in the same talk: five changes to the core (her answer of 26 November)
+
+Her answer is at the foot. Shown, for each of five things, what is done today, why it is not great and what Claude would do, she agreed to all five, the fourth with conditions and left to Claude. Nothing is started. The numbers are those of her answer.
+
+- **1. One ledger of buyers for the month.** *Agreed* ("I like it, sounds like a good change"). *What is so:* eleven kinds of buyer are each written out by hand at five steps of `econ::step_month` (asking, filling, handing over, paying, the books): households; landlords; works' inputs and fuel; the land's machinery and rails; its fertiliser; the land's machines for tasks, the carters' lorries and the works' machines for tasks, each with fuel and plant; works' orders for capacity; railways and canals; the university's rooms. The function went from 887 lines on 12 November to 1,359. `pace` reaches one of the four kinds of order for plant (`econ.rs`, at "pace"); the other three still ask a quarter a month in code of their own (`tasks.rs`). *What is to be built:* one list of asks (town, good, how much, the day's trade or plant, who pays), filled once, each rule handed what its lines got, and the books reading the list. It is the form "the month's long function split" takes (5, the loop). *How:* a buyer at a time with both golden tests held at each step, the order of adding kept, when no builder is in the month. Whether `pace` should reach every order for plant is decided there, in one line.
+- **2. No seam at 1901.** *Agreed.* It is the clean-out's note 3, above.
+- **3. People played by age, then pay by class.** *Agreed.* *What is so:* a town's people are one number moved by a yearly rate (`peopling::growth`); the seventeen age groups beneath it take births as the remainder (`ages.rs`); and who works, the pensions, the schools and the university read those groups. *What is to be built:* the age groups played, and a town's people their sum: deaths by age as they are reckoned now, births from the women of an age at a rate that falls with income and schooling, movers by age. It takes the place of the yearly rate, the transition's cut and the fitted table. It changes the order of the people's line's last steps (The run to 2050, "Left on it"): the ages played come before wages by class of task, since a cohort's schooling decides who can clerk. It moves every island from 1750 and needs tuning of its own; in no rush, by her word.
+- **4. Machines that learn.** *Agreed, with her conditions, and left to Claude.* Her conditions: a base rate; a brake, so that having lorries does not find what needs something else; and what is possible capped by discoveries. *What is so:* a machine for tasks is better by a fixed share a year from its find to a cap, and an idea of the content may carry a year before which it is not found. The tending machines are already four generations, each an idea; the lorry is one machine from 1905, nine per cent a year to a cap of 50. *Decided by Claude:*
+  - A machine is a ladder of generations, each an idea of the content with a ceiling, as the tending machines already are. The hauling machines get theirs, the lorry first (a sketch: the diesel engine, the articulated lorry, the container, routing by computer).
+  - Within a generation a machine is better by what has been built of it, a share for each doubling, as a method learns by what it has made, up to its ceiling. A machine nobody builds stands still.
+  - The next generation is found as an idea is: only once the present one is worn in, near its ceiling, and the island has handled the goods the new one combines (routing by computer needs computing made, whatever the lorries have done); then by chance, a year at a time. That is the brake. It takes the place of the years before which nothing is found (the clean-out's note 3).
+  - The base rate is the island's study: hands whose time goes to finding things out. It raises every idea's yearly chance and betters every machine a little a year. First it is the universities' teachers, who are hired and paid already (`university.rs`), over a floor that is a stand-in for the rest; then patrons, the rich paying scholars from 1750, a rule of its own with real hands and money; then people's own free hours, when hours are a choice.
+  - It is fitted so that the mean of islands 1 to 8 keeps today's dates, by the fitter that sets the tree's thresholds (`parity/tree_fit.py`): history's schedule on the mean island, as she allowed, and each island's own story round it. The yearly share stays as the rule's off and as a dial of the sandbox. The same ladder lets the land machines' ramp go ("learning whose cap follows discovery", The run to 2050, "Left on it").
+  - *In stages:* the learning behind a switch, on today's machines and finds, after the ledger (machines are then delivered at one place and can be counted); the generations and their thresholds with the seam's pass; study after that.
+  - *Unsure:* whether learning by building runs away on a rich island before the ceilings hold it, and whether a poor island's first lorry ever pays. The first stage's sweep is to say.
+- **5. A month of its own for each works' review.** *Agreed* ("yep, I really like that"). *What is so:* every works is reviewed, and new works founded, in one pass at the year's end (`firms::review`, `firms::entry`), each trade's year's room handed out then. The building cycle (timber's price threefold to fivefold every four or five years) was traced to those orders placed together, and `pace` spreads their deliveries from 1901. *What is to be built, behind a switch:* each works reviewed in the month it was founded, on its own last twelve months; works founded in any month, the year's room a twelfth a month; paths, land and people still by the year. *Read by:* timber's and bricks' swing over the whole run with it off and on, and with `pace` off and on, on islands 1 to 8 and 17 to 32. It gives every island a new history.
+
+*Claude's order, for the managing session to place:* the ledger first, since it moves nothing and the rest is built on it; the review by the month second, as a switch to measure; the seam's table with the simple core's next pass; machines that learn after the ledger, their generations with the seam; the ages played when the people's line comes round.
 
 ## Towards a release (26 November)
 
@@ -757,3 +808,112 @@ Right. The chaos is mostly missing streets: a square of a town filled whole afte
 > I'm thinking that the sandbox part might be one mode that you can play in, and then I'm not sure about the second. I'm leaning something more political than the current family game, or just take the families and make politics much more central. Really undecided on that though, that comes much later.
 
 What a release needs is listed under "Towards a release"; none of it is started. The second was said of a draft of the store page's words that gave Claude the code and her the design: who made what is to be said plainly wherever it is said. The modes are filed with the family game, parked. What she said of the price and of the store page's wording is hers and is not kept here. Done the same day, since she agreed to it and it touches no code: the licence texts at the root, with the name kept out of the grant.
+
+**26 November 2026, on a language and interface pass.**
+
+> I want to do a language and UI pass on the game at some point. I don't dislike the language, but it's a bit hard to read, a bit "claudish" so to speak. Maybe that's the AI fingerprint that you are obligated to have, but hopefully we can still work something out. To do that, I think we should collect our most common terms and turns of phrase, try and work out what's wrong.
+>
+> As a general guide, i want the tone to be matter of fact and descriptive. In general for the UI I would like
+>
+> 1. Tooltips in tooltips, with timed locking, an idea borrowed from vicky 3
+> 2. links to wikipedia pages, meaning a highlighted word or phrase either opens another tooltip after a while of hovering, or you click and it opens wikipedia (different colors for the different kinds of links).
+> 3. On any ui element there should be not much in the way of sentences, sentences go into tooltips. Tooltips shuld essentially form a wikipedia like graph where players can learn, about the game, the simulation, or economics. On the UI, we use numbers, single words or terms or short phrases, symbols, that sort of thing.
+> 4. I'm hoping to mostly avoid a tutorial, in that hopefully player curiosity and quality of the UI and tooltips will be enough in most cases. Maybe near the end of the game when we have an idea for what the family mode (boyond the sandbox mode) will be.
+>
+> These are just ideas, thoughts? More ideas or considerations?
+
+Filed under "The language and interface pass". The terms and turns of phrase were counted the same day ([probes/words.md](probes/words.md)), and a sketch of one card under her four rules was shown to her. Nothing is built.
+
+**26 November 2026, after a talk about the architecture.** In a fork, shown how the code is built, what is left over from its beginnings and what breaks from the game's own ideas (emergence, truth in systems, continuous and discrete), she answered:
+
+> Ok yeah, a few cleanup items should go into the backlog I think
+>
+> 1. Forget the python. It doesn't need to constrain us, and arguably I'm not sure if we need to keep any memory of it at all. the paper, the ideas are what guide us. can clean out all that and memory of the port too
+> 2. a cleanup of a few of the pages that still focus only on the 1750-1900 runs, the run from 1900 to 2050 is just as important, so i think we should be consistent in talking about 1750 to 2050.
+> 3. We probably should not have those 1901 seams, if necessary they can maybe come in like ideas/techs, but having them at 1901 is arbitrary.
+> 4. progress on a schedule is somewhat OK, but yeah it's a possible weak spot. It's ok if it's historic at least for now.
+> 5. yeah it would be nice if we could make sure the look and feel follows the methods people actually use.
+>
+> I'm hoping that those truth in systems things will go in the right direction as we keep developing, we're in no emergency rush, but yeah I hope we can improve them.
+
+Filed under "The clean-out", each with what is so today and what Claude proposes. Nothing is started. What the talk proposed beside these (one ledger of buyers for the month, people played by age with pay by class, machines that learn by doing, a month of its own for each works' review) is Claude's and was still being explained to her that day; it is not filed until she has answered.
+
+**26 November 2026, later the same day, shown a sketch of one card and what Claude would add.**
+
+> It looks good, and I like what you added
+
+The outline of the pass is agreed with that, and its first piece was started the same hour ("The language and interface pass").
+
+**26 November 2026, the same talk about the architecture, on what Claude would do.** Shown, for each of five changes, what is done now, why it is not great and Claude's idea (one ledger of buyers for the month; the seam at 1901; people played by age, then pay by class; machines that learn by doing; a month of its own for each works' review), she answered:
+
+> 1. I like it, sounds like a good change
+> 2. agreed
+> 3. agreed.
+> 4. agreed but a base rate should be there, maybe that base rate scales with universities, or super wealthy capitalists throwing money at untargeted r&d, or perhaps also the amount of leisure time generally people have. And perhaps also we might need a brake. Just because you have lorries doesn't mean you can discover, idk, gps super early, so this one might be tricky, capability might be stymied by lack of investment, but max capability might still be capped by random discoveries, idk. Tricky, up to you.
+> 5. yep, I really like that.
+
+Filed under "Agreed in the same talk", the fourth with what Claude decided. Nothing is started.
+
+**26 November 2026, morning, on scale.**
+
+> Ah, one big question that could change things a lot: is there an economies of scale multiplier? That a larger work is just a bit more efficient? Should we have that?
+>
+> My guess is that it would encourage cities to specialise, and might push works out of city centers as they need more space to get big and lose out to works on the outside where land is cheaper.
+
+Answered by a study the same day. There is a scale term already, from the port (`econ.rs`, `firm_coefficients`). No multiplier is added. What holds works small and moves them out is the room rule (2,000 hands to a cell), not the curve and not the price of ground. Stages proposed: a lease reviewed every 21 years, offices on a tenth of the ground, and after that works large enough to make one-employer towns. They wait for a second measure on the mended island and for the decision on the ground's squares (the four notes on the grid, below).
+
+**26 November 2026, on one-employer towns, and on trends.** The words in brackets about herself are left out, as marked:
+
+> well, small towns with a single employer is historical, as is those towns suffering when that employer closes. I think your ideas are worth investigating yes. also, if we don't have them already (…) ways of viewing trends. Like, many of the map views might show current population, but if I could press a trend button that recolors based on some years of change/trend, that would be really cool I think.
+
+Towns with one employer are wanted and not to be damped; the study found that none arises on the island today. A Trend switch on the map views and a "What's new" card in the game landed together the same day, in the batch `night/g-batch-care-a`.
+
+**26 November 2026, on leaving the grid.**
+
+> I have a possible big ask of you. I realise, a lot of the visuals are based on a grid. I know that underneath, we talked about how the game should be smooth and continuous (I hope this is still the case), but do you think we could move away from a grid entirely (at least the coarse one), including for the visual layer? That means not being able to click squares on the map, but I'd be OK with that, and then map views and clicking on works themselves, or town names/buildings, or town land would be how you select things. I hope that might actually improve the look a lot, especially for the current grid of roads
+
+**26 November 2026, a little later, on smaller squares.**
+
+> hmm, ok, but then perhaps also decreasing the size of the squares? I know that might cause a performance hit, but I feel like it's still a little too coarse for the economy to be as smooth as I'd like it to be. that would allow roads to look a bit more natural (most square connections may not have a visible roads)
+
+**26 November 2026, on inverting the logic.**
+
+> perhaps it means inverting the logic for a lot of things. Right now, we have a grid square that contains some portion works, houses, land, etc etc etc. Switching it up so that grid squares are small enough that a single works might cover multiple squares, but that a single square can't be split between works and houses, for example. That's a big change I know, but inverting it might mean we can still make sure the sim is fast by imposing new simplifications on grid squares? Is that better, or just meaningless? How much does it break, how much might improve?
+
+**26 November 2026, on placing what is built.**
+
+> Alright, yes, I realise this changes a lot but I have a vague feeling it's a step in the right direction. It also may mean we need to change a lot how we procedurally place assets. We can fudge it with the assets we have now for now (best fit sort of thing), later down the line, industries might prefer to be mostly rectangular (insofar as they buy squares), and some procedural rules to then fill allotted squares (naïve largest rectangle packing perhaps, but rebuilding and therefore recomputing has a real build cost, which should stop industries from jumping around in how they look, idk, there's lots of opportunity there for both fun and realistic algorithms)
+
+For the four notes on the grid together: the direction is agreed. Nothing seen or touched is to be a square, and the simulation's ground is to move from cells of two kilometres that hold shares to small squares of one use, with works, blocks and fields as things that span them. Measured the same day: the island runs on cells of one kilometre with three numbers changed, taking 3.1 times as long, and a works on one cell would be held to 400 hands there, which is the case for the inversion. Three designs and a judge are deciding the stages; the look of a town's ground, the car's suburbs and a works that gives up its ground wait for that verdict.
+
+**26 November 2026, on finding deposits, charting, and an island settled from one town.**
+
+> Another thought/question I had: deposit discovery and prospecting, charting. I'm guessing the game doesn't really have a mechanism for this? I'd love a new island which starts with a single town in one corner, which only has mapped it's surrounding area, and watching people spread over the years. Perhaps it could become the main map if it works well.
+
+The game has neither (every deposit is known from 1750, and the island starts with six towns and 135,000 people). A trial of one town in a corner on today's rules was started the same day, with maps every 25 years. Proposed: a second start beside today's, with land that is charted or not, deposits unknown until found, and land beyond the settled country granted or sold; "charted" and "held by" to be facts of the ground's small squares from their first stage.
+
+**26 November 2026, on two starts as equals, on deposits not yet known, and on people.**
+
+> I love the images of the one corner town growing. I think it makes sense from a sim stability standpoint to have the fully settled and new land sims as equals in terms of our testing and simulation. During the real historical period, parts of the world were new like this in 1750, whilst others already were known and dotted with towns (although perhaps certain deposits weren't known yet!). Thoughts?
+>
+> Perhaps also we want a setting to turn immigration on or off, just so we can test other growth rates and population pyramid changes beyond births (by the way, do we have fertility changing endogenously?)
+
+A second start (one town in a corner) and the two starts as equals in the tests are being built as the chain of pieces `settle-a`, with arrivals from outside as a switch. Deposits unknown until found are to be a rule of the game for both starts, after charting. On fertility: a town's births less deaths answer to income and, after 1900, to how well townsfolk live, but births are not played by age (the ages are reckoned beneath the totals); playing them by age is proposed as a piece of its own. She also gave leave for the towns of 1750 to 1900 to be laid out anew once ("you can re lay out the towns yes of course").
+
+**26 November 2026, on the two islands side by side.**
+
+> In some version, maybe we can take the two islands and physically put them side by side (but perhaps with variable sea cost between to model different distances), where emigration pressure from one could influence immigration to the other. If that's cheap, maybe worth doing already?
+
+Two cheap trials were started the same day: two runs stepped together that exchange only people, with the sea between as a fare; and both islands on one map with a strait, so that goods cross as well. The answer on what is cheap follows from them.
+
+**26 November 2026, on marked versions to download.**
+
+> Do you think you could every now and then start marking versions you like (0.x.0) and push the exe somewhere? Downloadable from hal, or github releases, so I can try it without being home? Not too frequently, so as not to add too much overhead to either of us, but every week maybe?
+
+A release kit was started the same day (a version shown by the game, a zip that runs from any folder, one command that builds and tries it). Versions are to be marked about weekly as pre-releases on the repository's releases page.
+
+**26 November 2026, on a start page.**
+
+> Also, maybe you already thought of this but it needs a start page, to go alongside what you usually use command like arguments for. Your work should skip that menu and continue using command line args, but largely I'd like if most the different command line things were available from the menu (I leave the details up to you) .
+
+A brief was written the same day (a page of choices where every choice is an argument: go on with a saved game, a new island with its start, its number, its families and its last year, and the rest folded away; any argument that names a run skips it). It is built once the pieces then at work in the game's start-up have landed, and goes into the first marked version.

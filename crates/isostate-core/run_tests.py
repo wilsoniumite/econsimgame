@@ -84,6 +84,9 @@ QUICK_SKIPS = [
     'each_town_month_count_counts_its_own_case',
     'the_cards_facts_are_what_they_say',
 
+    # care (two runs of island 7 to 1935 side by side; added with it on 26 November 2026)
+    'nothing_moves_before_care_and_its_books_balance',
+
     # carting
     'carters_come_out_of_the_supply_of_hands',
     'carters_taken_on_by_degrees_do_not_set_the_wage_flipping',
@@ -309,6 +312,7 @@ QUICK_SKIPS = [
 
     # tending
     'island_7_to_1935',
+    'own_run_feeds_no_shortage_of_its_own_good',
 
     # towns
     'a_long_deep_decline_gives_ground_up_one_cell_a_year',

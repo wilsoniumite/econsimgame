@@ -352,7 +352,9 @@ fn works(sim: &Sim, f: usize) -> Result<(String, Vec<Group>), String> {
         None => format!("the savers of {}, no family", st.town_name[t]),
     });
     g.row("market town", st.town_name[t].clone());
-    g.row("square", format!("{}, {}", c % W, c / W));
+    // where its cell lies, from the middle of the cell (2 km across), as the viewer's cards say a place
+    let km = crate::landform::CELL_M / 1000.0;
+    g.row("where", format!("about {:.0} km east and {:.0} km south of the island's north-west corner", ((c % W) as f64 + 0.5) * km, ((c / W) as f64 + 0.5) * km));
     groups.push(g);
 
     let mut g = Group::new("Plant and hands");
@@ -452,10 +454,12 @@ fn cell(sim: &Sim, c: usize) -> Result<(String, Vec<Group>), String> {
     match market {
         Some(t) => {
             g.row("its market town", st.town_name[t].clone());
-            // the path's cost is in squares of open lowland with no road; a
-            // unit of a good pays `freight` times its bulk on each
+            // the path's cost is in cells of open lowland with no road (said
+            // in km, a cell being 2 km across); a unit of a good pays
+            // `freight` times its bulk on each
             let d = st.dcatch[c];
-            g.row("the way to market", if d < 0.05 { "none: the market is here".to_string() } else { format!("as costly as {d:.1} squares of open lowland") });
+            let km = d * crate::landform::CELL_M / 1000.0;
+            g.row("the way to market", if d < 0.05 { "none: the market is here".to_string() } else { format!("as costly as {km:.0} km of open lowland") });
             if let Some(&grain) = C.good_index.get("grain") {
                 g.row("carting grain there", format!("{} a unit", amount(P.freight * C.weight[grain] * d)));
             }
