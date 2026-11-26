@@ -674,8 +674,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 let tabs: (&str, &str) = if sandbox { ("1 2 3 4 5", "hand, rules, markets, news, families") } else { ("1 2 3 4", "family, holdings, markets, news") };
                 let more: &[(&str, &str)] = &[
                     // (task A) two more: when town ground joined its town, and who lives on it
-                    ("M", "map views: rent, markets, reach, prices, wages, town growth, residents"),
-                    ("G", "the next good, when prices are mapped"),
+                    ("M", "map views: rent, markets, reach, prices, made here, wages, town growth, residents, deposits, traffic"),
+                    ("G", "the next good, or kind of ground, when one is mapped"),
                     ("T", "miniature focus on or off"),
                     // note.rs: her words, kept where she stands
                     ("N", "a note in your words, kept with a picture of the screen"),
