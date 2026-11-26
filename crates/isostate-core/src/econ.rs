@@ -879,9 +879,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let oi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);
+    // pace (docs/rules/pace.md): a quarter of what is to come, or a builder's year's part of it
+    let ask = crate::pace::share(st, P);
     for (r, &i) in oi.iter().enumerate() {
         for g in 0..G {
-            req_inv[(r, g)] = st.f_order[(i, g)] * 0.25;
+            req_inv[(r, g)] = st.f_order[(i, g)] * ask;
         }
     }
     // tree (docs/rules/tree.md, "Plant waits"): what households and the works
