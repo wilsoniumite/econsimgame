@@ -607,4 +607,9 @@ pub struct State {
     // ---------------- highways (docs/rules/highways.md; empty while it neither acts nor watches)
     /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
     pub hw: crate::highways::HighwayState,
+
+    // ---------------- care (docs/rules/care.md; empty while `care.enabled` is off)
+    /// What the watcher of care keeps of each year: its hands, its spending
+    /// and its price. The observer's alone.
+    pub care: crate::care::CareState,
 }

@@ -126,6 +126,11 @@ pub fn firm_coefficients(C: &Content, method: &[usize], K: &[f64], prod: &[f64])
     let mut a = Mat::zeros(n, G);
     let mut h = vec![0.0; n];
     let mut l = vec![0.0; n];
+    // care (docs/rules/care.md; not in the Python): a nurse's hours a patient are
+    // the recipe's in a ward of four beds or of four hundred, and in a village or
+    // the first city, so its hands a unit do not fall with its works' size or its
+    // productivity (None, and every works as the port has it, without care)
+    let care = crate::care::method(C);
     for i in 0..n {
         let m = method[i];
         let K0 = C.m_K0[m];
@@ -136,7 +141,7 @@ pub fn firm_coefficients(C: &Content, method: &[usize], K: &[f64], prod: &[f64])
         }
         // numpy turns `prod ** 0.5` into sqrt
         h[i] = C.m_heat[m] * (1.0 + 0.2 * r) / prod[i].sqrt();
-        l[i] = C.m_labor[m] * (1.0 + 0.8 * r) / prod[i];
+        l[i] = if care == Some(m) { C.m_labor[m] } else { C.m_labor[m] * (1.0 + 0.8 * r) / prod[i] };
     }
     (a, h, l)
 }
@@ -426,7 +431,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // 1900 the richer set itself may lean toward comfort (engel's lean)
     let (q_hh, subcost) = if P.engel.enabled {
         let rich = engel::rich_now(C, &P.engel, st.engel.year_now);
-        engel::les(&pc, &unit, &C.subsistence, &C.shares, &rich, &P.engel)
+        // care (docs/rules/care.md): each town's richer set gives care room by
+        // its want, once the town knows of care (None, and the set as it is, before)
+        match crate::care::town_rich(st, C, P, &rich) {
+            Some(rows) => engel::les_rows(&pc, &unit, &C.subsistence, &C.shares, &rows, &P.engel),
+            None => engel::les(&pc, &unit, &C.subsistence, &C.shares, &rich, &P.engel),
+        }
     } else {
         les(&pc, &unit, &C.subsistence, &C.shares)
     };

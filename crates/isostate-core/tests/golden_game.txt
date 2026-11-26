@@ -306,10 +306,16 @@
 # run.bin moved by the hauliers' till (lorry.till), which acts from the
 # lorry's find; 1750-1900 held; the new good's mends move nothing, so none
 # moved against lorry-bill's own
+# Taken: care (docs/rules/care.md), on under the game's rules from its find
+# (1908 or later): the 1901-2050 economy, books, news and run.bin move;
+# 1750-1900 held
+# Taken: care (docs/rules/care.md), on under the game's rules from its find
+# (1908 or later): the 1901-2050 economy, books, news and run.bin move;
+# 1750-1900 held (taken again with care's series before the ages')
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0xde9077cd6d28238d
-1901-2050 books    0x08522b94c9e2e540
-1901-2050 news     0x6221c2742892399b
-1901-2050 run.bin  0x68da1e7e056dc040
+1901-2050 economy  0x45b26cc9baf7bb42
+1901-2050 books    0xc25596634657e654
+1901-2050 news     0x752716a33321a1c7
+1901-2050 run.bin  0x9194a15cd2d43809
