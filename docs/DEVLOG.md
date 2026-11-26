@@ -2,6 +2,8 @@
 
 Working notes, newest first. The plan lives in PLAN.md; this is what happened and what is in flight.
 
+An entry that lands something a player can see or press ends its paragraph with one sentence that begins `In the game:` and says the way to it, keys and names as the screen shows them, in as few words as will do; an entry with nothing to find leaves it out. The game's What's new card shows that sentence under the entry's title and takes everything after `In the game:` to the paragraph's end, so it must be the paragraph's last (since 26 November 2026).
+
 ## 2026-11-26: what landed
 
 **The ways: a design page for roads, streets and highways.** `docs/designs/ways.md` says who builds each kind of way and why: the parish's track, the turnpike trust, the promoters' railways and canals, the town's streets, and the state's roads and highways of the motor age, split into the lorry, the state's ways and the car. Today's ways were measured on islands 1 to 8 to 2050 first. Made roads fall from 2,886 km in 1900 to 1,325 in 2050, because a road nobody uses for six years falls back; drawn roads ford rivers more often than they bridge them; turnpikes cover three land squares in four; and rail carries nine tenths of freight to 2050. The page says what to build, in stages, and the backlog's Ways item points at it.
