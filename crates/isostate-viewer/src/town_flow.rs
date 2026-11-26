@@ -688,8 +688,18 @@ fn draw(
     mut images: ResMut<Assets<Image>>,
     mut q: Query<(Entity, &mut Visibility, Option<&Children>), With<FlowPanel>>,
     mut drawn: Local<Option<Shown>>,
+    mut seen: Local<Option<(u64, Option<usize>, (u32, u32), bool)>>,
+    mut kept: Local<Option<(Handle<Image>, (usize, usize))>>,
 ) {
     let win = windows.single().map(|w| Vec2::new(w.width(), w.height())).unwrap_or(Vec2::new(1600.0, 1000.0));
+    // nothing can have changed unless an answer came, the town or the window changed, or the
+    // clock went to the past or came back (a making is a few hundred ribbons: it is not
+    // copied and compared every frame)
+    let came = (answers.version, flow.town, (win.x as u32, win.y as u32), at_present(&tl, &data, &live));
+    if *seen == Some(came) {
+        return;
+    }
+    *seen = Some(came);
     let now = match flow.town {
         None => Shown::Shut,
         Some(t) => match answers.get(Thing::Making(t)) {
@@ -704,6 +714,7 @@ fn draw(
     if drawn.as_ref() == Some(&now) {
         return;
     }
+    let t_draw = Instant::now();
     let Ok((e, mut vis, children)) = q.single_mut() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
@@ -736,9 +747,18 @@ fn draw(
             let size = chart_size(win);
             let pl = plan(m, size.x, size.y);
             let t1 = Instant::now();
-            // a bare sheet of the chart's paper, until the painting comes (`painter`)
+            // the picture of the year before stays until the new painting comes (`painter`),
+            // if it is of the same size; else a bare sheet of the chart's paper
             let (w, h) = (pl.w.round().max(1.0) as usize, pl.h.round().max(1.0) as usize);
-            let handle = images.add(image(w, h, [GROUND[0] as u8, GROUND[1] as u8, GROUND[2] as u8, 255].repeat(w * h)));
+            let same = kept.as_ref().filter(|(_, size)| *size == (w, h)).map(|k| k.0.clone());
+            let handle = match same {
+                Some(h) => h,
+                None => {
+                    let h_new = images.add(image(w, h, [GROUND[0] as u8, GROUND[1] as u8, GROUND[2] as u8, 255].repeat(w * h)));
+                    *kept = Some((h_new.clone(), (w, h)));
+                    h_new
+                }
+            };
             println!(
                 "making: {} in {}: {} boxes, {} ribbons ({} back), {} faint kinds, {} columns; laid out in {:.1} ms",
                 m.name,
@@ -767,6 +787,9 @@ fn draw(
             flow.generation += 1;
             flow.image = Some(handle);
         }
+    }
+    if flow.town.is_some() {
+        println!("making: the panel drawn again in {:.1} ms on the main thread", t_draw.elapsed().as_secs_f64() * 1e3);
     }
     *drawn = Some(now);
 }
