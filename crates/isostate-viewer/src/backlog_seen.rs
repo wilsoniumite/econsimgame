@@ -30,7 +30,8 @@ pub struct Seen {
 }
 
 /// Markdown made plain: links to their words, and no backticks or stars.
-fn plain(s: &str) -> String {
+/// The What's new card (whats_new.rs) reads the devlog through it too.
+pub fn plain(s: &str) -> String {
     let mut out = String::new();
     let mut rest = s;
     while let Some(open) = rest.find('[') {
@@ -68,13 +69,20 @@ pub fn read(md: &str) -> Seen {
     Seen { in_flight, order, waiting }
 }
 
-/// Where docs/BACKLOG.md is, if it can be found beside the game: in the
-/// folder the game was started from or one above it, or beside the program.
+/// Where docs/BACKLOG.md is, if it can be found beside the game.
 pub fn find() -> Option<PathBuf> {
+    find_doc("BACKLOG.md")
+}
+
+/// Where a tracked page of docs/ is, if it can be found beside the game: in
+/// the folder the game was started from or one above it, or beside the
+/// program. The backlog's card and the What's new card (docs/DEVLOG.md) both
+/// look for their pages so.
+pub fn find_doc(name: &str) -> Option<PathBuf> {
     let starts = [std::env::current_dir().ok(), std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf))];
     for start in starts.into_iter().flatten() {
         for dir in start.ancestors().take(8) {
-            let p = dir.join("docs").join("BACKLOG.md");
+            let p = dir.join("docs").join(name);
             if p.is_file() {
                 return Some(p);
             }

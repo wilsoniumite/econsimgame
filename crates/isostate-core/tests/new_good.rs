@@ -191,7 +191,7 @@ fn idle_goods(rules: &str, seeds: &str, end: i64) {
     let with = if rules == "game" { game_with(&lines, false) } else { port_with(&lines) };
     let base = if rules == "game" { game_with("", false) } else { port_with("") };
     assert_eq!(with.G, base.G + 8);
-    assert_eq!(with.G_base, base.G);
+    assert_eq!(with.G_base, base.G_base);
     let a = sweep_of(rules, seeds, end, Some(base));
     let b = sweep_of(rules, seeds, end, Some(with));
     hold_equal(&format!("{rules} rules, islands {seeds} to {end}, eight idle goods"), &a, &b);
@@ -258,9 +258,11 @@ fn a_good_that_begins_goes_after_every_good_of_the_start() {
     assert!(port.good_begins.iter().all(|&b| b == Begins::Start) && port.G_base == port.G);
     // begun from its year
     assert!(!c.good_begun(port.G, 1949, &[]) && c.good_begun(port.G, 1950, &[]));
-    // and the game's content as it stood keeps every good among those of the start
+    // and the game's content keeps every good it had on 26 November 2026 among those of the
+    // start; care (docs/rules/care.md), added after, is the one that begins later
     let game = game_with("", false);
-    assert_eq!(game.G_base, game.G);
+    assert_eq!(game.G_base + 1, game.G);
+    assert_eq!(game.good_name[game.G_base], "care");
 }
 
 #[test]
