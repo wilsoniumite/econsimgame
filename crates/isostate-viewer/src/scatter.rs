@@ -1165,7 +1165,32 @@ impl Slots {
             plans.plans.retain(|&(f, _), _| f < to);
         }
     }
+
+    /// A live game's year has put `by` new works before the universities that
+    /// stand after the works from place `from` (`game::take_year`): their
+    /// ground moves along with them, and the new works' places are left to be
+    /// laid out (`UNLAID`), so that a university stands where it stood.
+    pub fn shift_after(&mut self, from: usize, by: usize) {
+        fn open<T: Clone>(v: &mut Vec<T>, from: usize, by: usize, blank: T) {
+            let at = from.min(v.len());
+            v.splice(at..at, std::iter::repeat_n(blank, by));
+        }
+        open(&mut self.firm_pos, from, by, (0.0, 0.0, 0.0));
+        open(&mut self.firm_cap, from, by, f32::MAX);
+        open(&mut self.firm_water, from, by, false);
+        open(&mut self.firm_plot, from, by, Plot::rect(0.1, 0.08));
+        open(&mut self.firm_level, from, by, 0.0);
+        open(&mut self.firm_rung, from, by, UNLAID);
+        open(&mut self.firm_room, from, by, Room::Proper);
+        if let Ok(mut plans) = self.plans.lock() {
+            plans.plans.retain(|&(f, _), _| f < from);
+        }
+    }
 }
+
+/// The rung of a works' place in the slots that has not been laid out yet
+/// (`Slots::shift_after`): it is new to `place_new_firms`.
+const UNLAID: i32 = i32::MIN;
 
 /// Give every works its ground. A live game calls this each year as firms are
 /// founded and grow: only the cells where a works is new, or has outgrown
@@ -1177,7 +1202,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     let lives: Vec<(usize, usize, f32)> = (0..n).map(|f| firm_life(r, f)).collect();
     let rungs: Vec<i32> = (0..n).map(|f| works::rung(firm_ratio(r, f, lives[f].2), firm_phase(f))).collect();
     // which works have no ground yet, which have outgrown theirs, and which keep it
-    let mut held: Vec<Held> = (0..n).map(|f| match slots.firm_rung.get(f) { None => Held::New, Some(&set) if rungs[f] > set => Held::Again, Some(_) => Held::Kept }).collect();
+    let mut held: Vec<Held> = (0..n).map(|f| match slots.firm_rung.get(f) { None | Some(&UNLAID) => Held::New, Some(&set) if rungs[f] > set => Held::Again, Some(_) => Held::Kept }).collect();
     let mut dirty: std::collections::HashSet<usize> = (0..n).filter(|&f| held[f] != Held::Kept).map(|f| r.header.firms[f].cell).collect();
     slots.firm_pos.resize(n, (0.0, 0.0, 0.0));
     slots.firm_cap.resize(n, f32::MAX);

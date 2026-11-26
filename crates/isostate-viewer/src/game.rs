@@ -348,14 +348,20 @@ pub(crate) struct Arrived {
 
 /// Write a year into the run and lay out the works' ground. The universities
 /// stand after the simulation's works (`replay::stand_universities`): when the
-/// year's new works come before them they move along the list, and the ground
-/// they had is given up so that they are found it again where they now stand
-/// in the list.
+/// year's new works come before them they move along the list, and their
+/// ground moves with them (`Slots::shift_after`), so that each stands where it
+/// stood; the new works are laid out in the places opened before them.
 fn take_year(r: &mut Replay, g: &world::Ground, slots: &mut scatter::Slots, end: &live::YearEnd) {
-    let before = r.header.firms.len() - crate::replay::universities_standing(r);
+    let unis = crate::replay::universities_standing(r);
+    let before = r.header.firms.len() - unis;
     end.apply(r);
-    if r.header.firms.len() - crate::replay::universities_standing(r) != before {
-        slots.forget(before);
+    let after = r.header.firms.len() - crate::replay::universities_standing(r);
+    if after != before {
+        if unis > 0 && slots.firm_pos.len() == before + unis {
+            slots.shift_after(before, after - before);
+        } else {
+            slots.forget(before);
+        }
     }
     scatter::place_new_firms(r, g, slots);
 }
