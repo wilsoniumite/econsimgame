@@ -1071,11 +1071,85 @@ pub struct Legend {
 pub struct Wash {
     /// a tint for every cell and, in alpha, its region (0: leave the ground alone)
     pub cells: Vec<u8>,
+    /// for a view of town ground, how each cell's tint lies and the country's
+    /// tint under a built one (`lie_built`); empty where every tint lies over
+    /// all of its square's land
+    pub under: Vec<u8>,
     pub legend: Legend,
     /// how far the tints blend across a square's edge
     pub soft: f32,
     /// ink lines where regions meet
     pub lines: bool,
+}
+
+/// How a cell's tint lies on the ground, in the lower half of the overlay's
+/// texture (`terrain.wesl`, `overlay_lie`). Until 26 November 2026 every view
+/// painted one tint a square of 2 km, so a view of town ground drew each town
+/// as a staircase of squares with lone squares standing off it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Lie {
+    /// over all of its square's land, as every view's did before
+    Land = 0,
+    /// over its built ground only (town, works and derelict ground), by that
+    /// ground's own outline, faded at its edge; the rest of its land takes
+    /// the country's tint round it
+    Built = 1,
+    /// as a soft patch over any ground of its warped square: ground gone
+    /// under a trend, which no longer has built ground to lie on
+    Patch = 2,
+}
+
+/// What the land of a built cell that is not built takes: paper, or the
+/// tints of the country round it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Under {
+    Blank,
+    Round,
+}
+
+/// The lower half of the texture for a view of town ground: for each cell,
+/// how its tint lies, and under a built one the country's tint (the mean of
+/// its land neighbours' within two squares that lie over their land, or its
+/// own where it has none).
+fn lie_built(r: &Replay, cells: &[u8], lie: impl Fn(usize) -> Lie, under: Under) -> Vec<u8> {
+    let lies: Vec<Lie> = (0..r.n).map(|c| if cells[c * 4 + 3] == 0 { Lie::Land } else { lie(c) }).collect();
+    let mut out = vec![0u8; r.n * 4];
+    let blank = rgb(BLANK);
+    for c in (0..r.n).filter(|&c| lies[c] != Lie::Land) {
+        let own = [cells[c * 4], cells[c * 4 + 1], cells[c * 4 + 2]];
+        let col = match under {
+            Under::Blank => blank,
+            Under::Round => {
+                let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
+                let mut found = None;
+                for reach in 1..=2isize {
+                    let (mut sum, mut n) = ([0u32; 3], 0u32);
+                    for dy in -reach..=reach {
+                        for dx in -reach..=reach {
+                            let (xx, yy) = (x + dx, y + dy);
+                            if xx < 0 || yy < 0 || xx as usize >= r.w || yy as usize >= r.h {
+                                continue;
+                            }
+                            let m = yy as usize * r.w + xx as usize;
+                            if lies[m] == Lie::Land && cells[m * 4 + 3] != 0 {
+                                for i in 0..3 {
+                                    sum[i] += cells[m * 4 + i] as u32;
+                                }
+                                n += 1;
+                            }
+                        }
+                    }
+                    if n > 0 {
+                        found = Some(sum.map(|v| (v / n) as u8));
+                        break;
+                    }
+                }
+                found.unwrap_or(own)
+            }
+        };
+        out[c * 4..c * 4 + 4].copy_from_slice(&[lies[c] as u8, col[0], col[1], col[2]]);
+    }
+    out
 }
 
 fn ramp_bar(stops: &[u32; 5]) -> Vec<[u8; 3]> {
@@ -1120,26 +1194,28 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
         Overlay::Rent => {
             let title = format!("Land rent in {year}");
             let Some(sc) = scale else {
-                return Wash { cells, legend: none(title, "This record does not hold the rent of the land.".into()), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not hold the rent of the land.".into()), soft: 0.5, lines: false };
             };
             for c in lands {
                 let v = rent_year(r, k, c).unwrap_or(0.0);
                 put(c, ramp(&SEPIA, sc.at(v)));
             }
+            // a town's rent lies on its built ground, the country's round it
+            let under = lie_built(r, &cells, |c| if r.joined(k, c).is_some() { Lie::Built } else { Lie::Land }, Under::Round);
             let note = "What the ground of each square earns its owners in a year, from farms, mines, works and town houses.".into();
-            Wash { cells, legend: legend(title, note, &SEPIA, &sc, None), soft: 0.5, lines: false }
+            Wash { under, cells, legend: legend(title, note, &SEPIA, &sc, None), soft: 0.5, lines: false }
         }
         Overlay::Reach => {
             let title = format!("The way to market in {year}");
             let (Some(sc), false) = (scale, r.dist.is_empty()) else {
-                return Wash { cells, legend: none(title, "This record does not hold the way to market.".into()), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not hold the way to market.".into()), soft: 0.5, lines: false };
             };
             for c in lands {
                 // land with no way to a market is as far as can be
                 put(c, ramp(&SLATE, reach_km(r, k, c).map_or(1.0, |v| sc.at(v))));
             }
             let note = "How far each square is from the market it trades in, counted as kilometres of flat open country. Roads, rivers, the sea and railways shorten the way; hills and woods lengthen it.".into();
-            Wash { cells, legend: legend(title, note, &SLATE, &sc, Some("at the market")), soft: 0.5, lines: false }
+            Wash { under: Vec::new(), cells, legend: legend(title, note, &SLATE, &sc, Some("at the market")), soft: 0.5, lines: false }
         }
         Overlay::Areas => {
             let tint = area_tints(r, k);
@@ -1151,7 +1227,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 format!("Market areas in {year}"),
                 format!("Each tint is the country that buys and sells in one town's market, and the lines are where one town's pull gives way to the next. {n} market{}.", if n == 1 { "" } else { "s" }),
             );
-            Wash { cells, legend, soft: 0.06, lines: true }
+            Wash { under: Vec::new(), cells, legend, soft: 0.06, lines: true }
         }
         Overlay::Price | Overlay::Wages => {
             let good = which;
@@ -1182,7 +1258,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 } else {
                     format!("No market has a price for {label} in {when}.")
                 };
-                return Wash { cells, legend: none(title, note), soft: 0.06, lines: true };
+                return Wash { under: Vec::new(), cells, legend: none(title, note), soft: 0.06, lines: true };
             };
             let stops = if is_price { &MADDER } else { &MULBERRY };
             for c in lands {
@@ -1201,7 +1277,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             } else {
                 format!("{lead} The lowest pay is at {}, {}, the highest at {}, {}.", town_name(r, lo.0), coin(lo.1), town_name(r, hi.0), coin(hi.1))
             };
-            Wash { cells, legend: legend(title, note, stops, &sc, None), soft: 0.06, lines: true }
+            Wash { under: Vec::new(), cells, legend: legend(title, note, stops, &sc, None), soft: 0.06, lines: true }
         }
         Overlay::Made => {
             let good = which;
@@ -1216,11 +1292,11 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             };
             let Some(m) = made_map(r, k, good) else {
                 blank(&mut cells);
-                return Wash { cells, legend: none(title, "This record does not keep what each town makes: the books of account, which hold it, are kept under the game's rules.".into()), soft: 0.06, lines: true };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not keep what each town makes: the books of account, which hold it, are kept under the game's rules.".into()), soft: 0.06, lines: true };
             };
             let (Some(sc), true) = (scale, m.total > 0.0) else {
                 blank(&mut cells);
-                return Wash { cells, legend: none(title, format!("Nobody made any {label} on the island in {year}.")), soft: 0.06, lines: true };
+                return Wash { under: Vec::new(), cells, legend: none(title, format!("Nobody made any {label} on the island in {year}.")), soft: 0.06, lines: true };
             };
             for c in lands {
                 let v = m.cells[c];
@@ -1229,6 +1305,8 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             let top = (0..m.towns.len()).max_by(|&a, &b| m.towns[a].total_cmp(&m.towns[b]));
             let most = top.map_or(String::new(), |t| format!(" Most was made at {}, {}.", town_name(r, t), amount(m.towns[t])));
             let making = m.towns.iter().filter(|&&v| v > 0.0).count();
+            // a good of the works lies on its town's built ground
+            let under = if m.from_workings || m.by_land { Vec::new() } else { lie_built(r, &cells, |c| if m.cells[c] > 0.0 { Lie::Built } else { Lie::Land }, Under::Blank) };
             let note = if m.from_workings {
                 format!("What each working raised in the year, at its pit head, in the good's own units. {} made on the island, by {making} town{}.{most}", amount(m.total), if making == 1 { "" } else { "s" })
             } else if m.by_land {
@@ -1236,7 +1314,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             } else {
                 format!("What each town's works made in the year, in the good's own units, laid over the town's own ground. {} made on the island, in {making} town{}.{most}", amount(m.total), if making == 1 { "" } else { "s" })
             };
-            Wash { cells, legend: legend(title, note, &OCHRE, &sc, None), soft: 0.06, lines: true }
+            Wash { under, cells, legend: legend(title, note, &OCHRE, &sc, None), soft: 0.06, lines: true }
         }
         // (task A) the two views of town ground that is kept (docs/rules/towns.md)
         Overlay::Growth | Overlay::Residents => {
@@ -1247,7 +1325,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
-                return Wash { cells, legend: none(title, "This record does not hold the towns' ground: under its rules a town does not keep the ground it builds on.".into()), soft: 0.06, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not hold the towns' ground: under its rules a town does not keep the ground it builds on.".into()), soft: 0.06, lines: false };
             }
             // the whole run of when ground joined is its own scale, the same in every year, so a
             // square keeps its tint for as long as its figure stands: from the oldest ground the
@@ -1262,7 +1340,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
-                return Wash { cells, legend: none(title, "No square is town ground this year.".into()), soft: 0.06, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "No square is town ground this year.".into()), soft: 0.06, lines: false };
             };
             let stops = if growth { &BRICK } else { &INDIGO };
             let (mut squares, mut people) = (0usize, 0.0f32);
@@ -1274,6 +1352,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 });
                 put(c, tint.unwrap_or(rgb(BLANK)));
             }
+            let under = lie_built(r, &cells, |c| if r.joined(k, c).is_some() { Lie::Built } else { Lie::Land }, Under::Blank);
             let s = if squares == 1 { "" } else { "s" };
             let note = if growth {
                 format!("When each square of town ground joined its town. A town keeps the ground it builds on and grows outward from it, so its oldest ground is its middle. {squares} square{s} of town ground.")
@@ -1285,7 +1364,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
             if growth && scaling.range == Range::Whole {
                 l.high = format!("{last}");
             }
-            Wash { cells, legend: l, soft: 0.06, lines: false }
+            Wash { under, cells, legend: l, soft: 0.06, lines: false }
         }
         Overlay::Deposits => {
             let i = which.min(KINDS.len() - 1);
@@ -1300,13 +1379,13 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
-                return Wash { cells, legend: none(title, "This record does not hold what the ground holds.".into()), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not hold what the ground holds.".into()), soft: 0.5, lines: false };
             };
             let Some(sc) = scale else {
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
-                return Wash { cells, legend: none(title, format!("There is no {} anywhere on the island.", kd.label.to_lowercase())), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, format!("There is no {} anywhere on the island.", kd.label.to_lowercase())), soft: 0.5, lines: false };
             };
             let is_deposit = replay::DEPOSIT_FIELDS.contains(&kd.field);
             for c in lands {
@@ -1330,7 +1409,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 },
                 _ => String::new(),
             };
-            Wash { cells, legend: legend(title, note, &kd.stops, &sc, Some("none")), soft: 0.5, lines: is_deposit }
+            Wash { under: Vec::new(), cells, legend: legend(title, note, &kd.stops, &sc, Some("none")), soft: 0.5, lines: is_deposit }
         }
         Overlay::Traffic => {
             // the land as plain paper, so that the ribbons laid over it (`traffic.rs`) read
@@ -1339,10 +1418,10 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 put(c, rgb(TRAFFIC_PAPER));
             }
             if !r.traffic.kept() {
-                return Wash { cells, legend: none(title, "This record does not keep what the ways carry: the traffic is kept under the game's rules from 25 November 2026.".into()), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, "This record does not keep what the ways carry: the traffic is kept under the game's rules from 25 November 2026.".into()), soft: 0.5, lines: false };
             }
             let Some(sc) = scale else {
-                return Wash { cells, legend: none(title, format!("Nothing was carried over the ways in {year}.")), soft: 0.5, lines: false };
+                return Wash { under: Vec::new(), cells, legend: none(title, format!("Nothing was carried over the ways in {year}.")), soft: 0.5, lines: false };
             };
             let t = &r.traffic;
             // what each way carried, weight times length, and the busiest link
@@ -1379,7 +1458,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 "Each way between two squares is drawn as wide as the weight carried over it in the year, both ways together, in the goods' units: {brown}, blue by river or canal, black by rail, pale blue by sea. Of the weight carried, times how far: {}.{by_lorry}{busiest}",
                 shares.join(", ")
             );
-            Wash { cells, legend: legend(title, note, &TRAFFIC_INK, &sc, None), soft: 0.5, lines: false }
+            Wash { under: Vec::new(), cells, legend: legend(title, note, &TRAFFIC_INK, &sc, None), soft: 0.5, lines: false }
         }
     }
 }
@@ -1447,7 +1526,7 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
     let Some(from) = k.checked_sub(n) else {
         blank(&mut cells);
         let note = format!("A change over {n} years can be shown from {}: the run begins in {}.", r.y0 + n as i32, r.y0);
-        return Wash { cells, legend: none(format!("{what}: change over {n} years"), note), soft, lines };
+        return Wash { under: Vec::new(), cells, legend: none(format!("{what}: change over {n} years"), note), soft, lines };
     };
     let y0 = r.y0 + from as i32;
     let title = format!("{what}: change a year, {y0} to {year}");
@@ -1455,7 +1534,7 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
         // nothing this year (no record of it, a good not made): the plain view's words say why
         blank(&mut cells);
         let plain = wash(r, k, kind, which, None, Scaling { range: scaling.range, ends: None });
-        return Wash { cells, legend: none(title, plain.legend.note), soft, lines };
+        return Wash { under: Vec::new(), cells, legend: none(title, plain.legend.note), soft, lines };
     };
     let e = scaling.ends.unwrap_or(Ends { lo: -trend::LEAST_END, hi: trend::LEAST_END });
     let sc = Scale { lo: e.lo, hi: e.hi, log: false };
@@ -1463,6 +1542,21 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
         let col = change_tint(m.cells[c], &sc);
         cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], region(c)]);
     }
+    // the views of town ground lie on the built ground; ground gone has none, and is a soft patch
+    let under = match kind {
+        Overlay::Residents | Overlay::Made if kind == Overlay::Residents || m.by_town => lie_built(
+            r,
+            &cells,
+            |c| match m.cells[c] {
+                trend::Change::Nothing => Lie::Land,
+                trend::Change::Gone => Lie::Patch,
+                _ => Lie::Built,
+            },
+            Under::Blank,
+        ),
+        Overlay::Rent => lie_built(r, &cells, |c| if r.joined(k, c).is_some() { Lie::Built } else { Lie::Land }, Under::Round),
+        _ => Vec::new(),
+    };
     let ticks = ranges::ticks(sc.lo, sc.hi, false).into_iter().map(|v| (sc.at(v), trend::rate_words(v))).collect();
     let (new, gone) = m.new_and_gone();
     let unit = if m.by_town { "town" } else { "square" };
@@ -1489,7 +1583,7 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
         keys,
         movers: Some(trend::movers(r, &m)),
     };
-    Wash { cells, legend, soft, lines }
+    Wash { under, cells, legend, soft, lines }
 }
 
 /// What the overlay says of square `c` in year index `k`, as a sentence for the
@@ -1503,9 +1597,9 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: 
     Some(match kind {
         Overlay::Rent => match rent_year(r, k, c)? {
             // the record's scale stops at its top step, which the middle of a town reaches
-            v if r.rent[k * r.n + c] == u8::MAX => format!("Rent: the ground of this square earns {} a year or more.", about(v)),
-            v if v > 0.0 => format!("Rent: the ground of this square earns about {} a year.", about(v)),
-            _ => "Rent: the ground of this square earns nothing.".to_string(),
+            v if r.rent[k * r.n + c] == u8::MAX => format!("Rent here: {} a year or more.", about(v)),
+            v if v > 0.0 => format!("Rent here: about {} a year.", about(v)),
+            _ => "Rent here: nothing.".to_string(),
         },
         Overlay::Areas => match town {
             Some(t) => {
@@ -1543,8 +1637,8 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: 
             let label = g.label.to_lowercase();
             let m = made_map(r, k, good)?;
             match (m.by_land, town) {
-                (true, _) if m.cells[c] > 0.0 => format!("Made here: about {} of {label} {} this square in the year.", amount(m.cells[c]), if m.from_workings { "was raised at the pit head on" } else { "came off" }),
-                (true, Some(t)) => format!("Made here: none of {label} on this square; {} made {} in all.", town_name(r, t), amount(m.towns.get(t).copied().unwrap_or(0.0))),
+                (true, _) if m.cells[c] > 0.0 => format!("Made here: about {} of {label} in the year{}.", amount(m.cells[c]), if m.from_workings { ", at the pit head" } else { "" }),
+                (true, Some(t)) => format!("Made here: none of {label}; {} made {} in all.", town_name(r, t), amount(m.towns.get(t).copied().unwrap_or(0.0))),
                 (false, Some(t)) => format!("Made here: {} made {} of {label} in the year.", town_name(r, t), amount(m.towns.get(t).copied().unwrap_or(0.0))),
                 (_, None) => format!("Made here: none of {label}, and it trades in no town's market."),
             }
@@ -1568,11 +1662,11 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: 
             (Some(y), Some(t)) if y < r.y0 => format!("Town ground: part of {} since about {y}.", town_name(r, t)),
             (Some(y), Some(t)) => format!("Town ground: it joined {} in {y}.", town_name(r, t)),
             (Some(y), None) => format!("Town ground: since {y}."),
-            (None, _) => "Town ground: this square is not town ground.".to_string(),
+            (None, _) => "Town ground: none here.".to_string(),
         },
         Overlay::Residents => match r.joined(k, c) {
-            Some(_) => format!("Residents: about {} people live on this square.", ui::thousands(r.residents(k, c))),
-            None => "Residents: this square is not town ground.".to_string(),
+            Some(_) => format!("Residents here: about {}.", ui::thousands(r.residents(k, c))),
+            None => "Residents here: none, as it is not town ground.".to_string(),
         },
         Overlay::Deposits => {
             let i = which.min(KINDS.len() - 1);
@@ -1897,22 +1991,30 @@ pub(crate) fn paint(
         paint_preview(&mut w.cells, &ov.preview, k, which, &sc);
     }
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
+    // the tints, and under them how each lies (`Lie`): nothing but the land for most views
+    let built = w.as_ref().is_some_and(|w| w.under.chunks(4).any(|t| t[0] != 0));
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {
-            img.data = Some(w.cells.clone());
+            let mut data = w.cells.clone();
+            if built {
+                data.extend_from_slice(&w.under);
+            } else {
+                data.resize(w.cells.len() * 2, 0);
+            }
+            img.data = Some(data);
         }
     }
     // the material is touched only when the wash goes on or off or changes its
     // kind; a new year of the same overlay is new texels and nothing more
     let Some(now) = mats.get(&sm.terrain).map(|m| m.extension.params) else { return };
     let want = match &w {
-        Some(w) => (STRENGTH, w.soft, if w.lines { 1.0 } else { 0.0 }),
-        None => (0.0, now.overlay_soft, now.overlay_lines),
+        Some(w) => (STRENGTH, w.soft, if w.lines { 1.0 } else { 0.0 }, if built { 1.0 } else { 0.0 }),
+        None => (0.0, now.overlay_soft, now.overlay_lines, 0.0),
     };
-    if (now.overlay, now.overlay_soft, now.overlay_lines) != want {
+    if (now.overlay, now.overlay_soft, now.overlay_lines, now.overlay_built) != want {
         if let Some(mut m) = mats.get_mut(&sm.terrain) {
             let p = &mut m.extension.params;
-            (p.overlay, p.overlay_soft, p.overlay_lines) = want;
+            (p.overlay, p.overlay_soft, p.overlay_lines, p.overlay_built) = want;
         }
     }
     // the woods would hide the wash under their leaves, so on a map view the trees
@@ -1929,9 +2031,15 @@ pub(crate) fn paint(
     }
 }
 
-/// An empty overlay texture, for the ground material to start with.
+/// An empty overlay texture, for the ground material to start with: a texel
+/// a cell, the tints in its upper half and how each lies in its lower
+/// (`Lie`), so twice as tall as the map.
 pub fn blank(r: &Replay) -> Image {
-    terrain::cell_image(r, vec![0; r.n * 4], TextureFormat::Rgba8Unorm)
+    let mut img = terrain::cell_image(r, vec![0; r.n * 4], TextureFormat::Rgba8Unorm);
+    let size = bevy::render::render_resource::Extent3d { width: r.w as u32, height: 2 * r.h as u32, depth_or_array_layers: 1 };
+    img.texture_descriptor.size = size;
+    img.data = Some(vec![0; r.n * 8]);
+    img
 }
 
 fn legend_card(

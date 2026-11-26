@@ -165,6 +165,9 @@ pub struct PatchworkParams {
     /// tide stretched to a beach's height (`newland::units`): it is drawn far
     /// steeper than it is, and is not turned to shingle for that
     pub soft_shore: f32,
+    /// 1 when the map view has cells whose tint lies on built ground only
+    /// (`overlay::Lie`): the shader then reads the lower half of the overlay's texture
+    pub overlay_built: f32,
 }
 
 impl MaterialExtension for Patchwork {
@@ -254,7 +257,7 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
 }
 
 pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> PatchworkParams {
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32, soft_shore: g.laid.is_some() as u8 as f32 }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32, soft_shore: g.laid.is_some() as u8 as f32, overlay_built: 0.0 }
 }
 
 /// The bit of a parcel's depth byte that says it lies in a filled square
