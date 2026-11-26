@@ -708,7 +708,7 @@ fn present(tl: &Timeline, data: &Data) -> bool {
 }
 
 pub(crate) fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, mut game: ResMut<Game>) {
-    let Some(Pick::Cell(c)) = picked.what else {
+    let Some(Pick::Place { cell: c, .. }) = picked.what else {
         if game.asked.is_some() {
             game.asked = None;
             game.site = None;
@@ -1057,7 +1057,7 @@ fn order_panel(
                 }
                 town_orders(p, &f, &fam, me, r, t, can, waits.as_ref());
             }
-            Pick::Cell(c) => {
+            Pick::Place { cell: c, .. } => {
                 rule(p);
                 if when == Now::Past {
                     back_to_present(p, &f, r, k, &present, accent);
@@ -1071,6 +1071,8 @@ fn order_panel(
                 };
                 cell_orders(p, &f, me, r, site, can && !game.site_stale, waits.as_ref(), stands);
             }
+            // a pit is the mines' rule's, which no family orders
+            Pick::Pit { .. } => {}
         }
         if let Some((ok, note)) = &game.note {
             p.spawn((

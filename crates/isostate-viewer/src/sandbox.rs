@@ -335,7 +335,7 @@ impl Sandbox {
     /// none; `town` is the town the click is on (`town_of`).
     fn edit(&self, town: Option<usize>, what: Option<Pick>) -> Result<Edit, &'static str> {
         let c = self.choice[self.tool.index()];
-        let at = |every: bool| if every { Ok(None) } else { town.map(Some).ok_or("Click a town, or a square or works in a town's district.") };
+        let at = |every: bool| if every { Ok(None) } else { town.map(Some).ok_or("Click a town, or anywhere in a town's district.") };
         match self.tool {
             Tool::Look => Err(""),
             Tool::Money => {
@@ -351,14 +351,16 @@ impl Sandbox {
                 let Some(tech) = self.idea.clone() else { return Err("Choose an idea first: the chips are the methods and techniques not yet found.") };
                 Ok(discover_edit(tech, at(false)?.unwrap_or(0)))
             }
+            // (a pit clicked with the spot known is taken as the spot, `use_tool`)
             Tool::Town => match what {
-                Some(Pick::Cell(cell)) => Ok(Edit::FoundTown { cell }),
+                Some(Pick::Place { cell, .. }) => Ok(Edit::FoundTown { cell }),
                 Some(Pick::Town(_)) => Err("Click open land, not a town."),
                 Some(Pick::Firm(_)) => Err("Click open land, not a works."),
-                None => Err("Click a square of land in a town's district."),
+                Some(Pick::Pit { .. }) => Err("Click open land, not a pit."),
+                None => Err("Click open land in a town's district."),
             },
-            // (a square is taken by `click`, and the works is built from its chip, `build`)
-            Tool::Works => Err("Click a square of land, then choose a works and Build it here."),
+            // (the spot is taken by `click`, and the works is built from its chip, `build`)
+            Tool::Works => Err("Click the land, then choose a works and Build it here."),
             // (the brush paints by its own presses and drags, ground.rs)
             Tool::Ground => Err(""),
         }
@@ -372,8 +374,9 @@ impl Sandbox {
     }
 
     /// A click on `what` with the tool in hand: the edit it makes (Some), or
-    /// none when it only takes a square, with Build a works in hand, whose list
-    /// is then asked for (`game::ask_site` asks about any square clicked); or
+    /// none when it only takes a spot, with Build a works in hand, whose list
+    /// is then asked for (`game::ask_site` asks about the cell under any spot
+    /// clicked in open country); or
     /// why nothing is done. Close a works is put down once used.
     fn click(&mut self, town: Option<usize>, what: Option<Pick>) -> Result<Option<Edit>, &'static str> {
         if self.tool != Tool::Works {
@@ -383,9 +386,9 @@ impl Sandbox {
         if chosen >= 2 {
             // a university founded or closed: the tool is put down after each use
             let edit = match (chosen, what, town) {
-                (2, Some(Pick::Cell(cell)), _) => Edit::FoundUniversity { cell },
-                (2, _, _) => return Err("Click a square of land in the town's district."),
-                (_, Some(Pick::Firm(_)) | Some(Pick::Cell(_)) | Some(Pick::Town(_)), Some(t)) => Edit::CloseUniversity { town: t },
+                (2, Some(Pick::Place { cell, .. }), _) => Edit::FoundUniversity { cell },
+                (2, _, _) => return Err("Click the land in the town's district."),
+                (_, Some(_), Some(t)) => Edit::CloseUniversity { town: t },
                 _ => return Err("Click in the district of the town whose university is to close."),
             };
             self.tool = Tool::Look;
@@ -394,7 +397,7 @@ impl Sandbox {
         }
         let close = chosen == 1;
         match (close, what) {
-            (false, Some(Pick::Cell(cell))) => {
+            (false, Some(Pick::Place { cell, .. })) => {
                 if self.site != Some(cell) {
                     (self.site, self.offers) = (Some(cell), None);
                 }
@@ -405,9 +408,10 @@ impl Sandbox {
                 (self.site, self.offers) = (None, None);
                 self.version += 1;
                 Err(match other {
-                    Some(Pick::Town(_)) => "Click a square of land, not a town.",
-                    Some(Pick::Firm(_)) => "Click a square of land, not a works.",
-                    _ => "Click a square of land.",
+                    Some(Pick::Town(_)) => "Click the land, not a town.",
+                    Some(Pick::Firm(_)) => "Click the land, not a works.",
+                    Some(Pick::Pit { .. }) => "Click the land, not a pit.",
+                    _ => "Click the land.",
                 })
             }
             (true, Some(Pick::Firm(works))) => {
@@ -420,13 +424,13 @@ impl Sandbox {
         }
     }
 
-    /// The edit Build it here makes: the method chosen, on the square taken.
+    /// The edit Build it here makes: the method chosen, on the cell under the spot taken.
     fn build(&self) -> Result<Edit, &'static str> {
-        let Some(cell) = self.site else { return Err("Click a square of land first.") };
-        let Some(Ok(offers)) = &self.offers else { return Err("What could stand on the square is still being asked for: nothing was changed. Try again in a moment.") };
+        let Some(cell) = self.site else { return Err("Click the land first.") };
+        let Some(Ok(offers)) = &self.offers else { return Err("What could stand there is still being asked for: nothing was changed. Try again in a moment.") };
         match &self.method {
             Some(m) if offers.list.iter().any(|o| &o.name == m) => Ok(Edit::BuildWorks { method: m.clone(), cell }),
-            _ => Err("Choose a works first: the chips are those that may stand on the square."),
+            _ => Err("Choose a works first: the chips are those that may stand there."),
         }
     }
 
@@ -506,11 +510,11 @@ impl Sandbox {
                 (None, Some(list)) if list.is_empty() => "Every method and technique has been found on the island: there is nothing left to find by hand.".to_string(),
                 _ => "Choose an idea, then click a town, or anywhere in its district: it is found there, and spreads from it as any idea does.".to_string(),
             },
-            Tool::Town => "Click a square of land in a town's district: a town is founded on it at the year's end, if the founding rule allows it there.".to_string(),
+            Tool::Town => "Click open land in a town's district: a town is founded there at the year's end, if the founding rule allows it there.".to_string(),
             Tool::Works if c[0] == 1 => "Click a works: it is closed at the year's turn, and its cash goes to its owners. The tool is put down after.".to_string(),
-            Tool::Works if c[0] == 2 => "Click a square of land: a university is founded at the year's turn in the town whose district it is, paid for by the treasury. The tool is put down after.".to_string(),
+            Tool::Works if c[0] == 2 => "Click the land: a university is founded at the year's turn in the town whose district it is, paid for by the treasury. The tool is put down after.".to_string(),
             Tool::Works if c[0] == 3 => "Click in a town's district: its university is closed at the year's turn. The tool is put down after.".to_string(),
-            Tool::Works => "Click a square of land: the works that could stand on it are listed here, each with what it costs and should return.".to_string(),
+            Tool::Works => "Click the land: the works that could stand there are listed here, each with what it costs and should return.".to_string(),
             Tool::Ground => crate::ground::hint(c[0], c[1], c[2] == 0),
         }
     }
@@ -652,13 +656,34 @@ fn tray_clicks(
 }
 
 /// The town a click is on: the town clicked, or the one whose market the
-/// clicked works or square trades in (as the inspector's own text reads it).
+/// clicked works, pit or spot of open country trades in (as the inspector's
+/// own text reads it).
 fn town_of(data: &Data, what: Option<Pick>, k: usize) -> Option<usize> {
     let r = &data.r;
     match what? {
         Pick::Town(t) => Some(t),
         Pick::Firm(f) => r.header.firms.get(f).and_then(|f| usize::try_from(f.town).ok()),
-        Pick::Cell(c) => r.catch.get(k * r.n + c).and_then(|&t| (t as usize).checked_sub(1)),
+        Pick::Pit { cell: c, .. } | Pick::Place { cell: c, .. } => r.catch.get(k * r.n + c).and_then(|&t| (t as usize).checked_sub(1)),
+    }
+}
+
+/// What a tool takes from a click: a tool that takes a point (founding a
+/// town, building a works, founding a university) takes the spot clicked
+/// where a pit stands on it, and building a works or founding a university
+/// where a town's ground does too, as the click on its square did; the cell
+/// under the spot is what the edit names. Anything else takes the thing.
+fn taken(sb: &Sandbox, data: &Data, what: Option<Pick>, at: Option<(f32, f32)>) -> Option<Pick> {
+    let point = match sb.tool {
+        Tool::Town => matches!(what, Some(Pick::Pit { .. })),
+        Tool::Works => matches!(sb.chosen(Tool::Works, 0), 0 | 2) && matches!(what, Some(Pick::Pit { .. } | Pick::Town(_))),
+        _ => false,
+    };
+    match at.filter(|_| point) {
+        Some((x, z)) => {
+            let cell = crate::pick::cell_at(&data.r, x, z);
+            Some(if data.r.terrain[cell] > 0 { Pick::Place { x, z, cell } } else { what? })
+        }
+        None => what,
     }
 }
 
@@ -681,9 +706,10 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
         return;
     }
     let tool = sb.tool;
-    let edit = match sb.click(town_of(&data, picked.what, data.latest()), picked.what) {
+    let what = taken(&sb, &data, picked.what, picked.at);
+    let edit = match sb.click(town_of(&data, what, data.latest()), what) {
         Ok(Some(e)) => e,
-        // a square taken, with Build a works in hand: its list is asked for
+        // a spot taken, with Build a works in hand: its list is asked for
         Ok(None) => return,
         Err(why) => {
             say(&mut toasts, why);
@@ -790,8 +816,8 @@ fn works_list(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: R
     let r = &data.r;
     let at = format!("{}, {}", cell % r.w.max(1), cell / r.w.max(1));
     let place = match site.town.and_then(|t| r.header.towns.get(t)) {
-        Some(t) => format!("{at}, in {}'s district", t.name),
-        None => at.clone(),
+        Some(t) => format!("in {}'s district", t.name),
+        None => "in no town's district".to_string(),
     };
     let offers = Offers::of(&site.hand, place);
     if sb.keep_offers(offers.clone()) {
@@ -1086,7 +1112,7 @@ fn works_offered(c: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
             c.spawn(text(f, why, 12.5, INK));
         }
         Some(Ok(o)) => {
-            c.spawn(text(f, &format!("On the square at {}:", o.place), 12.5, MUTED));
+            c.spawn(text(f, &format!("Here, {}:", o.place), 12.5, MUTED));
             if o.list.is_empty() {
                 c.spawn(text(f, "No works the town knows has room and a market here, and should pay.", 12.5, INK));
             } else {
@@ -1119,10 +1145,12 @@ mod tests {
 
     #[test]
     fn a_tool_makes_the_edit_its_chips_say() {
+        // a click on open country is a spot, with the cell under it that the edit names
+        let at = |c: usize| crate::pick::at_cell(c, 100);
         let mut sb = Sandbox { tool: Tool::Harvest, ..default() };
         // this district, a failure: a click needs a town
         sb.choice[Tool::Harvest.index()] = [0, 1, 0];
-        assert_eq!(sb.edit(Some(4), Some(Pick::Cell(900))), Ok(Edit::Harvest { town: Some(4), factor: 0.7 }));
+        assert_eq!(sb.edit(Some(4), Some(at(900))), Ok(Edit::Harvest { town: Some(4), factor: 0.7 }));
         assert!(sb.edit(None, None).is_err());
         assert!(sb.hint().contains("cut by three tenths"), "{}", sb.hint());
         // the whole island: any click will do
@@ -1142,9 +1170,9 @@ mod tests {
         sb.keep_ideas(vec![("steel_rail".into(), "the steel rail".into()), ("dynamo".into(), "the dynamo".into())]);
         assert!(sb.edit(Some(3), Some(Pick::Town(3))).unwrap_err().starts_with("Choose an idea"));
         assert!(sb.hint().starts_with("Choose an idea"), "{}", sb.hint());
-        // the steel rail chosen: a click on a town, or a square or works in its district, finds it there
+        // the steel rail chosen: a click on a town, or anywhere in its district, finds it there
         sb.idea = Some("steel_rail".into());
-        assert_eq!(sb.edit(Some(3), Some(Pick::Cell(4000))), Ok(Edit::Discover { tech: "steel_rail".into(), town: 3 }));
+        assert_eq!(sb.edit(Some(3), Some(at(4000))), Ok(Edit::Discover { tech: "steel_rail".into(), town: 3 }));
         assert!(sb.edit(None, None).is_err());
         assert_eq!(sb.hint(), "Click a town, or anywhere in its district: the steel rail is found there, and spreads from it as any idea does.");
         // found, it leaves the list, and the choice is let go
@@ -1153,20 +1181,21 @@ mod tests {
         assert_eq!((sb.idea.clone(), sb.version), (None, v + 1));
         sb.keep_ideas(vec![]);
         assert!(sb.hint().contains("nothing left to find"), "{}", sb.hint());
-        // a town: a square makes the edit; a town and a works do not, and say so before anything is sent
+        // a town: a spot of open country makes the edit; a town, a works and a pit do not, and say so before anything is sent
         sb.tool = Tool::Town;
-        assert_eq!(sb.edit(Some(1), Some(Pick::Cell(5123))), Ok(Edit::FoundTown { cell: 5123 }));
+        assert_eq!(sb.edit(Some(1), Some(at(5123))), Ok(Edit::FoundTown { cell: 5123 }));
         assert_eq!(sb.edit(Some(1), Some(Pick::Town(1))), Err("Click open land, not a town."));
         assert_eq!(sb.edit(Some(1), Some(Pick::Firm(12))), Err("Click open land, not a works."));
+        assert_eq!(sb.edit(Some(1), Some(Pick::Pit { cell: 5123, class: crate::world::QUARRY })), Err("Click open land, not a pit."));
         assert!(sb.edit(None, None).is_err());
         assert_eq!(Tool::Town.rows(), &[&["Found a town here"]]);
         assert_eq!(stands_from("By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791"), Some(1792));
         assert_eq!(stands_from("a town is already to be founded this year, at 31, 40"), None);
-        // works (stage 7b). Build a works: a square takes the site and makes no edit, and the
+        // works (stage 7b). Build a works: a spot takes the site and makes no edit, and the
         // list asked about it is "asking..." until it comes
         sb.tool = Tool::Works;
         sb.choice[Tool::Works.index()] = [0, 0, 0];
-        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Ok(None));
+        assert_eq!(sb.click(Some(1), Some(at(2950))), Ok(None));
         assert_eq!((sb.site, sb.offers.clone()), (Some(2950), None));
         assert!(sb.build().is_err(), "nothing to build until the list has come");
         // the list comes: the allowed methods that should pay, best return first and chosen at
@@ -1194,7 +1223,7 @@ mod tests {
         assert_eq!(sb.method.as_deref(), Some("brickworks"));
         sb.turn = Some(1792);
         assert_eq!(sb.offer_line().unwrap(), "Brickworks here: it costs 622, paid by hand, and should return 42% a year. It is built at the year's turn, in January 1792.");
-        // Build it here makes BuildWorks with the method chosen, on the square taken
+        // Build it here makes BuildWorks with the method chosen, on the cell under the spot taken
         assert_eq!(sb.build(), Ok(Edit::BuildWorks { method: "brickworks".into(), cell: 2950 }));
         sb.method = Some("brewery".into());
         assert_eq!(sb.build(), Ok(Edit::BuildWorks { method: "brewery".into(), cell: 2950 }));
@@ -1204,28 +1233,29 @@ mod tests {
         // no works can stand on the square: its sentence
         sb.keep_offers(Offers::of(&Err("no works can stand on the square at 0, 0: it is sea".into()), "0, 0".into()));
         assert_eq!(sb.offers, Some(Err("No works can stand on the square at 0, 0: it is sea".into())));
-        // a town and a works are refused with Build, before anything is sent, and the square is let go
-        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a square of land, not a town."));
-        assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Err("Click a square of land, not a works."));
+        // a town (named, with no spot) and a works are refused with Build, before anything is sent,
+        // and the site is let go
+        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click the land, not a town."));
+        assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Err("Click the land, not a works."));
         assert_eq!((sb.site, sb.tool), (None, Tool::Works));
-        // Close a works: a square is refused, a works is closed, and the tool is put down
+        // Close a works: a spot is refused, a works is closed, and the tool is put down
         sb.choice[Tool::Works.index()] = [1, 0, 0];
         assert!(sb.hint().starts_with("Click a works"), "{}", sb.hint());
-        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Err("Click a works."));
+        assert_eq!(sb.click(Some(1), Some(at(2950))), Err("Click a works."));
         assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a works."));
         assert_eq!(sb.tool, Tool::Works);
         assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Ok(Some(Edit::CloseWorks { works: 12 })));
         assert_eq!(sb.tool, Tool::Look);
         assert_eq!(Tool::Works.rows(), &[&["Build a works", "Close a works", "Found a university", "Close a university"]]);
-        // a university founded on a square and closed in a district, the tool put down after each
+        // a university founded on a spot and closed in a district, the tool put down after each
         sb.tool = Tool::Works;
         sb.choice[Tool::Works.index()] = [2, 0, 0];
-        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a square of land in the town's district."));
-        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Ok(Some(Edit::FoundUniversity { cell: 2950 })));
+        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click the land in the town's district."));
+        assert_eq!(sb.click(Some(1), Some(at(2950))), Ok(Some(Edit::FoundUniversity { cell: 2950 })));
         assert_eq!(sb.tool, Tool::Look);
         sb.tool = Tool::Works;
         sb.choice[Tool::Works.index()] = [3, 0, 0];
-        assert_eq!(sb.click(None, Some(Pick::Cell(2950))), Err("Click in the district of the town whose university is to close."));
+        assert_eq!(sb.click(None, Some(at(2950))), Err("Click in the district of the town whose university is to close."));
         assert_eq!(sb.click(Some(4), Some(Pick::Town(4))), Ok(Some(Edit::CloseUniversity { town: 4 })));
         assert_eq!(sb.tool, Tool::Look);
         // the words scripts click by
@@ -1234,7 +1264,7 @@ mod tests {
         sb.tool = Tool::Ground;
         sb.choice[Tool::Ground.index()] = [1, 2, 1];
         assert_eq!(sb.brush(), Some((1, 2, false)));
-        assert_eq!(sb.edit(Some(1), Some(Pick::Cell(2950))), Err(""));
+        assert_eq!(sb.edit(Some(1), Some(at(2950))), Err(""));
         assert!(sb.hint().contains("iron ore") && sb.hint().contains("taken away"), "{}", sb.hint());
         assert_eq!(Tool::Ground.rows()[0].len(), isostate_core::edits::Ground::ALL.len());
         // every row's chips have a factor and a word

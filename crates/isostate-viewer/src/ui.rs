@@ -664,7 +664,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Right-drag", "turn and tilt the view"),
                     ("Scroll", "come closer or stand back"),
                     ("W A S D", "walk the view, Q and E to turn"),
-                    ("Click", "ask about a works, a town or a square"),
+                    ("Click", "ask about a works, a pit, a town or the country round it"),
                     ("Space", "start or stop the clock"),
                     ("Right", "one month on, then stop"),
                     ("Page Up", "on to the year's turn, in January"),

@@ -66,7 +66,7 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 
 /// Routes along the main roads for year k: carters' rounds of a dozen cells,
 /// starting from a few cells picked by hash and turning by hash at junctions.
-/// The rounds keep to the main roads as they are drawn (`network::road_segments`),
+/// The rounds keep to the main roads as they are drawn (`network::drawn_links`),
 /// and each runs along its road's surface (`network::driven`): the ribbon,
 /// over a river the bridge, and over a lake or the tide the causeway. Three
 /// kinds of link are left out, where the
@@ -80,7 +80,7 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &mut RoadMemo) -> Vec<TrainPath> {
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); r.n];
     let mut links: Vec<Vec<(usize, usize, u8)>> = vec![Vec::new(); r.n];
-    for (c, m, lv) in network::road_segments(r, k) {
+    for (c, m, lv) in network::drawn_links(r, &g.worn, k) {
         if lv == 3 {
             adj[c].push(m);
             adj[m].push(c);
@@ -188,7 +188,7 @@ impl RoadMemo {
 }
 
 /// Whether, at a cell's middle, the roadway of one of the bridges of the
-/// roads that meet there (`links`, as from `network::road_segments`) stands
+/// roads that meet there (`links`, as from `network::drawn_links`) stands
 /// above the road's ribbon, by more than a cart's lift: the foot of a ramp
 /// lies a little under the ribbon, and does not count. `bridges` keeps each
 /// link's bridges once found.
