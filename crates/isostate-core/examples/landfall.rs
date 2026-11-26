@@ -9,8 +9,10 @@
 //! the island's people, towns, the share of land with five hands or more a
 //! cell, how far the hands reach from the first town, the wage in grain, the
 //! settlers and each town's free land, the ages' three broad groups, the
-//! largest rise of a town's wage in the year, and the money check; every 25th
-//! year adds the maps.
+//! largest rise of a town's wage in the year, and the money check; what the
+//! merchants owe in December over the island's money, carters over all hands,
+//! money a head, the price level and the linked wage; every 25th year adds the
+//! maps.
 #![allow(non_snake_case)]
 use isostate_core::*;
 use std::io::Write;
@@ -156,6 +158,16 @@ fn main() {
             }
             if b > 0.0 { a / b } else { 0.0 }
         };
+        // carriage and money (docs/rules/landfall.md, "Carriage that follows prices"): what the
+        // merchants owe in December over the island's money; carters over all hands (the works',
+        // the land's and the carters'); money a head, in coins and in grain; the price level
+        let owe: f64 = st.merch_cash.iter().map(|&c| (-c).max(0.0)).sum();
+        let (works_h, land_h, cart_h) = (
+            (0..st.F_count).filter(|&k| st.f_alive[k]).map(|k| st.f_labor[k]).sum::<f64>(),
+            st.ex_labor.iter().sum::<f64>(),
+            st.carters.iter().sum::<f64>(),
+        );
+        let grain_p = observer::national_prices(st)[sim.content.gi("grain")].max(1e-12);
         let mut row = serde_json::json!({
             "year": year, "pop": pop, "towns": act.len(),
             "far_town_cells": far_t, "real_wage": s("real_wage"), "wage": s("wage"), "cpi": s("cpi"),
@@ -168,6 +180,19 @@ fn main() {
             "wage_rise_max": worst.0, "wage_rise_town": worst.1, "first_rail": first_rail,
             "emigrants": st.pp_emigrants, "settlers_total": st.immigration.total,
         });
+        for (k, v) in [
+            ("owe_over_money", owe / st.money_now.max(1e-9)),
+            ("money", st.money_now),
+            ("money_pc", st.money_now / pop.max(1.0)),
+            ("money_pc_grain", st.money_now / pop.max(1.0) / grain_p),
+            ("carters", cart_h),
+            ("carters_share", cart_h / (works_h + land_h + cart_h).max(1e-9)),
+            ("price_level", st.longrun.chain),
+            ("real_wage_linked", s("real_wage_linked")),
+            ("grain_price", grain_p),
+        ] {
+            row[k] = serde_json::json!(v);
+        }
         if year % 25 == 0 {
             let towns: Vec<_> = act
                 .iter()

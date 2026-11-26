@@ -105,6 +105,36 @@ fn a_landfall_run_settles_its_people_and_its_settlers_by_age() {
 }
 
 #[test]
+fn landfall_carts_at_prices_from_1750() {
+    // the setting comes with the start, and only with it; the sweep's word puts it back
+    let mut P = landfall_params(7, 1770);
+    assert_eq!((P.longrun.freight_from, game_params().longrun.freight_from), (1750, 1900));
+    assert_eq!(sweep::set_field(&P, "longrun.freight_from", &sweep::parse_value("1900")).unwrap().longrun.freight_from, 1900);
+    // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
+    // hands.short_rise 1.06, longrun.enabled), once with the freight on prices from 1750 and
+    // once from 1900: the colony's prices fall as its people outgrow its money, and so does
+    // its carriage, with fewer of its hands on the road (to 1770: the merchants' debt of the
+    // first years lifts the colony's prices to about 1760 before they fall)
+    assert!(P.longrun.enabled && P.frontier.enabled && P.immigration.enabled && P.hands.short_rise < 2.0);
+    let mut seen = Vec::new();
+    for from in [1750, 1900] {
+        P.longrun.freight_from = from;
+        let mut sim = sim::start(&P, game_content());
+        while sim.year <= sim.end_year {
+            sim::run_year(&mut sim).expect("the money check holds");
+        }
+        let st = &sim.st;
+        let works: f64 = (0..st.F_count).filter(|&k| st.f_alive[k]).map(|k| st.f_labor[k]).sum();
+        let (land, carts): (f64, f64) = (st.ex_labor.iter().sum(), st.carters.iter().sum());
+        seen.push((longrun::freight(st, &P) / P.freight, carts / (works + land + carts)));
+    }
+    let ((rate_1750, carts_1750), (rate_1900, carts_1900)) = (seen[0], seen[1]);
+    assert_eq!(rate_1900, 1.0, "before 1900 the freight is the constant");
+    assert!(rate_1750 < 0.7, "the colony's freight in 1770 is {rate_1750} of 1750's");
+    assert!(carts_1750 < carts_1900, "carters over all hands: {carts_1750} on prices, {carts_1900} in coins");
+}
+
+#[test]
 fn with_immigration_off_nobody_comes() {
     // landfall with immigration.enabled off: the same start, nobody arrives
     let mut P = landfall_params(7, 1754);
