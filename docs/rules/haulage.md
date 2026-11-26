@@ -167,8 +167,14 @@ With wear alone the island has 5,658 km of turnpike in 2050 against 5,964; with 
 station puts more on the road, and that is the road's own traffic.
 
 **What a run takes.** The month is untouched: the station is in the yearly cost graph, and nothing
-monthly searches it. The year's searches have three layers where they had one or two; see the notes of
-26 November for the timings (below, "The decision").
+monthly searches it. `cargo run --profile work -p isostate-core --example haulage` plays island 7 to 2050
+with the rules on and off side by side on two threads and times them by processor time from 1901: a
+month 16.16 ms on and 16.26 off (16.06 and 16.58 ms a million people), a year's end 178 ms on and 156
+off, of which the year's cost graph and its searches (`land::update_transport`, `delta_fields`) are 50.1
+ms and 45.9; the rest is the walks that lay the trains' weight on the squares they pass, and an island
+with more people: some 3 seconds more for a run to 2050. In the sweeps the whole runs'
+processor time was 119 and 136 seconds off and on in one, 93 and 81 in the other, on a machine shared
+with other builds: noise larger than the rule.
 
 ### Who gains and who loses
 
@@ -198,7 +204,7 @@ monthly searches it. The year's searches have three layers where they had one or
 | the twelve standing facts in their bands | 12 of 12 inside | met |
 | the three growth asks met with what lands on | 1.16 per cent a year 1900 to 1970; 2050 over 1970 1.16; the land's share 0.107 lower | met |
 | no run fails or loses money | 32 runs to 2050, none failed | met |
-| the month is no slower | the month is untouched; the year's searches take more (the notes) | met |
+| the month is no slower | 16.16 ms a month on, 16.26 off (island 7, 1901 to 2050, processor time); a year's end 178 ms against 156 | met |
 
 Wear alone moves little (300 km fewer turnpikes in 2050) and lands with the station because it is the
 honest count: a road is worn by its own traffic. `--set haulage.handling=false --set haulage.wear=false`
