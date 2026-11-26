@@ -107,6 +107,14 @@ pub fn trial(seed: u64, families: usize) -> PathBuf {
     folder().join("trials").join(format!("island-{seed}-families-{families}.json"))
 }
 
+/// Where the notes typed at the window are kept (N; note.rs): a folder of
+/// their own beside the sessions and the trials, one text and one picture a
+/// note. Out of git wherever it is: `saves/` is in `.gitignore` for the case
+/// with no per-user folder.
+pub fn notes() -> PathBuf {
+    folder().join("notes")
+}
+
 /// The file a copy of the game holds a lock on while it keeps a game in `path`.
 pub fn lock_file(path: &Path) -> PathBuf {
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
