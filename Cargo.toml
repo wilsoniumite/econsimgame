@@ -35,3 +35,11 @@ inherits = "release"
 codegen-units = 256
 lto = false
 incremental = true
+
+# A marked version's program (tools/release.py, docs/RELEASING.md): release, with the names
+# of its functions and the debugging information taken out. It is built in its own folder,
+# target/dist, so that the release builds the tests and the golden hashes use are not touched.
+[profile.dist]
+inherits = "release"
+debug = false
+strip = true
