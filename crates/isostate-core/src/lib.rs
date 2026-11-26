@@ -49,6 +49,7 @@ pub mod harvest;
 pub mod heaps;
 pub mod inspect;
 pub mod lab;
+pub mod making;
 pub mod land;
 pub mod landcells;
 pub mod landform;

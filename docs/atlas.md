@@ -48,6 +48,17 @@ the islands no longer queue on the process's one heap), it took 73 s, eight
 at a time. The page is 14 MB with every town of the eight islands, of which the
 islands' own figures are 1.1 MB; one island with its towns is 1.8 MB.
 
+The first plate now has a panel in the game for one town and one year: in a
+sandbox, a town's card has a chip, Making, that opens it (the viewer's
+`src/town_flow.rs`, from the core's `src/making.rs`; the viewer's README says
+how to read it). It reads the same books, but draws one town's year where the
+page draws an island's decades: a box for each kind of works and use of the
+land, sized by its hands, ribbons as wide as each good's value at the town's
+prices, what came in from other towns on the left and what was sold to them
+on the right. It does not share the page's plant and the land's purchases out
+by rule: plant for works being built goes to one box, Building, and what the
+farms and pits bought to another, so the panel says only what the books say.
+
 ## How to read it
 
 The drawing is the production tree as the islands lived it in one period (a

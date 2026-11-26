@@ -273,6 +273,15 @@ impl Present {
 }
 
 impl Sandbox {
+    /// An edit taken back (back.rs): a run on stops, no edit is out, and the
+    /// ideas and the square's works are asked for again.
+    pub fn forget(&mut self) {
+        (self.run, self.sent, self.asking) = (None, None, false);
+        (self.ideas, self.ideas_at) = (None, None);
+        (self.offers, self.turn) = (None, None);
+        self.version += 1;
+    }
+
     /// Running on to a year.
     pub fn running(&self) -> bool {
         self.run.is_some()
@@ -689,6 +698,20 @@ pub(crate) fn idea_tool_edit(name: &str, town: usize) -> Edit {
     sb.edit(Some(town), Some(Pick::Town(town))).expect("the Idea tool makes an edit with an idea chosen and a town clicked")
 }
 
+/// TOWN-FLOW-HAND: the edits the Works tool makes with `method` built on
+/// `cell` and with works `works` closed, for holding the Making panel's to
+/// them (town_flow.rs).
+#[cfg(test)]
+pub(crate) fn works_tool_edits(cell: usize, method: &str, works: usize) -> (Edit, Edit) {
+    let mut sb = Sandbox { tool: Tool::Works, ..default() };
+    sb.site = Some(cell);
+    sb.keep_offers(Ok(Offers { place: String::new(), list: vec![Offer { name: method.into(), label: method.into(), cost: 1.0, ret: 0.1 }], more: 0 }));
+    let build = sb.build().expect("Build it here makes an edit with a works chosen on the square taken");
+    sb.choice[Tool::Works.index()][0] = 1;
+    let close = sb.click(None, Some(Pick::Firm(works))).expect("Close a works makes an edit on a works").expect("an edit");
+    (build, close)
+}
+
 /// Send an edit made somewhere other than the map, under the tray's guards,
 /// as if the tool `tool` had made it: its answer goes up as that tool's does
 /// (`answers`). Or the guard's refusal, and nothing is sent.
@@ -872,8 +895,15 @@ fn run_on(mut sb: ResMut<Sandbox>, mut game: ResMut<Game>, mut tl: ResMut<Timeli
     }
 }
 
-/// The tray, drawn again when a tool or a choice changes or a run on begins or ends.
-fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, icons: Res<Icons>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>) {
+/// The tray, drawn again when a tool or a choice changes, a run on begins or
+/// ends, or what there is to take back changes.
+#[allow(clippy::too_many_arguments)]
+fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, icons: Res<Icons>, live: Res<Live>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>, mut back: Local<Option<String>>) {
+    let line = crate::take_back::tray_line(&live.standing);
+    if *back != line {
+        *back = line;
+        sb.version += 1;
+    }
     if sb.drawn == Some(sb.version) {
         return;
     }
@@ -886,8 +916,9 @@ fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>,
     }
     let f = font.0.clone();
     let sb = &*sb;
+    let back = back.clone();
     commands.entity(root).with_children(|p| {
-        tray(p, &f, &icons, sb);
+        tray(p, &f, &icons, sb, back.as_deref());
         if sb.tool != Tool::Look {
             choices(p, &f, sb);
         }
@@ -944,8 +975,10 @@ fn tool_chip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, tool
     });
 }
 
-/// The first card: the tools, and Run on.
-fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sandbox) {
+/// The first card: the tools, and Run on; while there is an edit to take
+/// back, Take back the last edit after Run on's chips, and a muted line under
+/// them saying where the island would go back to (take_back.rs).
+fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sandbox, back: Option<&str>) {
     p.spawn((
         card(Node {
             flex_direction: FlexDirection::Column,
@@ -969,7 +1002,13 @@ fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sand
                 let on = sb.run.is_some_and(|r| r.chip == Some(n));
                 chip_button(row, f, if n == 1 { "1 year".to_string() } else { format!("{n} years") }.as_str(), on, HAND_INK, RunOnChip(n));
             }
+            if back.is_some() {
+                chip_button(row, f, crate::take_back::TRAY_CHIP, false, HAND_INK, crate::take_back::TakeBackChip);
+            }
         });
+        if let Some(line) = back {
+            c.spawn(text(f, line, 11.5, MUTED));
+        }
     });
 }
 

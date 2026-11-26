@@ -294,6 +294,19 @@ pub struct MapOverlay {
 }
 
 impl MapOverlay {
+    /// An edit taken back (back.rs): the ends reckoned for the years from
+    /// `filled` on are forgotten, a reckoning on its way (of the run that is
+    /// gone) is let go, and the map is painted again.
+    pub fn forget(&mut self, filled: usize) {
+        for years in self.ends.years.values_mut() {
+            years.truncate(filled);
+        }
+        self.ends.task = None;
+        self.ends.version += 1;
+        self.painted = None;
+        self.version += 1;
+    }
+
     pub fn new(kind: Option<Overlay>, good: usize) -> MapOverlay {
         MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None }
     }
