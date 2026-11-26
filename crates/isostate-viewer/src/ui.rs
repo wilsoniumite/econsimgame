@@ -763,8 +763,9 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
 // ------------------------------------------------------------------ behaviour
 
 /// Runs before the camera and the map picking, so neither acts on a click meant for a panel.
-pub fn ui_hover(mut ui: ResMut<UiState>, q: Query<&Interaction>) {
-    ui.hover = q.iter().any(|i| *i != Interaction::None);
+/// While a stack of tooltips is open the map takes no click and no hover (tips.rs).
+pub fn ui_hover(mut ui: ResMut<UiState>, q: Query<&Interaction>, tips: Option<Res<crate::tips::Tips>>) {
+    ui.hover = tips.is_some_and(|t| t.open()) || q.iter().any(|i| *i != Interaction::None);
 }
 
 fn toggle_tab(ui: &mut UiState, t: Tab) {

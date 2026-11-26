@@ -51,6 +51,14 @@
 //!                     what is under it (cursor.rs); hover:none gives it back
 //!                     to the mouse. print says what it rests on and what
 //!                     asking cost
+//!     tip:WORDS       rest the pointer on the piece of the interface that
+//!                     shows WORDS (a row of a firm's card by its label, a
+//!                     link by its words), the one in the topmost tooltip
+//!                     first; let the game run with wait: for the tooltip to
+//!                     open and lock (tips.rs). tip:middle is a middle click
+//!                     where it rests, tip:none gives the pointer back to the
+//!                     mouse. print lists the tooltips open and what the
+//!                     test under the pointer cost
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
 //!     card:PIXELS     scroll the card of what was clicked down this far (a
@@ -170,6 +178,8 @@ enum Step {
     Stroke(Vec<(f32, f32)>),
     /// letters typed as the keyboard gives them, into the note's line (note.rs)
     Type(String),
+    /// the pointer rests on a piece of the interface by its words, or none, or a middle click (tips.rs)
+    Tip(String),
 }
 
 /// What a `pick` step clicks: a spot on the map, or a town or works by its name (pick.rs).
@@ -352,6 +362,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             },
             // MAKING: the Making panel's pointer (town_flow.rs)
             "point" if !arg.is_empty() => Step::Point(arg.to_string()),
+            "tip" if !arg.is_empty() => Step::Tip(arg.to_string()),
             // IDEAS-PLATE: the panel of the island's ideas (ideas_plate.rs)
             "ideas" if !arg.is_empty() => Step::Ideas(arg.to_string()),
             // (the text as written, spaces at either end and all, but for the step's own trimming)
@@ -392,7 +403,7 @@ pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> 
             }
         })
         // after the interface has read the (absent) pointer and keyboard, so a press made here lasts the frame
-        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems).before(crate::note::keys));
+        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems).before(crate::note::keys).before(crate::tips::escape));
     // (what the frames cost is the frame recorder's to say, which a scripted run keeps on
     // as a meter: frames.rs, `last_work`)
     Ok(())
@@ -405,6 +416,10 @@ fn plain(s: &str) -> String {
 /// Every text under an entity, in order.
 fn texts(world: &World, e: Entity, out: &mut Vec<String>) {
     if let Some(t) = world.get::<Text>(e) {
+        out.push(t.0.clone());
+    }
+    // a text's spans: a firm's card is made of them (tips.rs, `spawn_pieces`)
+    if let Some(t) = world.get::<TextSpan>(e) {
         out.push(t.0.clone());
     }
     if let Some(ch) = world.get::<Children>(e) {
@@ -608,6 +623,16 @@ fn print_state(world: &mut World, note: &str) {
     }
     if note.iter().any(|s| !s.trim().is_empty()) {
         println!("script:   the inspector says: {}", said_in_one_line(&note, usize::MAX));
+    }
+    // the tooltips open, and what the test under the pointer cost (tips.rs)
+    if let Some(tips) = world.get_resource::<crate::tips::Tips>() {
+        let now = world.resource::<Time<Real>>().elapsed_secs();
+        for line in tips.said(now) {
+            println!("script:   tooltip {line}");
+        }
+        if tips.aim.is_some() || tips.open() {
+            println!("script:   the tooltips' test under the pointer: {}", tips.cost_said());
+        }
     }
     // what the pointer rests on, and what asking cost (cursor.rs)
     if let Some(p) = world.get_resource::<crate::cursor::ScriptPointer>().and_then(|p| p.0) {
@@ -1107,6 +1132,16 @@ fn step(world: &mut World, sc: &mut Script) {
             }
             Step::Hover(at) => {
                 world.resource_mut::<crate::cursor::ScriptPointer>().0 = at;
+                frame = true;
+            }
+            // the pointer on a piece of the interface, by its words (tips.rs)
+            Step::Tip(words) => {
+                let mut tips = world.resource_mut::<crate::tips::Tips>();
+                match words.to_ascii_lowercase().as_str() {
+                    "none" => tips.aim = None,
+                    "middle" => tips.middle = true,
+                    _ => tips.aim = Some(words.clone()),
+                }
                 frame = true;
             }
             // GROUND-BRUSH: the brush drawn through the spots, a square a frame (ground.rs)
