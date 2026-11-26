@@ -869,7 +869,15 @@ fn labels(c: &mut ChildSpawnerCommands, f: &Handle<Font>, p: &Plan) {
     for (k, fp) in p.faint.iter().enumerate() {
         if let Some(b) = fp {
             let fk = &p.making.faint[k];
-            let words = if fk.known { format!("{} (none here)", fk.label) } else { format!("{} (found nowhere yet)", fk.label) };
+            // (a works of it may stand since the books closed: built by hand at the turn)
+            let since = p.making.hand_of(fk.good).map_or(0, |k| k.standing.len());
+            let words = if since > 0 {
+                format!("{} ({} standing since the books closed)", fk.label, since)
+            } else if fk.known {
+                format!("{} (none here)", fk.label)
+            } else {
+                format!("{} (found nowhere yet)", fk.label)
+            };
             let ink = if marked(&p.making, fk.good) { HAND_INK } else { MUTED.with_alpha(if fk.known { 0.75 } else { 0.55 }) };
             put(b, fit(&words, room), ink, false);
         }
@@ -1137,10 +1145,14 @@ pub fn menu_for(m: &Making, g: usize, faint: bool, width: usize) -> Option<Menu>
             edit: Ok(Edit::CloseWorks { works: s.works }),
             tool: works,
             line: format!(
-                "Closes {} ({}, up to {} {good} a month), the smallest of the {n}, at the year's turn.",
+                "Closes {} ({}, {}), the smallest of the {n}, at the year's turn.",
                 s.name,
                 s.label.to_lowercase(),
-                if s.plant < 10.0 { format!("{:.1}", s.plant) } else { sum(s.plant) }
+                if s.plant < 0.05 {
+                    "with no plant yet".to_string()
+                } else {
+                    format!("up to {} {good} a month", if s.plant < 10.0 { format!("{:.1}", s.plant) } else { sum(s.plant) })
+                }
             ),
         });
         items.push(Item {
@@ -1219,9 +1231,11 @@ fn menus(
     // a script's menu
     if let Some(name) = flow.point.as_deref().and_then(|p| p.strip_prefix("menu:")).map(str::to_string) {
         flow.point = None;
-        flow.menu = if name.trim().eq_ignore_ascii_case("none") { None } else { find(&pl, &name).and_then(|h| menu_key(&pl, h)) };
+        let shut = name.trim().eq_ignore_ascii_case("none");
+        flow.menu = if shut { None } else { find(&pl, &name).and_then(|h| menu_key(&pl, h)) };
         match flow.menu {
             Some((g, _)) => println!("making: the hand's menu of {}", pl.making.good_label.get(g).map_or("", |s| s.as_str())),
+            None if shut => println!("making: the hand's menu shut"),
             None => println!("making: no menu for {name}"),
         }
         return;
