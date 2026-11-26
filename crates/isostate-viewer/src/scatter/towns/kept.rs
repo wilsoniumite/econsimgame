@@ -2417,6 +2417,57 @@ mod tests {
         }
     }
 
+    /// The roads on curves (`road_course`) against the houses, on recorded
+    /// runs named in `ISOSTATE_CURVE_RUNS` (paths to `run.bin`, apart by
+    /// `;`): in 1850, 1900 and 2050, every house laid out, and how many stand
+    /// within 0.02 of a square (40 m) of the middle line of a road drawn,
+    /// straight as before and on curves. No house moves either way (the town
+    /// reads no course); what the count says is how many a curve runs over.
+    /// Run by hand, with
+    /// `cargo test -p isostate-viewer houses_beside_the_curves -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn houses_beside_the_curves() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        for path in paths.split(';') {
+            let bytes = std::fs::read(path).unwrap();
+            let r = replay::parse(path, &bytes).unwrap();
+            let cen = crate::network::centres(&r);
+            for year in [1850, 1900, 2050] {
+                let k = (year - r.y0) as usize;
+                if k >= r.ny {
+                    continue;
+                }
+                let mut said = Vec::new();
+                for straight in [true, false] {
+                    crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(straight));
+                    let g = world::build_ground(&r);
+                    let l = laid(&r, &g, k, &|_, _| false);
+                    let mut segs: std::collections::HashMap<(i32, i32), Vec<(Vec2, Vec2)>> = Default::default();
+                    for (c, m, _) in crate::network::drawn_links(&r, &g.worn, k) {
+                        let way = crate::network::course(&r, &g, &cen, c, m, k);
+                        for w in way.pts.windows(2) {
+                            segs.entry((w[0].x.floor() as i32, w[0].y.floor() as i32)).or_default().push((w[0], w[1]));
+                        }
+                    }
+                    let none = Vec::new();
+                    let near = l.standing.iter().filter(|s| {
+                        let p = s.lot.pl.p;
+                        let (x, y) = (p.x.floor() as i32, p.y.floor() as i32);
+                        (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (x + dx, y + dy))).flat_map(|c| segs.get(&c).unwrap_or(&none)).any(|&(a, b)| {
+                            let ab = b - a;
+                            let t = ((p - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+                            p.distance(a + ab * t) < 0.02
+                        })
+                    }).count();
+                    said.push(format!("{} {near} of {} houses", if straight { "straight" } else { "curves" }, l.standing.len()));
+                    crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(false));
+                }
+                println!("{path} {year}: within 0.02 of a road's middle line: {}", said.join(", "));
+            }
+        }
+    }
+
     /// An estate has streets of its own, of the pattern of its year, laid on
     /// its own square's built-up ground and never over its park; its plots
     /// front them and are all built the year it was laid out; and once laid,
