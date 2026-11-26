@@ -951,7 +951,8 @@ pub fn prospect_works(st: &State, C: &Content, P: &Params, t: usize) -> [Prospec
     }
     for m in 0..C.M {
         let Some(g) = Group::of_method(C, m) else { continue };
-        if !(st.know[(t, m)] > 0.02) {
+        // (TOWN-FLOW-HAND: nor a method turned off here by hand)
+        if !(st.know[(t, m)] > 0.02) || crate::edits::forbidden(st, t, m) {
             continue;
         }
         let K = works::entry_K(st, C, P, t, m);
@@ -1075,6 +1076,10 @@ fn may_found(st: &State, C: &Content, family: usize, m: usize, i: usize) -> Resu
     if i != fam.seat {
         return Err(format!("works are chosen directly only at the seat, {}", st.town_name[fam.seat]));
     }
+    // TOWN-FLOW-HAND: a method turned off here by hand (edits.rs)
+    if crate::edits::forbidden(st, i, m) {
+        return Err(format!("{} may not be built in {}: it was turned off there by hand", C.method_label[m], st.town_name[i]));
+    }
     Ok(())
 }
 
@@ -1137,6 +1142,10 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
     let i = buildable(st, cell)?;
     if !(st.know[(i, method)] > 0.02) {
         return Err(format!("{} is not known in {} yet", C.method_label[method], st.town_name[i]));
+    }
+    // TOWN-FLOW-HAND: a method turned off here by hand (edits.rs)
+    if crate::edits::forbidden(st, i, method) {
+        return Err(format!("{} may not be built in {}: it was turned off there by hand", C.method_label[method], st.town_name[i]));
     }
     if st.F_count >= st.f_alive.len() {
         return Err("the firm table is full".to_string());
@@ -2052,7 +2061,8 @@ fn run_branches(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize
 fn grow(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, g: Group, t: usize, spare: &mut f64, n: usize, year: i64, events: &mut Vec<Event>) {
     let b = branch_bonus(&st.families[k], P, g, t);
     let mut options: Vec<(f64, usize, usize, f64)> = Vec::new();
-    for m in (0..C.M).filter(|&m| Group::of_method(C, m) == Some(g) && st.know[(t, m)] > 0.02) {
+    // (TOWN-FLOW-HAND: not a method turned off here by hand)
+    for m in (0..C.M).filter(|&m| Group::of_method(C, m) == Some(g) && st.know[(t, m)] > 0.02 && !crate::edits::forbidden(st, t, m)) {
         let K = works::entry_K(st, C, P, t, m);
         let (_, _, _, share, ratio) = market_depth(st, C, t, m, K);
         if share > P.family_max_share || ratio > P.family_max_price_ratio {

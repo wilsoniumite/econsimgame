@@ -10,6 +10,7 @@
 //! sheets of the scenery's generators and stops (lab.rs).
 
 mod ages_chart;
+mod back;
 mod purse_chart;
 mod boats;
 mod built;
@@ -46,8 +47,11 @@ mod saves;
 mod scatter;
 mod script;
 mod shots;
+mod take_back;
 mod terrain;
 mod town_ideas;
+// MAKING: a town's making as a panel (town_flow.rs)
+mod town_flow;
 mod traffic;
 mod trains;
 mod ui;
@@ -1082,7 +1086,9 @@ fn main() {
         .add_plugins(hand_tab::plugin)
         .add_plugins(inspector::plugin)
         .add_plugins(town_ideas::plugin)
+        .add_plugins(town_flow::plugin)
         .add_plugins(rulebook::plugin)
+        .add_plugins(take_back::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
@@ -1094,6 +1100,9 @@ fn main() {
     app.add_systems(Update, season_clock.after(advance_time).before(seasons));
     // which of the trees' meshes show is settled in one place, by the season and the map view together
     app.add_systems(Update, show_trees.after(seasons));
+    // an edit taken back: what came after it is forgotten in the frame its answer is read, before the
+    // year's scenery is looked at and before the square or the panels are asked about again
+    app.add_systems(Update, back::taken_back.after(game::pump).before(rebuild_year).before(game::ask_site).run_if(resource_exists::<live::Live>));
     if let Some(l) = live {
         app.insert_resource(l);
         // a game changed by hand: the tray of tools, and the family game's cards kept away
@@ -1884,6 +1893,8 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
                     // in a sandbox, what the simulation knows of the thing (inspector.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
+                    // MAKING: a town's chip that opens its making (town_flow.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, ..default() }, town_flow::MakingBlock));
                     // and a town's ideas, in a section of their own (town_ideas.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, town_ideas::IdeasBlock));
                 });
@@ -2334,6 +2345,13 @@ fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: 
         }
     }
     if let Some((_, f)) = best {
+        // a university stands as a works but is its town's, whose card tells of it (and in a live game
+        // its place in the list of works moves as the simulation's works come before it)
+        if replay::is_university(r, f) {
+            if let Some(t) = usize::try_from(r.header.firms[f].town).ok().filter(|&t| t < r.header.towns.len()) {
+                return Some(Pick::Town(t));
+            }
+        }
         return Some(Pick::Firm(f));
     }
     for t in 0..r.n_towns.min(r.header.towns.len()) {

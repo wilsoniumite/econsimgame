@@ -376,6 +376,10 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
             if !(st.know[(i, m)] > 0.02) {
                 continue;
             }
+            // TOWN-FLOW-HAND: a method turned off here by hand (edits.rs; none in a run with no such edit)
+            if crate::edits::forbidden(st, i, m) {
+                continue;
+            }
             let cells = candidate_cells(st, C, P, i, m, rng);
             if cells.is_empty() {
                 continue;
@@ -537,6 +541,10 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
         return None; // a family works opens sister works only under a growing branch
     }
     let (i, m) = (st.f_town[parent], st.f_method[parent]);
+    // TOWN-FLOW-HAND: no sister of a method turned off here by hand
+    if crate::edits::forbidden(st, i, m) {
+        return None;
+    }
     let (H, W) = (st.world.H, st.world.W);
     let (y, x) = (st.f_cell[parent] / W, st.f_cell[parent] % W);
     let mut cand = Vec::new();

@@ -316,6 +316,14 @@ impl Saver {
         }
     }
 
+    /// Look at what is in the place again at the next write, as at the first:
+    /// for a game taken back to before an edit (`Cmd::TakeBack`), whose next
+    /// save holds fewer orders than the one there, which is set aside whole
+    /// (`.previous.json`) and not written over. Once, at that write.
+    pub fn look_again(&mut self) {
+        self.settled = false;
+    }
+
     /// Whether this copy holds the place's lock.
     #[cfg(test)]
     pub fn locked(&self) -> bool {

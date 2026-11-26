@@ -653,6 +653,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         "The tray under the clock holds the hand's tools. Take one (Money, People, Harvest),",
                         "choose from its chips, then click the map: a town, or anywhere in its district.",
                         "Escape puts the tool down. Run on plays 1, 10 or 25 years and stops in January.",
+                        "Take back the last edit, beside Run on, puts the island back as it stood before it.",
                     ] {
                         c.spawn(text(f, line, 14.5, MUTED));
                     }

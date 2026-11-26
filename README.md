@@ -97,9 +97,29 @@ cargo run -p isostate-viewer -- --lab cottages-eras --out runs/lab
 **The tests.**
 
 ```bash
-cargo test -p isostate-core --release    # 210 tests, four to six minutes once built; the golden test is among them
+cargo test -p isostate-core --release    # 440 tests, some twenty minutes one program after another; the golden tests are among them
 cargo test -p isostate-gen               # 127 tests, a few seconds
+python crates/isostate-core/run_tests.py --profile work --quick   # the quick half of the core's tests, all at once: about half a minute
 ```
+
+The core's tests are more quickly run all at once by `crates/isostate-core/run_tests.py`, which is what the gate runs (`docs/rules/README.md`, "Running the tests"); `--quick` leaves out the two hundred slowest, which run islands for a century or more.
+
+**Building quickly.** The workspace has three profiles, and which one a build uses decides whether a change to the code is built again in seconds or in minutes (measured on 26 November 2026, on a machine busy with other builds):
+
+| Profile | Asked for with | For | A one-line change to the core builds again in | A run is |
+|---|---|---|---|---|
+| dev | nothing (`cargo run -p isostate-viewer`) | the viewer while you work on it, and the gate's tests of the core | the viewer in 11 to 14 s | slower: debug checks on, the viewer's own code lightly optimised |
+| work | `--profile work` | the simulation from the command line while you work on it: runs, sweeps, the core's tests | 7 s | 3 per cent slower than release, and the same to the last digit |
+| release | `--release` | the game as it is played, and the gate's sweep | 3 to 5 minutes | the fastest |
+
+So while working on the simulation:
+
+```bash
+cargo build --profile work -p isostate-core
+./target/work/isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --out runs/sweep
+```
+
+Building release instead pays only when more than an hour and a half of simulation will be run before the next change: its build takes about three minutes longer, and it saves 3 per cent of every run. `work` is release built in many small pieces that are kept between builds; `Cargo.toml` says what each setting does.
 
 ## Two sets of rules
 
