@@ -602,7 +602,9 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     // history after 1900 founds such a saw pit too (in 1971). And with who works by
     // age off (docs/rules/who-works.md), which came after: with the purse off it
     // still counts the hands by age from 1901, and its history founds such a saw pit
-    // in 1971 too
+    // in 1971 too. And with care off (docs/rules/care.md), which came after: its works
+    // have no clerking either (every hour of theirs is presence), and one founded after
+    // office computing raised its town's target means to hold it, as such a saw pit does
     let comp = |on: bool| {
         let mut P = params(true);
         P.end_year = Some(TO);
@@ -613,6 +615,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
         P.city.dear_room = false;
         P.state = Default::default();
         P.who_works = Default::default();
+        P.care = Default::default();
         P
     };
     // a run to TO, with save::check at the end of 1940 and at the end
