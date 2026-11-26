@@ -50,6 +50,8 @@ mod shots;
 mod take_back;
 mod terrain;
 mod town_ideas;
+// MAKING: a town's making as a panel (town_flow.rs)
+mod town_flow;
 mod traffic;
 mod trains;
 mod ui;
@@ -1084,6 +1086,7 @@ fn main() {
         .add_plugins(hand_tab::plugin)
         .add_plugins(inspector::plugin)
         .add_plugins(town_ideas::plugin)
+        .add_plugins(town_flow::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(take_back::plugin)
         .add_plugins(overlay::plugin)
@@ -1890,6 +1893,8 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
                     // in a sandbox, what the simulation knows of the thing (inspector.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
+                    // MAKING: a town's chip that opens its making (town_flow.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, ..default() }, town_flow::MakingBlock));
                     // and a town's ideas, in a section of their own (town_ideas.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, town_ideas::IdeasBlock));
                 });

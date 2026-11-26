@@ -1665,3 +1665,27 @@ fn an_edit_taken_back_leaves_the_island_that_never_had_it() {
     drop(u);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// MAKING (town_flow.rs): a town's making comes from the game's thread as a
+// card does, and is the plain game's; a year on, it is of the year after.
+#[test]
+fn a_towns_making_comes_from_the_thread_and_follows_the_year() {
+    use isostate_core::inspect::Thing;
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 9, ..default() });
+    let rules = isostate_core::params::Rules::Game;
+    let mut b = isostate_core::save::Game::under_to(rules, 7, 6, 0, isostate_core::save::content_last_year(rules)).unwrap();
+    for _ in 0..10 {
+        b.year().unwrap();
+        b.turn();
+    }
+    let k = a.r.filled - 1;
+    let towns: Vec<usize> = (0..a.r.n_towns).filter(|&t| a.r.town_active[k * a.r.n_towns + t] != 0).collect();
+    for &t in &towns {
+        let told = a.ask(Thing::Making(t)).expect("a town that stands has a making");
+        assert_eq!(told.making.as_ref().map(|m| (m.town, m.year)), Some((t, 1759)), "{}", a.r.header.towns[t].name);
+        assert_eq!(Ok(told), isostate_core::inspect::tell(&b.sim, Thing::Making(t)));
+    }
+    a.step();
+    let m = a.ask(Thing::Making(towns[0])).unwrap().making.unwrap();
+    assert_eq!(m.year, 1760);
+}
