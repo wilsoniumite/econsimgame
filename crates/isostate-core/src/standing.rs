@@ -99,7 +99,7 @@ pub fn verdict(reference: Option<Stat>, later: Option<Stat>) -> Verdict {
 /// Each setting of a finished sweep as an arm, as `sweep::read_then` reads an
 /// earlier sweep's.
 pub fn arms(sw: &Sweep) -> Vec<Then> {
-    let mut out: Vec<Then> = sw.settings.iter().map(|s| Then { label: s.label.clone(), ..Then::default() }).collect();
+    let mut out: Vec<Then> = sw.settings.iter().map(|s| Then { label: s.label.clone(), start: s.start.to_string(), ..Then::default() }).collect();
     for run in &sw.runs {
         let Ok(done) = &run.outcome else { continue };
         let arm = &mut out[run.setting];
@@ -338,43 +338,297 @@ pub fn growth(arms: &[&Then]) -> (String, Vec<String>) {
     (text, missed)
 }
 
+// ---------------------------------------------------------------- the colony's check
+
+/// How a fact of the colony's check is read from an arm, island by island.
+#[derive(Clone, Copy, Debug)]
+pub enum Read {
+    /// A fact as it is.
+    Fact(&'static str),
+    /// Per cent a year from the first fact to the second, over so many years.
+    Growth(&'static str, &'static str, f64),
+    /// Per cent a year of a fact that is a level against 1.0 so many years before.
+    Rate(&'static str, f64),
+    /// The second fact less the first.
+    Change(&'static str, &'static str),
+    /// The fact over the settled island's on the same island number.
+    OverSettled(&'static str),
+    /// The fact less the settled island's on the same island number.
+    LessSettled(&'static str),
+}
+
+/// One fact of the colony's check: what is asked, how it is read, its band
+/// (either end may be open), how sure the band is, and its number in the table
+/// of history it comes from (`docs/rules/scorecard.md`, "The colony's check").
+#[derive(Clone, Copy, Debug)]
+pub struct ColonyFact {
+    pub asked: &'static str,
+    pub read: Read,
+    pub kind: Kind,
+    pub lo: Option<f64>,
+    pub hi: Option<f64>,
+    /// `read` (read in its source), `memory` (from memory) or `reasoned` (no
+    /// source; reasoned from the island).
+    pub sure: &'static str,
+    /// The row of the table of history on the scorecard's page.
+    pub row: &'static str,
+}
+
+const fn fact(asked: &'static str, read: Read, kind: Kind, lo: Option<f64>, hi: Option<f64>, sure: &'static str, row: &'static str) -> ColonyFact {
+    ColonyFact { asked, read, kind, lo, hi, sure, row }
+}
+
+/// The colony's check: what a colony of settlement did, set beside the landfall
+/// start. Written from history first (the study of 26 November 2026, its table
+/// of 24 facts, and the earlier proposals of docs/rules/landfall.md), not fitted
+/// to the runs: a fact today's colony misses stays here as a miss, the list of
+/// what this start must still learn. The facts struck, and why, are in
+/// `STRUCK`.
+pub const COLONY: [ColonyFact; 24] = [
+    fact("births less deaths, per cent a year, 1751-1800", Read::Fact("natural_increase_pct_1751_1800"), Kind::Ratio, Some(2.3), Some(3.0), "read", "1"),
+    fact("people grow, births and ships, per cent a year, 1750-1800", Read::Growth("pop_1750", "pop_1800", 50.0), Kind::Ratio, Some(3.5), Some(8.0), "memory", "2"),
+    fact("people in 1900, year 150", Read::Fact("pop_1900"), Kind::Count, Some(100_000.0), Some(500_000.0), "memory", "3"),
+    fact("births less deaths as the land fills, per cent a year, 1851-1880", Read::Fact("natural_increase_pct_1851_1880"), Kind::Ratio, Some(1.5), Some(2.0), "memory", "4"),
+    fact("people grow once the land is full, per cent a year, 1950-2050", Read::Growth("pop_1950", "pop_2050", 100.0), Kind::Ratio, Some(0.0), Some(0.5), "memory", "5"),
+    fact("settlers' share of the growth, 1750-1770", Read::Fact("settlers_share_of_growth_1750_1770"), Kind::Share, Some(0.5), Some(0.9), "memory", "6"),
+    fact("settlers' share of the growth, 1750-1850", Read::Fact("settlers_share_of_growth_1750_1850"), Kind::Share, Some(0.2), Some(0.6), "read", "7"),
+    fact("under 15, share of people, 1800", Read::Fact("ages_under15_1800"), Kind::Share, Some(0.33), Some(0.45), "memory", "10"),
+    fact("under 15, share of people, 1850", Read::Fact("ages_under15_1850"), Kind::Share, Some(0.33), Some(0.45), "memory", "10"),
+    fact("under 15, share of people, 1900", Read::Fact("ages_under15_1900"), Kind::Share, Some(0.32), Some(0.40), "memory", "11"),
+    fact("second town founded, year", Read::Fact("town_second_year"), Kind::Year, Some(1750.0), Some(1755.0), "memory", "12"),
+    fact("share in towns, 1850 less 1750", Read::Change("urban_share_1750", "urban_share_1850"), Kind::Share, Some(-0.05), Some(0.05), "read", "15"),
+    fact("years with hunger, 1770-1900", Read::Fact("famine_years_1770_1900"), Kind::Count, Some(0.0), Some(0.0), "memory", "16"),
+    fact("years with hunger, 1901-2050", Read::Fact("famine_years_1901_2050"), Kind::Count, Some(0.0), Some(0.0), "memory", "16"),
+    fact("wage in grain over the settled island's, 1760", Read::OverSettled("wage_in_grain_1760"), Kind::Ratio, Some(0.6), Some(1.1), "read", "18"),
+    fact("wage in grain over the settled island's, 1800", Read::OverSettled("wage_in_grain_1800"), Kind::Ratio, Some(1.1), Some(1.7), "read", "17"),
+    fact("wage in grain over the settled island's, 1850", Read::OverSettled("wage_in_grain_1850"), Kind::Ratio, Some(1.1), Some(1.7), "read", "17"),
+    fact("wage in grain over the settled island's, 1900", Read::OverSettled("wage_in_grain_1900"), Kind::Ratio, Some(1.2), Some(2.4), "read", "a"),
+    fact("the real wage's growth while land feeds it, per cent a year, 1750-1850", Read::Rate("real_wage_chained_1850_vs_1750", 100.0), Kind::Ratio, Some(0.0), Some(0.5), "read", "19"),
+    fact("the cost of living over three years at most, to 1900", Read::Fact("price_level_3y_max_1750_1900"), Kind::Ratio, None, Some(1.5), "memory", "21"),
+    fact("the cost of living over three years at least, to 1900", Read::Fact("price_level_3y_min_1750_1900"), Kind::Ratio, Some(0.7), None, "memory", "21"),
+    fact("first railway, years after the settled island's", Read::LessSettled("rail_first_year"), Kind::Real, Some(20.0), Some(35.0), "memory", "22"),
+    fact("people in 2050 over the settled island's", Read::OverSettled("pop_2050"), Kind::Ratio, Some(0.5), Some(1.5), "reasoned", "-"),
+    fact("towns in 1900 over the settled island's", Read::OverSettled("towns_1900"), Kind::Ratio, Some(0.5), Some(1.5), "reasoned", "-"),
+];
+
+/// Held to both starts and shown beside the check, not counted: the largest
+/// rise of a town's wage over the year before, to 1900 (history: between 0.75
+/// and 1.33 of the year before, outside a gold rush or war paper; row 20). The
+/// settled island has it too (3.28 on island 8 in 1786), so it is no fact of
+/// one start alone.
+pub const BOTH: [ColonyFact; 1] =
+    [fact("a town's wage over the year before at most, to 1900", Read::Fact("town_wage_rise_max_1752_1900"), Kind::Ratio, None, Some(1.33), "memory", "20")];
+
+/// The facts of the table of history not in the check, with the reason.
+pub const STRUCK: [(&str, &str); 6] = [
+    ("8", "settlers in a year, of the colony's people: the immigration rule's own caps (0.015 and 0.05) hold it, so it checks a number of the rule, not the run"),
+    ("9", "under 15 with births alone, 0.42 to 0.50: the landfall start brings settlers, so rows 10 and 11, with ships, are read instead"),
+    ("13", "new towns founded at a few hundred to 2,000 people: the hamlets' rule's own number, 500"),
+    ("14", "share in towns of 2,500 and more: the game's urban_share is the share living on town ground, another measure; row 15 reads its change, which both measures share"),
+    ("23", "a machine that saves hands on land no later than on the settled island: no fact yet says when the first one runs (not measured, kept for the fact that will)"),
+    ("24", "runs failing their money check: the sweep fails any such run itself"),
+];
+
+/// A fact's values island by island, from the colony's arm and, where it reads
+/// one, the settled island's arm of the same island numbers.
+pub fn colony_values(f: &ColonyFact, arm: &Then, settled: Option<&Then>) -> Vec<(u64, f64)> {
+    let get = |a: &Then, name: &str| -> Vec<(u64, f64)> { a.values.get(name).cloned().unwrap_or_default() };
+    let pair = |a: &[(u64, f64)], b: &[(u64, f64)], f: &dyn Fn(f64, f64) -> f64| -> Vec<(u64, f64)> {
+        let mut out: Vec<(u64, f64)> =
+            a.iter().filter_map(|&(seed, x)| b.iter().find(|&&(s, _)| s == seed).map(|&(_, y)| (seed, f(x, y)))).filter(|(_, v)| v.is_finite()).collect();
+        out.sort_by_key(|&(seed, _)| seed);
+        out
+    };
+    let mut v = match f.read {
+        Read::Fact(name) => get(arm, name),
+        Read::Growth(a, b, years) => pair(&get(arm, a), &get(arm, b), &|x, y| 100.0 * ((y / x).powf(1.0 / years) - 1.0)),
+        Read::Rate(name, years) => get(arm, name).into_iter().map(|(s, x)| (s, 100.0 * (x.powf(1.0 / years) - 1.0))).collect(),
+        Read::Change(a, b) => pair(&get(arm, a), &get(arm, b), &|x, y| y - x),
+        Read::OverSettled(name) => settled.map_or(Vec::new(), |s| pair(&get(arm, name), &get(s, name), &|x, y| x / y)),
+        Read::LessSettled(name) => settled.map_or(Vec::new(), |s| pair(&get(arm, name), &get(s, name), &|x, y| x - y)),
+    };
+    v.retain(|(_, x)| x.is_finite());
+    v.sort_by_key(|&(seed, _)| seed);
+    v
+}
+
+/// Whether a number lies in a fact's band.
+pub fn in_band(f: &ColonyFact, x: f64) -> bool {
+    f.lo.is_none_or(|lo| x >= lo - 1e-12) && f.hi.is_none_or(|hi| x <= hi + 1e-12)
+}
+
+/// Whether the mean across the islands lies in the band; None with no value.
+pub fn colony_met(f: &ColonyFact, values: &[(u64, f64)]) -> Option<bool> {
+    stat(values).map(|s| in_band(f, s.mean))
+}
+
+/// The band in words.
+fn band_words(f: &ColonyFact) -> String {
+    let show = |x: f64| fmt_fact(f.kind, x);
+    match (f.lo, f.hi) {
+        (Some(a), Some(b)) if a == b => show(a),
+        (Some(a), Some(b)) => format!("{} to {}", show(a), show(b)),
+        (Some(a), None) => format!("{} or more", show(a)),
+        (None, Some(b)) => format!("{} or less", show(b)),
+        (None, None) => "any".to_string(),
+    }
+}
+
+/// The colony's check for each of `colonies`, set beside `settled` (the settled
+/// island's arm of the same islands, named by `whence`) where a fact reads it:
+/// the text, and a line for each fact missed or without a value.
+pub fn colony(colonies: &[&Then], settled: Option<&Then>, whence: &str) -> (String, Vec<String>) {
+    let mut text = String::new();
+    let mut missed = Vec::new();
+    for arm in colonies {
+        let rows: Vec<(ColonyFact, Vec<(u64, f64)>, Option<bool>)> =
+            COLONY.iter().map(|f| (*f, colony_values(f, arm, settled), colony_met(f, &colony_values(f, arm, settled)))).collect();
+        let met = rows.iter().filter(|r| r.2 == Some(true)).count();
+        let none = rows.iter().filter(|r| r.2.is_none()).count();
+        let _ = writeln!(
+            text,
+            "the colony's check: {met} of {} met, {} missed, {none} without a value: {} ({} islands){}",
+            COLONY.len(),
+            COLONY.len() - met - none,
+            arm.label,
+            arm.seeds.len(),
+            match settled {
+                Some(s) => format!(", beside {} from {whence}", s.label),
+                None => ", with no settled island beside it (--beside DIR, or --start settled,landfall in one sweep)".to_string(),
+            }
+        );
+        let _ = writeln!(
+            text,
+            "bands from history (docs/rules/scorecard.md, \"The colony's check\": row, source, how sure); met: the mean of\n\
+             the islands lies in the band. Printed, not counted, unless --colony.\n"
+        );
+        let head: Vec<String> = ["", "mean", "[least .. greatest]", "band", "islands in", "", "sure", "row"].iter().map(|s| s.to_string()).collect();
+        let sides = [Side::Left, Side::Right, Side::Left, Side::Left, Side::Right, Side::Left, Side::Left, Side::Left];
+        let mut table: Vec<(Option<&'static str>, Vec<String>)> = vec![(Some("the colony's facts"), Vec::new())];
+        let row = |f: &ColonyFact, v: &[(u64, f64)], word: &str| -> Vec<String> {
+            let show = |x: f64| fmt_fact(f.kind, x);
+            let s = stat(v);
+            vec![
+                f.asked.to_string(),
+                s.map_or("-".to_string(), |s| show(s.mean)),
+                s.map_or(String::new(), |s| format!("[{} .. {}]", show(s.min), show(s.max))),
+                band_words(f),
+                if v.is_empty() { String::new() } else { format!("{} of {}", v.iter().filter(|&&(_, x)| in_band(f, x)).count(), v.len()) },
+                word.to_string(),
+                f.sure.to_string(),
+                f.row.to_string(),
+            ]
+        };
+        for (f, v, m) in &rows {
+            let word = match m {
+                Some(true) => "met",
+                Some(false) => "MISSED",
+                None => "-",
+            };
+            table.push((None, row(f, v, word)));
+            if *m != Some(true) {
+                let why = match m {
+                    Some(false) => format!("mean {} outside {}", fmt_fact(f.kind, stat(v).map_or(f64::NAN, |s| s.mean)), band_words(f)),
+                    _ => "no value".to_string(),
+                };
+                missed.push(format!("{}, {}: {why}", f.asked, arm.label));
+            }
+        }
+        // held to both starts: the colony's number, and the settled island's beside it
+        table.push((Some("held to both starts, not counted"), Vec::new()));
+        for f in &BOTH {
+            let v = colony_values(f, arm, None);
+            table.push((None, row(f, &v, if colony_met(f, &v) == Some(true) { "met" } else { "missed" })));
+            if let Some(s) = settled {
+                let w = colony_values(f, s, None);
+                let mut cells = row(f, &w, if colony_met(f, &w) == Some(true) { "met" } else { "missed" });
+                cells[0] = "  the same, the settled island".to_string();
+                table.push((None, cells));
+            }
+        }
+        text.push_str(&layout(&head, &sides, &table));
+        let _ = writeln!(text, "struck from the table of history, with the reason:");
+        for (row, why) in STRUCK {
+            let _ = writeln!(text, "  row {row}: {why}");
+        }
+        text.push('\n');
+    }
+    (text, missed)
+}
+
 /// What the check makes of a finished sweep: the text it prints and writes, the
-/// lines that fail the sweep (any of the twelve not inside), and the growth
-/// facts missed (which fail it only with `--growth`).
+/// lines that fail the sweep (any of the twelve not inside), the growth facts
+/// missed (which fail it only with `--growth`) and the colony's facts missed
+/// (which fail it only with `--colony`).
 #[derive(Clone, Debug, Default)]
 pub struct Report {
     pub text: String,
     pub outside: Vec<String>,
     pub growth_missed: Vec<String>,
+    pub colony_missed: Vec<String>,
 }
 
-/// The check for a finished sweep: its first setting against each later one,
-/// or, with one setting, the earlier sweep `then` (read from `dir`) against it,
-/// and the growth after 1900 of each of its settings. None when there is
-/// nothing to set it against.
-pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>) -> Option<Report> {
+/// Whether an arm is of the landfall start.
+fn is_colony(arm: &Then) -> bool {
+    arm.start == "landfall"
+}
+
+/// The twelve's reference and later arms among the arms of one start: the
+/// first against each later one, or, with one, the earlier sweep's setting of
+/// the same start and name (or its first of that start) against it.
+fn twelve_of<'a>(arms: &[&'a Then], then: Option<(&'a [Then], &std::path::Path)>, colony: bool) -> Option<(&'a Then, Vec<&'a Then>, String)> {
+    if arms.len() >= 2 {
+        return Some((arms[0], arms[1..].to_vec(), "this sweep's first setting".to_string()));
+    }
+    let (arm, (then, dir)) = (arms.first()?, then?);
+    let pool: Vec<&Then> = then.iter().filter(|t| is_colony(t) == colony).collect();
+    pool.iter().find(|t| t.label == arm.label).or(pool.first()).map(|r| (*r, vec![*arm], format!("the earlier sweep in {}", dir.display())))
+}
+
+/// The check for a finished sweep. The settings of each start take the twelve
+/// among themselves (`twelve_of`): a start is never set against the other,
+/// since one town in a corner stands nowhere near six towns in 1900. The
+/// landfall start's settings also take the colony's check, set beside the
+/// settled island's first setting in this sweep or, failing that, the first in
+/// `beside`. Every setting takes the growth after 1900. None when there is
+/// nothing to set the twelve against and no colony.
+pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>, beside: Option<(&[Then], &std::path::Path)>) -> Option<Report> {
     let kinds: HashMap<String, Kind> = sw.fact_index.iter().map(|(n, _, k)| (n.clone(), *k)).collect();
     let now = arms(sw);
-    let (reference, later, whence): (&Then, Vec<&Then>, String) = if now.len() >= 2 {
-        (&now[0], now[1..].iter().collect(), "this sweep's first setting".to_string())
-    } else {
-        let (then, dir) = then?;
-        let arm = now.first()?;
-        let reference = then.iter().find(|t| t.label == arm.label).or(then.first())?;
-        (reference, vec![arm], format!("the earlier sweep in {}", dir.display()))
-    };
-    let mut text = check(reference, &later, &kinds, &whence);
-    let outside = outside(reference, &later, &kinds);
-    if !outside.is_empty() {
-        let _ = writeln!(text, "\nnot inside, so the sweep fails:");
-        for line in &outside {
-            let _ = writeln!(text, "  {line}");
+    let settled: Vec<&Then> = now.iter().filter(|a| !is_colony(a)).collect();
+    let colonies: Vec<&Then> = now.iter().filter(|a| is_colony(a)).collect();
+    let twelves: Vec<(&Then, Vec<&Then>, String)> = [twelve_of(&settled, then, false), twelve_of(&colonies, then, true)].into_iter().flatten().collect();
+    if twelves.is_empty() && colonies.is_empty() {
+        return None;
+    }
+    let mut text = String::new();
+    let mut outside_lines = Vec::new();
+    for (reference, later, whence) in &twelves {
+        text.push_str(&check(reference, later, &kinds, whence));
+        let lines = outside(reference, later, &kinds);
+        if !lines.is_empty() {
+            let _ = writeln!(text, "\nnot inside, so the sweep fails:");
+            for line in &lines {
+                let _ = writeln!(text, "  {line}");
+            }
         }
+        outside_lines.extend(lines);
+        text.push('\n');
+    }
+    let mut colony_missed = Vec::new();
+    if !colonies.is_empty() {
+        let (beside_arm, whence) = match (settled.first(), beside) {
+            (Some(s), _) => (Some(*s), "this sweep".to_string()),
+            (None, Some((b, dir))) => (b.iter().find(|t| !is_colony(t)), format!("the sweep in {}", dir.display())),
+            (None, None) => (None, String::new()),
+        };
+        let (colony_text, missed) = colony(&colonies, beside_arm, &whence);
+        text.push_str(&colony_text);
+        colony_missed = missed;
     }
     let (growth_text, growth_missed) = growth(&now.iter().collect::<Vec<_>>());
-    text.push('\n');
     text.push_str(&growth_text);
-    Some(Report { text, outside, growth_missed })
+    Some(Report { text, outside: outside_lines, growth_missed, colony_missed })
 }
 
 #[cfg(test)]
@@ -429,6 +683,62 @@ mod tests {
         assert!(bad.iter().any(|l| l.starts_with("pop_1800, on: no value in the reference (off)")));
         // with every fact inside, nothing fails
         assert!(outside(&reference, &[&reference], &kinds).iter().all(|l| l.contains("no value")));
+    }
+
+    /// The colony's check on made-up arms of two islands: a fact read as it is,
+    /// a growth, a ratio to the settled island of the same island number, a
+    /// fact the arm lacks; and the settled island's number beside the fact held
+    /// to both starts.
+    #[test]
+    fn the_colonys_check() {
+        let arm = |label: &str, start: &str, facts: &[(&str, [f64; 2])]| {
+            let mut t = Then { label: label.to_string(), start: start.to_string(), seeds: vec![1, 2], ..Then::default() };
+            for (name, v) in facts {
+                t.values.insert(name.to_string(), vec![(1, v[0]), (2, v[1])]);
+            }
+            t
+        };
+        let colony = arm(
+            "landfall",
+            "landfall",
+            &[
+                ("natural_increase_pct_1751_1800", [2.4, 2.8]),
+                ("pop_1750", [5_000.0, 5_000.0]),
+                ("pop_1800", [40_000.0, 50_000.0]),
+                ("wage_in_grain_1900", [9.0, 10.0]),
+                ("famine_years_1770_1900", [0.0, 2.0]),
+                ("town_wage_rise_max_1752_1900", [1.2, 2.1]),
+            ],
+        );
+        let settled = arm("settled", "settled", &[("wage_in_grain_1900", [36.0, 40.0]), ("town_wage_rise_max_1752_1900", [3.28, 1.1])]);
+        let find = |asked: &str| COLONY.iter().find(|f| f.asked.starts_with(asked)).unwrap();
+        // read as it is, and met
+        let f = find("births less deaths, per cent a year, 1751-1800");
+        assert_eq!(colony_met(f, &colony_values(f, &colony, None)), Some(true));
+        // a growth: (40,000 / 5,000)^(1/50) - 1 is 4.25 per cent a year, inside 3.5 to 8
+        let f = find("people grow, births and ships");
+        let v = colony_values(f, &colony, None);
+        assert!((v[0].1 - 100.0 * (8f64.powf(0.02) - 1.0)).abs() < 1e-9 && colony_met(f, &v) == Some(true), "{v:?}");
+        // against the settled island island by island: 9/36 and 10/40 are a quarter, missed
+        let f = find("wage in grain over the settled island's, 1900");
+        let v = colony_values(f, &colony, Some(&settled));
+        assert_eq!(v, vec![(1, 0.25), (2, 0.25)]);
+        assert_eq!(colony_met(f, &v), Some(false));
+        // without the settled island it has no value
+        assert!(colony_values(f, &colony, None).is_empty() && colony_met(f, &[]).is_none());
+        // a band of nothing at all: one hungry year on one island misses it
+        let f = find("years with hunger, 1770-1900");
+        assert_eq!(colony_met(f, &colony_values(f, &colony, None)), Some(false));
+        let (text, missed) = super::colony(&[&colony], Some(&settled), "by hand");
+        println!("{text}");
+        assert!(text.starts_with("the colony's check: 2 of 24 met, 2 missed, 20 without a value: landfall (2 islands), beside settled from by hand"), "{text}");
+        assert_eq!(missed.len(), 22);
+        assert!(missed.iter().any(|m| m.starts_with("wage in grain over the settled island's, 1900, landfall: mean 0.25 outside 1.20 to 2.40")), "{missed:?}");
+        // held to both starts, with the settled island's own number beside it, and not counted
+        let line = |name: &str| text.lines().find(|l| l.trim_start().starts_with(name)).unwrap().to_string();
+        assert!(line("a town's wage over the year before").contains("1.65") && line("a town's wage over the year before").contains("missed"));
+        assert!(line("the same, the settled island").contains("2.19") && line("the same, the settled island").contains("1 of 2"));
+        assert!(text.contains("row 8: settlers in a year"));
     }
 
     /// The growth after 1900, island by island, from the facts a run to 2050 has:

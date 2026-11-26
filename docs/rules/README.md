@@ -28,7 +28,7 @@ command line (`crates/isostate-core/FAMILIES.md`).
 | the viewer, a new game | game | (a replay shows whatever was recorded) |
 | `examples/bots.rs`, `examples/live.rs` | game | `--rules port` |
 | `tests/parity.rs`, `tests/golden.rs`, `tests/run.rs`, `tests/families.rs` | port | |
-| `tests/golden_game.rs` | game, with six families | |
+| `tests/golden_game.rs` | game, with six families, from both starts | |
 
 In code, `Rules::Port` and `Rules::Game` name the two; `rules.params()` and
 `rules.content()` give what a run needs. A `--params FILE` (TOML or JSON) is
@@ -276,7 +276,35 @@ ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --test golden_game
 
 writes `game6/` (the run to 1900) and `game6-2050/` (the run to 2050) under
 that directory, each with the three files of its run, before and after, for a
-diff.
+diff, and `landfall6/` and `landfall6-2050/` for the second start.
+
+**Both starts.** Since 26 November 2026 the same program holds the landfall
+start too ([landfall.md](landfall.md): one town of 5,000 in a corner, with the
+rules that come with it): a second test, `landfall_seed_7_...`, runs seed 7 at
+`--start landfall` in the same three runs and the same two eras, and keeps its
+seven hashes in `tests/golden_landfall.txt`. The settled island's seven are
+where they were, in `tests/golden_game.txt`. A rule that acts on both starts
+moves both files, and the one command above takes both again: it writes each
+file whose hashes moved, with the reason as its newest `# Taken:` line, and
+leaves a file whose seven did not move as it was. A rule that is part of the
+landfall start alone (`frontier`, `immigration`, `hands.short_rise`) moves only
+`golden_landfall.txt`, and the settled island's file must not move. One start
+alone:
+
+```bash
+ISOSTATE_GOLDEN_WRITE="why" cargo test -p isostate-core --test golden_game landfall -- --nocapture
+ISOSTATE_GOLDEN_WRITE="why" cargo test -p isostate-core --test golden_game -- --nocapture --exact seed_7_under_the_games_rules_is_unchanged
+```
+
+The landfall start's rules will change in the coming days (why the colony
+stays poor after 1900, its merchants' debt in the first years, the short
+town's wage); each such change takes `golden_landfall.txt` again with the
+first command, and says so in its commit as for the settled island. The two
+tests run side by side, six runs at once; landfall's three took 159 seconds on
+the clock in the dev profile on 26 November 2026 with the machine loaded (a
+run to 2050 at landfall is about as long as the settled island's: 145 seconds
+of processor against 166 for seed 7 in the work profile, the second under
+heavier load).
 
 The test makes three runs of the game at once, two of them to 2050, which
 costs about one run to 2050's time on a machine with cores to spare: 83 to 86
