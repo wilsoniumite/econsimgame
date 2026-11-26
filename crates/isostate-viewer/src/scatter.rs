@@ -273,6 +273,9 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
             out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
+    // (every road between road squares, drawn or not (`network::drawn_links`): a works placed
+    // where a road the carts did not wear runs would take the ground of houses a town lays
+    // along that road, so the works stand where they stood before the roads were thinned)
     for (c, m, lv) in crate::network::road_segments(r, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
@@ -899,6 +902,11 @@ impl PlanCache {
         self.plans.contains_key(&key)
     }
 
+    /// A plan already made, looked at without its being counted as asked for.
+    fn peek(&self, key: (usize, u64)) -> Option<std::sync::Arc<site::Plan>> {
+        self.plans.get(&key).map(|(plan, _)| plan.clone())
+    }
+
     fn keep(&mut self, key: (usize, u64), plan: std::sync::Arc<site::Plan>) {
         self.plans.insert(key, (plan, self.built));
     }
@@ -940,6 +948,15 @@ impl PlanCache {
 ///   in a yard changes in a year the record does not.
 pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Option<FirmSite> {
     Some(planned(r, slots, f, k, lk, &firm_facts(r, slots, f, k)?))
+}
+
+/// The ground works `f` has taken in by year `k` (`site::Plan::enclosed`), in
+/// its own frame, where the year's scenery has already made its plan: for the
+/// click and the pointer (pick.rs), which never make one.
+pub fn firm_yard(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Plot> {
+    let facts = firm_facts(r, slots, f, k)?;
+    let plan = slots.plans.lock().ok()?.peek((f, facts.mark))?;
+    Some(plan.enclosed.clone())
 }
 
 /// The plan of a works whose facts are in hand (found among those already made, or made and kept), and how it stands in year `k`.
@@ -1598,6 +1615,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // (office works drawn as buildings of the forms, for ISOSTATE_TIMING)
     let mut offices = 0usize;
     // the year's roads, which an office building turns to face (`towns::lots::facing`)
+    // (every road between road squares, as the works' ground keeps clear of them: see `ways`)
     let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::road_segments(r, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
     // what each works' plan is made from this year, and the plans themselves. Where many are
     // not made yet (a game just opened, a replay opened on a late year or moved a long way)
@@ -1678,7 +1696,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     works_b.append(crate::rails::structures(&rail_year, g, lk));
     crate::rails::standing(&rail_year, lod, lk, &mut works_b, &mut smoke);
     // (both found in network.rs, where a cart on the road reads them too)
-    for (c, m, lv) in crate::network::road_segments(r, k) {
+    for (c, m, lv) in crate::network::drawn_links(r, &g.worn, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         // crossings (the core's docs/rules/crossings.md): a bridge only where the run built one, else a ford or a ferry
         let crossed = r.crossed(c, m, k);
@@ -1795,7 +1813,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
-    let roads = RoadIndex::new(r, cen, k);
+    let roads = RoadIndex::new(r, g, cen, k);
     for (s, &open) in slots.hedge.iter().zip(&slots.hedge_open) {
         if year < open {
             continue;
@@ -1815,7 +1833,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         tally.add(TreeKind::Hedgerow, &mut trees, |t| hedge_tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk));
     }
 
-    // farmsteads among the fields, each with a lane to the nearest road
+    // farmsteads among the fields, each with a lane to the nearest road (and for ISOSTATE_TIMING,
+    // how many stand, how many have a lane, and how many more would at 0.8 of a square)
+    let mut farms = (0usize, 0usize, 0usize);
     for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
         let c = s.wcell as usize;
         // the farm is of the land it stands on
@@ -1837,9 +1857,16 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         farmstead(&mut houses, &mut smoke, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, detail: lod.at(s.x, s.z), seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
+        farms.0 += 1;
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
             lane(&mut lanes, lk, g, (gate.x, gate.z), to, s.v);
+            farms.1 += 1;
+        } else if roads.nearest(gate.x, gate.z, 0.8).is_some() {
+            farms.2 += 1;
         }
+    }
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!("timing year farms {year}: {} farmsteads, {} with a lane to a road within 0.55 of a square, {} more with one within 0.8", farms.0, farms.1, farms.2);
     }
 
     let pit_kind = |cls: u8| match cls {
@@ -1978,9 +2005,9 @@ struct RoadIndex {
 }
 
 impl RoadIndex {
-    fn new(r: &Replay, cen: &[(f32, f32)], k: usize) -> RoadIndex {
+    fn new(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadIndex {
         let mut cells: std::collections::HashMap<usize, Vec<((f32, f32), (f32, f32))>> = Default::default();
-        for (c, m, _) in crate::network::road_segments(r, k) {
+        for (c, m, _) in crate::network::drawn_links(r, &g.worn, k) {
             let seg = (cen[c], cen[m]);
             cells.entry(c).or_default().push(seg);
             cells.entry(m).or_default().push(seg);
