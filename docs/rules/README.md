@@ -1093,6 +1093,11 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   making, so the market's shortage of current no longer stands the stations' machines idle and makes the
   shortage worse. Traced from the slumps when machines tend, which it halves. [tending.md](tending.md),
   "The slumps", `tasks.own_run`.
+- **squares** (a shadow, read by no rule): every cell with something built keeps sixteen by sixteen
+  squares of 125 m, each with its tenant (a works, a pit, house blocks, a park, a town's open ground,
+  derelict ground) and the year it was taken, allotted once a year from the books' shares and never laid
+  out afresh; nothing in the economy, the books or the news moves with it. [squares.md](squares.md),
+  `squares.enabled`.
 
 **Off under the game's rules, on with the landfall start.** The start itself is a choice, not a rule:
 the settled island under both sets of rules, and landfall, one town of 5,000 at a harbour in a corner,

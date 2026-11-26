@@ -619,4 +619,9 @@ pub struct State {
     /// What the watcher of care keeps of each year: its hands, its spending
     /// and its price. The observer's alone.
     pub care: crate::care::CareState,
+    // ---------------- squares (docs/rules/squares.md; empty while `squares.enabled` is off)
+    /// Squares of 125 m in every cell with something built: each square's
+    /// tenant and the year it was taken, and each works' and working's squares.
+    /// Read by no rule.
+    pub sq: crate::squares::SquareBook,
 }
