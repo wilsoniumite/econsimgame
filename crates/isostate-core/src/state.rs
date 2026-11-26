@@ -615,4 +615,8 @@ pub struct State {
     // ---------------- immigration (docs/rules/immigration.md; empty while it is off)
     /// The settlers who came to each town this year, and each year's for the island.
     pub immigration: crate::immigration::ImmigrationState,
+    // ---------------- care (docs/rules/care.md; empty while `care.enabled` is off)
+    /// What the watcher of care keeps of each year: its hands, its spending
+    /// and its price. The observer's alone.
+    pub care: crate::care::CareState,
 }

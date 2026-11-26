@@ -42,6 +42,7 @@ mod newland;
 // a note in her words, kept where she stands (N)
 mod note;
 mod overlay;
+mod pick;
 mod plan;
 mod profile;
 mod ranges;
@@ -62,6 +63,8 @@ mod town_flow;
 mod traffic;
 mod trains;
 mod ui;
+// what's new, read from docs/DEVLOG.md (H, then What's new)
+mod whats_new;
 mod work_charts;
 mod world;
 mod year;
@@ -278,10 +281,25 @@ The standard shots (src/shots.rs) and the lab (src/lab.rs):
   --loupe N            with --lab: enlarge the close picture N times (1 to 8)
   --turn D             with --lab: turn each thing D degrees about its middle
 
+  --version            the game's version and the commit it was built from
   --help               this";
+
+/// The game's version, the workspace's (Cargo.toml), as the window's title and
+/// --version give it. A marked version is a tag `v` and this (docs/RELEASING.md).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// What --version prints: the version and the commit the program was built from.
+fn version_line() -> String {
+    format!("Isolated State {VERSION} (commit {})", note::COMMIT)
+}
 
 fn parse_args() -> Args {
     let v: Vec<String> = std::env::args().skip(1).collect();
+    // asked for anywhere on the line, as --help is, and nothing else is done
+    if v.iter().any(|s| s == "--version" || s == "-V") {
+        println!("{}", version_line());
+        std::process::exit(0);
+    }
     match parse(&v) {
         Ok(a) => a,
         // asked for
@@ -779,6 +797,9 @@ struct MainCam;
 struct ToastBox;
 #[derive(Component)]
 struct TownLabel(usize);
+/// The name on a town's label, which a click picks the town by.
+#[derive(Component)]
+struct LabelPill(usize);
 #[derive(Component)]
 struct InspectPanel;
 /// The lines of the inspector under its title, which scroll when they are more than its room.
@@ -818,13 +839,22 @@ struct Picked {
     /// raised by one at every click that sets `what`, so that a tool in hand
     /// (sandbox.rs) can tell a click from a pick that stays as it was
     stamp: u32,
+    /// where on the ground the click that set `what` fell, if it was a click
+    /// on the map: a tool that takes a point (sandbox.rs) takes it there,
+    /// whatever thing stands on it
+    at: Option<(f32, f32)>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+/// What a click picks (pick.rs): a thing, never a square.
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Pick {
     Firm(usize),
     Town(usize),
-    Cell(usize),
+    /// a quarry, a clay pit or a mine at work, by its pit head's cell and its kind (`replay::Working`)
+    Pit { cell: usize, class: u8 },
+    /// a spot in open country, which stands for the country of its market town; `cell` is the
+    /// simulation's 2 km cell under it, which is what an edit or a question to the simulation names
+    Place { x: f32, z: f32, cell: usize },
 }
 
 static FREDOKA: &[u8] = include_bytes!("../assets/fonts/Fredoka.ttf");
@@ -950,10 +980,9 @@ fn main() {
     };
     if let Some((x, z)) = args.describe {
         // print what a click at this spot would show, then stop
-        let hit = Vec3::new(x, world::height_at(&g, x, z), z);
-        match choose(&r, &slots, &cen, hit, k0) {
+        match pick::choose(&r, &g, &slots, &cen, &pick::near_of(&r, &slots, k0), x, z, k0) {
             Some(p) => {
-                println!("{}", describe(&r, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
+                println!("{}", describe(&r, &cen, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
                 // with --overlay, what that overlay says of the spot, as the inspector would
                 if let Some(overlay::Choice { kind: Some(kind), which, .. }) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
                     if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, which.unwrap_or(0), None) {
@@ -989,7 +1018,8 @@ fn main() {
     };
 
     let picked = Picked {
-        what: args.pick.and_then(|(x, z)| choose(&r, &slots, &cen, Vec3::new(x, world::height_at(&g, x, z), z), k0)),
+        what: args.pick.and_then(|(x, z)| pick::choose(&r, &g, &slots, &cen, &pick::near_of(&r, &slots, k0), x, z, k0)),
+        at: args.pick,
         ..default()
     };
 
@@ -1068,7 +1098,7 @@ fn main() {
     } else {
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Isolated State".into(),
+                title: format!("Isolated State {VERSION}"),
                 resolution: WindowResolution::new(args.size.0, args.size.1),
                 // the narrowest window the panels are laid out for: under 1280 the bar across the top has
                 // no room for its tabs, and under 720 the side panel and a decision's options grow short
@@ -1115,10 +1145,12 @@ fn main() {
         .add_plugins(overlay::plugin)
         .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
+        .add_plugins(pick::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
         .add_plugins(note::plugin)
         .add_plugins(backlog_seen::plugin)
+        .add_plugins(whats_new::plugin)
         .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);
@@ -1272,7 +1304,7 @@ struct ShotPlanArgs {
 /// only by way of `game::next_clicks`, which comes after the pump in its chain
 /// and runs before `time_input`. A test holds it.
 fn year_systems(app: &mut App) {
-    app.add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, handover::feed, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
+    app.add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, handover::feed, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, label_clicks, inspect_panel).chain());
 }
 
 // ------------------------------------------------------------------ world setup
@@ -1979,9 +2011,13 @@ fn town_label(commands: &mut Commands, f: &Handle<Font>, t: usize, name: &str) {
             TownLabel(t),
         ))
         .with_children(|p| {
+            // (a click on the name picks the town: `label_clicks`)
+            #[allow(deprecated)]
             p.spawn((
                 Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(9.0)), ..default() },
                 BackgroundColor(Color::srgba(0.99, 0.97, 0.92, 0.82)),
+                Interaction::default(),
+                LabelPill(t),
             ))
             .with_children(|q| {
                 q.spawn(text(f, name, 15.0, INK));
@@ -2366,6 +2402,7 @@ fn pick(
     ui: Res<UiState>,
     mut picked: ResMut<Picked>,
     cards: Res<game::CardOpen>,
+    pits: Res<pick::Pits>,
 ) {
     // Esc on an open card puts that off and leaves the note alone
     if keys.just_pressed(KeyCode::Escape) && !cards.0 {
@@ -2388,55 +2425,29 @@ fn pick(
     let Ok(ray) = cam.viewport_to_world(cam_t, cursor) else { return };
     let Some(hit) = ground_hit(&data.g, ray) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    picked.what = choose(&data.r, &data.slots, &data.cen, hit, k);
+    picked.what = pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits.near, hit.x, hit.z, k);
+    picked.at = Some((hit.x, hit.z));
     picked.stamp = picked.stamp.wrapping_add(1);
 }
 
-/// The nearest works standing this year, then the nearest town, then the land itself.
-fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: usize) -> Option<Pick> {
-    // the nearest works standing this year, then the nearest town, then the land itself
-    let mut best: Option<(f32, usize)> = None;
-    for (f, firm) in r.header.firms.iter().enumerate() {
-        let (x, z, _) = slots.firm_pos[f];
-        let d = ((x - hit.x).powi(2) + (z - hit.z).powi(2)).sqrt();
-        if d < 0.12 && replay::firm_k(r, f, k) > 0.0 && r.header.methods[firm.method].name != "services" && best.map_or(true, |b| d < b.0) {
-            best = Some((d, f));
+/// A town's name on the map picks the town, as a click on its ground does.
+#[allow(deprecated)]
+fn label_clicks(q: Query<(&Interaction, &LabelPill), Changed<Interaction>>, mut picked: ResMut<Picked>, cards: Res<game::CardOpen>) {
+    for (i, l) in &q {
+        if *i == Interaction::Pressed && !cards.0 {
+            picked.what = Some(Pick::Town(l.0));
+            picked.at = None;
+            picked.stamp = picked.stamp.wrapping_add(1);
         }
     }
-    if let Some((_, f)) = best {
-        // a university stands as a works but is its town's, whose card tells of it (and in a live game
-        // its place in the list of works moves as the simulation's works come before it)
-        if replay::is_university(r, f) {
-            if let Some(t) = usize::try_from(r.header.firms[f].town).ok().filter(|&t| t < r.header.towns.len()) {
-                return Some(Pick::Town(t));
-            }
-        }
-        return Some(Pick::Firm(f));
-    }
-    for t in 0..r.n_towns.min(r.header.towns.len()) {
-        if r.town_active[k * r.n_towns + t] == 0 {
-            continue;
-        }
-        let (x, z) = cen[r.header.towns[t].node];
-        if ((x - hit.x).powi(2) + (z - hit.z).powi(2)).sqrt() < 0.35 {
-            return Some(Pick::Town(t));
-        }
-    }
-    if hit.x >= 0.0 && hit.z >= 0.0 && (hit.x as usize) < r.w && (hit.z as usize) < r.h {
-        let c = hit.z as usize * r.w + hit.x as usize;
-        if r.terrain[c] > 0 {
-            return Some(Pick::Cell(c));
-        }
-    }
-    None
 }
 
-/// The square a picked thing stands on.
+/// The simulation's cell a picked thing stands on, for a map view's sentence about it.
 fn pick_cell(r: &Replay, what: Pick) -> usize {
     match what {
         Pick::Firm(f) => r.header.firms[f].cell,
         Pick::Town(t) => r.header.towns[t].node,
-        Pick::Cell(c) => c,
+        Pick::Pit { cell, .. } | Pick::Place { cell, .. } => cell,
     }
 }
 
@@ -2447,10 +2458,10 @@ fn best_of(sites: i64) -> String {
 
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
-/// What a click on a works, a town or a square shows. `trades` is the family
-/// trade of every method, where the game at hand says (a played game's
-/// `FamilyView::method_group`; empty for a recorded run).
-fn describe(r: &Replay, what: Pick, k: usize, trades: &[Option<isostate_core::families::Group>]) -> String {
+/// What a click on a works, a town, a pit or open country shows. `trades` is
+/// the family trade of every method, where the game at hand says (a played
+/// game's `FamilyView::method_group`; empty for a recorded run).
+fn describe(r: &Replay, cen: &[(f32, f32)], what: Pick, k: usize, trades: &[Option<isostate_core::families::Group>]) -> String {
     let year = r.y0 + k as i32;
     match what {
         Pick::Firm(f) => {
@@ -2514,24 +2525,8 @@ fn describe(r: &Replay, what: Pick, k: usize, trades: &[Option<isostate_core::fa
             }
             s
         }
-        Pick::Cell(c) => {
-            let off = k * r.n + c;
-            let (a, b, sh) = (r.mix_a[off] as usize, r.mix_b[off] as usize, r.mix_s[off] as f32 / 255.0);
-            let kind = { let n = DISP_NAMES[a % 12]; let mut t = n.to_string(); if let Some(f) = t.get_mut(0..1) { f.make_ascii_uppercase(); } t };
-            // the town whose market the square trades in
-            let town = (r.catch[off] as usize).checked_sub(1).and_then(|t| r.header.towns.get(t));
-            let mut s = match town {
-                Some(t) => format!("{} near {}\n", kind, t.name),
-                None => format!("{kind}\n"),
-            };
-            if a == b {
-                s.push_str(&format!("All {} in {}.", DISP_NAMES[a % 12], year));
-            } else {
-                s.push_str(&format!("{:.0}% {} and {:.0}% {} in {}.", sh * 100.0, DISP_NAMES[a % 12], (1.0 - sh) * 100.0, DISP_NAMES[b % 12], year));
-            }
-            s.push_str(&format!("\n{} km east and {} km south of the north-west corner.", (c % r.w) * 2, (c / r.w) * 2));
-            s
-        }
+        Pick::Pit { cell, class } => pick::describe_pit(r, cen, cell, class, k),
+        Pick::Place { x, z, cell } => pick::describe_place(r, cen, x, z, cell, k),
     }
 }
 
@@ -2546,10 +2541,10 @@ fn inspect_panel(
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
     mut body: Query<&mut bevy::ui::ScrollPosition, With<InspectBody>>,
-    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>, Option<overlay::trend::Span>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, ov.kind, ov.kind.map_or(0, |kind| ov.which(kind)), ov.month());
+    let key = (picked.what, k, ov.kind, ov.kind.map_or(0, |kind| ov.which(kind)), ov.month(), ov.trend_shown());
     if *last == Some(key) {
         return;
     }
@@ -2564,8 +2559,8 @@ fn inspect_panel(
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let mut s = describe(&data.r, w, k, fam.as_ref().map_or(&[][..], |f| f.method_group.as_slice()));
-        // with a map overlay on, what it says of this square
+        let mut s = describe(&data.r, &data.cen, w, k, fam.as_ref().map_or(&[][..], |f| f.method_group.as_slice()));
+        // with a map overlay on, what it says of the cell the thing stands on
         if let Some(line) = ov.said(&data.r, &months, k, pick_cell(&data.r, w)) {
             s.push_str("\n\n");
             s.push_str(&line);
@@ -3058,9 +3053,19 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--version", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
+    }
+
+    #[test]
+    fn the_version_is_the_workspaces_with_its_commit() {
+        // the release command (tools/release.py) reads the version from Cargo.toml and checks
+        // that the program it built says the same, with the commit it was built from
+        let line = version_line();
+        assert!(line.starts_with(&format!("Isolated State {} (commit ", env!("CARGO_PKG_VERSION"))), "{line}");
+        assert!(!note::COMMIT.is_empty() && line.contains(note::COMMIT), "{line}");
+        assert_eq!(VERSION.split('.').count(), 3, "a version is three numbers: {VERSION}");
     }
 
     #[test]
@@ -3130,9 +3135,9 @@ mod tests {
     fn a_town_older_than_the_run_is_dated_by_the_run_s_first_year() {
         // Ashby was founded in 1700; a run that begins in 1800 says so, and not 1750
         let r = replay::tiny(1800);
-        let said = describe(&r, Pick::Town(0), 0, &[]);
+        let said = describe(&r, &[], Pick::Town(0), 0, &[]);
         assert!(said.starts_with("Ashby\na market town before 1800\n"), "{said}");
-        assert!(describe(&replay::tiny(1750), Pick::Town(0), 0, &[]).contains("a market town before 1750"));
+        assert!(describe(&replay::tiny(1750), &[], Pick::Town(0), 0, &[]).contains("a market town before 1750"));
     }
 
     #[test]

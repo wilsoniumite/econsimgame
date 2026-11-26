@@ -248,7 +248,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     let mut c = RoadCheck { off_surface: (0.0, Vec2::ZERO), off_ribbon: (f32::MIN, Vec2::ZERO), ..Default::default() };
     let waters = network::Waters::new(r, g);
     let height_along = network::height_along;
-    let segs = network::road_segments(r, k);
+    let segs = network::drawn_links(r, &g.worn, k);
     let v2 = |p: (f32, f32)| Vec2::new(p.0, p.1);
     // every link: what carries it over water, and where water lies under it with nothing to carry it
     #[allow(clippy::type_complexity)]
@@ -471,6 +471,13 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
     }
     for k in years {
         let t0 = std::time::Instant::now();
+        // the roads the carts wore against every road between road squares (`network::drawn_links`)
+        let m = network::measure(r, &g.worn, k);
+        let all = (m.carted_drawn + m.carted_road_not_drawn + m.carted_track).max(1e-9);
+        eprintln!(
+            "worn {}: {} links drawn closing {} squares ({} with a cell of town ground), {} of them diagonals, against {} links closing {} by every road; of the carting, {:.3} on roads drawn, {:.3} on made roads not drawn, {:.3} on tracks",
+            m.year, m.drawn, m.closed, m.closed_town, m.diagonals, m.today, m.today_closed, m.carted_drawn / all, m.carted_road_not_drawn / all, m.carted_track / all
+        );
         for line in network::water_check(r, g, cen, k) {
             eprintln!("{line}");
         }
@@ -537,15 +544,26 @@ mod tests {
         // island 7 is another island, on which in 1800 a cart rides 0.0024 off its road's surface at
         // 60.99, 16.53 (a fault of the carts' drawing on the new land, in the faults' file for the
         // round of mending, docs/backlog/for-the-bugfix-round.md, and not mended here)
+        // The case is played twice: with every road drawn, as it was found (`network::ALL_IN_TEST`),
+        // and with the roads the carts wore (`network::drawn_links`), on which there are fewer
+        // main roads and so fewer rounds (9 in 1800 where there were 10 or more)
         let r = crate::live::played_at_stage(7, 6, 150, 1, true).expect("the game starts");
         let g = world::build_ground(&r);
         let cen = network::centres(&r);
+        for all in [true, false] {
+            network::ALL_IN_TEST.with(|a| a.set(all));
+            keep_to_their_roads(&r, &g, &cen, if all { 10 } else { 6 });
+            network::ALL_IN_TEST.with(|a| a.set(false));
+        }
+    }
+
+    fn keep_to_their_roads(r: &Replay, g: &Ground, cen: &[(f32, f32)], least_rounds: usize) {
         let mut crossed = 0;
         for year in [1800, 1850, 1900] {
             let k = (year - r.y0) as usize;
             assert!(k < r.filled, "{year} is not played");
-            let c = check(&r, &g, &cen, k);
-            assert!(c.rounds >= 10, "{year}: only {} carters' rounds", c.rounds);
+            let c = check(r, g, cen, k);
+            assert!(c.rounds >= least_rounds, "{year}: only {} carters' rounds", c.rounds);
             // at the height of the road or the deck under it, wherever it is
             assert!(c.off_surface.0 < 1e-4, "{year}: a cart rides {} off its road's surface at {}", c.off_surface.0, c.off_surface.1);
             // and so never at the water's height, nor under it

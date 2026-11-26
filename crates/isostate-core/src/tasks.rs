@@ -149,6 +149,14 @@ pub struct TasksParams {
     /// `computing` is.
     #[serde(skip_serializing_if = "is_false")]
     pub tending_wide: bool,
+    /// A works whose machines run on the good it makes (the power stations'
+    /// machines on electricity) runs them on its own making, and the market's
+    /// shortage of that good does not stand them idle (`docs/rules/tending.md`,
+    /// "The slumps"). Off, a station short of current for its own machines makes
+    /// less current, and the shortage feeds itself. On under the game's rules.
+    /// Left out of the params' file while off, as `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub own_run: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -158,7 +166,7 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false, lorry: false, tending_wide: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false, lorry: false, tending_wide: false, own_run: false }
     }
 }
 
@@ -168,7 +176,7 @@ impl TasksParams {
     /// turns them on, on the Rules tab or with `--set tasks.tending=true`. The
     /// lorry (`lorry`, docs/rules/lorry.md) is on.
     pub fn game() -> TasksParams {
-        TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, lorry: true, ..TasksParams::default() }
+        TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, lorry: true, own_run: true, ..TasksParams::default() }
     }
 
     /// Whether the switch of this name, which a `[[use]]` may name (`switch`),

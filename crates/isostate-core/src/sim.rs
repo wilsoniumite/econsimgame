@@ -827,6 +827,8 @@ pub fn end_year(sim: &mut Sim) {
     // who works (docs/rules/who-works.md): each town's people in work for next
     // year, counted by age on the ages, the schools and the pension just set
     crate::who_works::close_year(st, P, year);
+    // care (docs/rules/care.md): the watcher's year, after December's month
+    crate::care::end_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // engel: the date the lean reads in next year's months, whatever the switches
     st.engel.year_now = year + 1;
