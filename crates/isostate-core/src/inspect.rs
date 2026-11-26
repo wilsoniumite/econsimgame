@@ -352,7 +352,9 @@ fn works(sim: &Sim, f: usize) -> Result<(String, Vec<Group>), String> {
         None => format!("the savers of {}, no family", st.town_name[t]),
     });
     g.row("market town", st.town_name[t].clone());
-    g.row("square", format!("{}, {}", c % W, c / W));
+    // where its cell lies, from the middle of the cell (2 km across), as the viewer's cards say a place
+    let km = crate::landform::CELL_M / 1000.0;
+    g.row("where", format!("about {:.0} km east and {:.0} km south of the island's north-west corner", ((c % W) as f64 + 0.5) * km, ((c / W) as f64 + 0.5) * km));
     groups.push(g);
 
     let mut g = Group::new("Plant and hands");

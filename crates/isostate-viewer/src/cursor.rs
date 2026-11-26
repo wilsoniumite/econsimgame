@@ -40,7 +40,7 @@ struct Outline {
     drawn: Option<(Option<(Pick, (f32, f32))>, Option<Pick>, [u8; 4], Option<u8>, u64)>,
     /// the towns' outlines worked out, the newest few
     towns: HashMap<LinesKey, Lines>,
-    making: Option<(LinesKey, Task<Vec<Vec<(f32, f32)>>>)>,
+    making: Option<(LinesKey, Task<(Vec<Vec<(f32, f32)>>, f32)>)>,
     /// raised by one when an outline comes
     came: u64,
 }
@@ -57,6 +57,12 @@ pub struct HoverCost {
     pub frames: u32,
     pub total_us: f64,
     pub max_us: f64,
+    /// of the total, the ray's march to the ground, which the square's
+    /// outline asked for every frame before
+    pub ray_us: f64,
+    /// the newest town outline worked out off the main thread: the town, how
+    /// long it took in ms, and its points
+    pub outline: Option<(usize, f32, usize)>,
 }
 
 impl HoverCost {
@@ -65,7 +71,19 @@ impl HoverCost {
         if self.frames == 0 {
             return "the pointer was not asked about".to_string();
         }
-        format!("the test under the pointer took {:.0} µs a frame on the main thread over the {} frames it was asked in, {:.0} µs at most", self.total_us / self.frames as f64, self.frames, self.max_us)
+        let n = self.frames as f64;
+        let mut s = format!(
+            "the test under the pointer took {:.0} µs a frame on the main thread over the {} frames it was asked in ({:.0} µs the ray to the ground, {:.0} µs choosing what is there), {:.0} µs at most",
+            self.total_us / n,
+            self.frames,
+            self.ray_us / n,
+            (self.total_us - self.ray_us) / n,
+            self.max_us
+        );
+        if let Some((t, ms, pts)) = self.outline {
+            s.push_str(&format!("; the outline of town {t}, of {pts} points, took {ms:.0} ms off the main thread"));
+        }
+        s
     }
 }
 
@@ -124,7 +142,9 @@ fn hover(
     }
     o.asked = Some((ray.origin, *ray.direction, k));
     let t0 = Instant::now();
-    let found = ground_hit(&data.g, ray).and_then(|hit| pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits.spots, hit.x, hit.z, k).map(|p| (p, (hit.x, hit.z))));
+    let hit = ground_hit(&data.g, ray);
+    cost.ray_us += t0.elapsed().as_secs_f64() * 1e6;
+    let found = hit.and_then(|hit| pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits.near, hit.x, hit.z, k).map(|p| (p, (hit.x, hit.z))));
     let us = t0.elapsed().as_secs_f64() * 1e6;
     cost.frames += 1;
     cost.total_us += us;
@@ -134,12 +154,13 @@ fn hover(
 }
 
 /// A town lit or picked has its outline worked out off the main thread, once a year.
-fn outlines(mut o: ResMut<Outline>, data: Res<Data>, tl: Res<Timeline>, picked: Res<Picked>) {
+fn outlines(mut o: ResMut<Outline>, data: Res<Data>, tl: Res<Timeline>, picked: Res<Picked>, mut cost: ResMut<HoverCost>) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let run = Arc::as_ptr(&data.r) as usize;
     if let Some((key, task)) = o.making.as_mut() {
-        if let Some(lines) = check_ready(task) {
+        if let Some((lines, ms)) = check_ready(task) {
             let key = *key;
+            cost.outline = Some((key.0, ms, lines.iter().map(Vec::len).sum()));
             o.making = None;
             if o.towns.len() >= 8 {
                 o.towns.clear();
@@ -155,13 +176,17 @@ fn outlines(mut o: ResMut<Outline>, data: Res<Data>, tl: Res<Timeline>, picked: 
     });
     if let Some(t) = wanted {
         let (r, g) = (data.r.clone(), data.g.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { pick::town_outline(&r, &g, k, t) });
+        let task = AsyncComputeTaskPool::get().spawn(async move {
+            let t0 = Instant::now();
+            let lines = pick::town_outline(&r, &g, k, t);
+            (lines, t0.elapsed().as_secs_f32() * 1e3)
+        });
         o.making = Some(((t, k, run), task));
     }
 }
 
 /// A closed line on the map, draped on the ground a hair above it.
-fn closed(b: &mut Builder, data: &Data, pts: &[(f32, f32)], width: f32, col: [f32; 4]) {
+fn closed(b: &mut Builder, data: &Data, pts: &[(f32, f32)], floor: f32, width: f32, col: [f32; 4]) {
     if pts.len() < 3 {
         return;
     }
@@ -172,7 +197,7 @@ fn closed(b: &mut Builder, data: &Data, pts: &[(f32, f32)], width: f32, col: [f3
         for s in 0..n {
             let t = s as f32 / n as f32;
             let (x, z) = (a.0 + (e.0 - a.0) * t, a.1 + (e.1 - a.1) * t);
-            out.push(Vec3::new(x, world::height_at(&data.g, x, z).max(0.0) + 0.012, z));
+            out.push(Vec3::new(x, world::height_at(&data.g, x, z).max(floor) + 0.012, z));
         }
     }
     if let Some(&p) = out.first() {
@@ -185,7 +210,7 @@ fn closed(b: &mut Builder, data: &Data, pts: &[(f32, f32)], width: f32, col: [f3
 fn ring(b: &mut Builder, data: &Data, (x, z): (f32, f32), rad: f32, width: f32, col: [f32; 4]) {
     let n = ((rad * std::f32::consts::TAU / 0.03).ceil() as usize).clamp(16, 400);
     let pts: Vec<(f32, f32)> = (0..n).map(|i| { let a = i as f32 / n as f32 * std::f32::consts::TAU; (x + rad * a.cos(), z + rad * a.sin()) }).collect();
-    closed(b, data, &pts, width, col);
+    closed(b, data, &pts, 0.0, width, col);
 }
 
 /// The ring round a spot picked in open country, and round one under the pointer.
@@ -195,16 +220,17 @@ const SPOT: f32 = 0.09;
 fn light(b: &mut Builder, o: &Outline, data: &Data, pits: &Pits, k: usize, what: Pick, width: f32, col: [f32; 4]) {
     let run = Arc::as_ptr(&data.r) as usize;
     match what {
-        Pick::Firm(f) => closed(b, data, &pick::yard_outline(&data.r, &data.slots, f, k), width, col),
+        // (a works' yard is levelled at the highest land under its plot, and the line lies on it)
+        Pick::Firm(f) => closed(b, data, &pick::yard_outline(&data.r, &data.slots, f, k), data.slots.firm_level.get(f).copied().unwrap_or(0.0), width, col),
         Pick::Town(t) => {
             if let Some(lines) = o.towns.get(&(t, k, run)) {
                 for l in lines.iter() {
-                    closed(b, data, l, width, col);
+                    closed(b, data, l, 0.0, width, col);
                 }
             }
         }
         Pick::Pit { cell, class } => {
-            if let Some(p) = pits.spots.iter().find(|p| p.cell == cell && p.class == class) {
+            if let Some(p) = pits.near.pits.iter().find(|p| p.cell == cell && p.class == class) {
                 ring(b, data, (p.x, p.z), pick::PIT_REACH, width, col);
             }
         }
@@ -239,8 +265,17 @@ fn draw(
     let mut col = *look.marks.hover;
     col[3] = look.marks.hover_alpha;
     match (o.hover, brush) {
-        (Some((_, at)), Some(size)) => ring(&mut b, &data, at, size as f32 + 0.5, 0.03, col),
-        (Some((what, _)), None) if Some(what) != sel => light(&mut b, &o, &data, &pits, k, what, 0.022, col),
+        // (the brush in the hand's blue-black ink, which reads on town and field alike)
+        (Some((_, at)), Some(size)) => {
+            let ink = crate::sandbox::HAND_INK.to_linear();
+            ring(&mut b, &data, at, size as f32 + 0.5, 0.05, [ink.red, ink.green, ink.blue, 0.8]);
+        }
+        // (cream on a wider dark casing, so the line reads on fields and on pale town ground alike)
+        (Some((what, _)), None) if Some(what) != sel => {
+            let d = look.marks.outline_plain.color().to_linear();
+            light(&mut b, &o, &data, &pits, k, what, 0.042, [d.red, d.green, d.blue, 0.45]);
+            light(&mut b, &o, &data, &pits, k, what, 0.022, col);
+        }
         _ => {}
     }
     if let Some(what) = sel {

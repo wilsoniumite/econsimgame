@@ -951,7 +951,7 @@ fn main() {
     };
     if let Some((x, z)) = args.describe {
         // print what a click at this spot would show, then stop
-        match pick::choose(&r, &g, &slots, &cen, &pick::pits_of(&r, &slots, k0), x, z, k0) {
+        match pick::choose(&r, &g, &slots, &cen, &pick::near_of(&r, &slots, k0), x, z, k0) {
             Some(p) => {
                 println!("{}", describe(&r, &cen, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
                 // with --overlay, what that overlay says of the spot, as the inspector would
@@ -989,7 +989,7 @@ fn main() {
     };
 
     let picked = Picked {
-        what: args.pick.and_then(|(x, z)| pick::choose(&r, &g, &slots, &cen, &pick::pits_of(&r, &slots, k0), x, z, k0)),
+        what: args.pick.and_then(|(x, z)| pick::choose(&r, &g, &slots, &cen, &pick::near_of(&r, &slots, k0), x, z, k0)),
         at: args.pick,
         ..default()
     };
@@ -2395,7 +2395,7 @@ fn pick(
     let Ok(ray) = cam.viewport_to_world(cam_t, cursor) else { return };
     let Some(hit) = ground_hit(&data.g, ray) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    picked.what = pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits.spots, hit.x, hit.z, k);
+    picked.what = pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits.near, hit.x, hit.z, k);
     picked.at = Some((hit.x, hit.z));
     picked.stamp = picked.stamp.wrapping_add(1);
 }

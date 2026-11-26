@@ -44,7 +44,9 @@
 //!                     a sandbox's hand and rules, and families for its family tab)
 //!     pick:X,Z        click the map at this spot (pick.rs says what that picks);
 //!                     pick:town:NAME and pick:works:NAME pick a town or a
-//!                     standing works by the start of its name
+//!                     standing works by the start of its name, pick:pit:KIND
+//!                     the first pit at work of stone, clay, iron or coal
+//!                     (pick:pit:coal:3 the third), and fly the camera to it
 //!     hover:X,Z       rest the pointer on this spot of the map, which lights
 //!                     what is under it (cursor.rs); hover:none gives it back
 //!                     to the mouse. print says what it rests on and what
@@ -310,7 +312,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             // a panel that is none of these is refused, and not taken for closing the panel
             "tab" if ui::Tab::parse(arg).is_some() || arg.eq_ignore_ascii_case("none") => Step::Tab(ui::Tab::parse(arg)),
             "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news, hand, rules, families and none")),
-            "pick" if arg.starts_with("town:") || arg.starts_with("works:") => Step::Pick(PickAt::Named(arg.to_string())),
+            "pick" if arg.starts_with("town:") || arg.starts_with("works:") || arg.starts_with("pit:") =>Step::Pick(PickAt::Named(arg.to_string())),
             "pick" => match nums()?.as_slice() {
                 [x, z] => Step::Pick(PickAt::Spot(*x, *z)),
                 _ => return Err(format!("{part}: pick takes x,z, town:NAME or works:NAME")),
@@ -1076,13 +1078,12 @@ fn step(world: &mut World, sc: &mut Script) {
             Step::Pick(at) => {
                 let (k, _) = clock_year(world);
                 let data = world.resource::<Data>();
+                let near = crate::pick::near_of(&data.r, &data.slots, k);
+                let named = matches!(at, PickAt::Named(_));
                 let (what, spot) = match at {
                     // a spot on the map, as a click there (an old script's click on a square's middle is a spot)
-                    PickAt::Spot(x, z) => {
-                        let pits = crate::pick::pits_of(&data.r, &data.slots, k);
-                        (crate::pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits, x, z, k), Some((x, z)))
-                    }
-                    PickAt::Named(name) => match crate::pick::by_name(&data.r, k, &name) {
+                    PickAt::Spot(x, z) => (crate::pick::choose(&data.r, &data.g, &data.slots, &data.cen, &near, x, z, k), Some((x, z))),
+                    PickAt::Named(name) => match crate::pick::by_name(&data.r, &near.pits, k, &name) {
                         Ok(p) => (Some(p), None),
                         Err(why) => {
                             println!("script: no pick: {why}");
@@ -1090,7 +1091,13 @@ fn step(world: &mut World, sc: &mut Script) {
                         }
                     },
                 };
-                println!("script: picked {what:?}");
+                let stands = what.and_then(|p| crate::pick::spot_of(&data.r, &data.slots, &data.cen, &near.pits, p));
+                println!("script: picked {what:?}{}", stands.map_or(String::new(), |(x, z)| format!(", which stands at {x:.2},{z:.2}")));
+                // a thing picked by its name is flown to, as a row of a list flies to it
+                if let Some((x, z)) = stands.filter(|_| named) {
+                    let y = world::height_at(&data.g, x, z).max(0.0);
+                    world.resource_mut::<Orbit>().target = Vec3::new(x, y, z);
+                }
                 let mut picked = world.resource_mut::<Picked>();
                 picked.what = what;
                 picked.at = spot;

@@ -44,12 +44,23 @@ pub struct PitSpot {
     pub class: u8,
 }
 
-/// The pits of the year on the clock, worked out once a year (or once a
-/// run, a live year) and not every frame.
+/// What a click may find near it in a year: the pits drawn, and the works
+/// standing, listed under every cell their plot reaches into, so that a click
+/// looks at the few works of its own cell and not at every works of the run
+/// (in 2049 the run has thousands, and looking at each cost a millisecond and
+/// a half a frame).
+#[derive(Default)]
+pub struct Near {
+    pub pits: Vec<PitSpot>,
+    works: HashMap<usize, Vec<usize>>,
+}
+
+/// What a click may find near it in the year on the clock, worked out once a
+/// year (or once a run, a live year) and not every frame.
 #[derive(Resource, Default)]
 pub struct Pits {
     key: Option<(usize, usize, usize)>,
-    pub spots: Vec<PitSpot>,
+    pub near: Near,
 }
 
 pub fn plugin(app: &mut App) {
@@ -61,7 +72,7 @@ fn keep_pits(data: Res<crate::Data>, tl: Res<crate::Timeline>, mut pits: ResMut<
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let key = (k, std::sync::Arc::as_ptr(&data.r) as usize, std::sync::Arc::as_ptr(&data.slots) as usize);
     if pits.key != Some(key) {
-        pits.spots = pits_of(&data.r, &data.slots, k);
+        pits.near = near_of(&data.r, &data.slots, k);
         pits.key = Some(key);
     }
 }
@@ -101,6 +112,30 @@ pub fn pits_of(r: &Replay, slots: &Slots, k: usize) -> Vec<PitSpot> {
         }
     }
     out
+}
+
+/// What a click may find near it in year `k`: the pits, and the works
+/// standing (not the shops and offices of "services", which no works stands
+/// for) by the cells their plots reach into.
+pub fn near_of(r: &Replay, slots: &Slots, k: usize) -> Near {
+    let mut works: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (f, firm) in r.header.firms.iter().enumerate() {
+        let (Some(&(px, pz, _)), Some(plot)) = (slots.firm_pos.get(f), slots.firm_plot.get(f)) else { continue };
+        if replay::firm_k(r, f, k) <= 0.0 || r.header.methods.get(firm.method).is_none_or(|m| m.name == "services") {
+            continue;
+        }
+        // no plot reaches further from its middle than its corners
+        let (x0, x1, z0, z1) = plot.bounds();
+        let reach = x0.abs().max(x1.abs()).hypot(z0.abs().max(z1.abs())) + YARD_MARGIN;
+        let (cx0, cx1) = ((px - reach).floor().max(0.0) as usize, ((px + reach).floor().max(0.0) as usize).min(r.w - 1));
+        let (cz0, cz1) = ((pz - reach).floor().max(0.0) as usize, ((pz + reach).floor().max(0.0) as usize).min(r.h - 1));
+        for cz in cz0..=cz1 {
+            for cx in cx0..=cx1 {
+                works.entry(cz * r.w + cx).or_default().push(f);
+            }
+        }
+    }
+    Near { pits: pits_of(r, slots, k), works }
 }
 
 /// The cell a point lies in, kept on the map.
@@ -172,21 +207,14 @@ pub fn yard_outline(r: &Replay, slots: &Slots, f: usize, k: usize) -> Vec<(f32, 
     yard(r, slots, f, k).outline.iter().map(|&p| on_map(slots, f, p)).collect()
 }
 
-/// The works whose yard a point of the map lies on in year `k`, if any: one
-/// standing that year, and not the shops and offices of "services", which no
-/// works stands for.
-fn works_at(r: &Replay, slots: &Slots, k: usize, x: f32, z: f32) -> Option<usize> {
+/// The works whose yard a point of the map lies on in year `k`, if any,
+/// among those `near` lists for the point's cell.
+fn works_at(r: &Replay, slots: &Slots, near: &Near, k: usize, x: f32, z: f32) -> Option<usize> {
     let mut best: Option<(f32, usize)> = None;
-    for (f, firm) in r.header.firms.iter().enumerate() {
+    for &f in near.works.get(&cell_at(r, x, z)).map_or(&[][..], |v| v.as_slice()) {
         let (Some(&(px, pz, _)), Some(plot)) = (slots.firm_pos.get(f), slots.firm_plot.get(f)) else { continue };
-        // first the cheap box: no plot reaches further from its middle than its corners
-        let (x0, x1, z0, z1) = plot.bounds();
-        let reach = x0.abs().max(x1.abs()).hypot(z0.abs().max(z1.abs())) + YARD_MARGIN;
         let d = (px - x).hypot(pz - z);
-        if d > reach || best.is_some_and(|b| d >= b.0) {
-            continue;
-        }
-        if replay::firm_k(r, f, k) <= 0.0 || r.header.methods.get(firm.method).is_none_or(|m| m.name == "services") {
+        if best.is_some_and(|b| d >= b.0) {
             continue;
         }
         // on its whole plot, and then on the yard it is drawn on
@@ -222,11 +250,11 @@ pub fn town_ground_at(r: &Replay, g: &Ground, k: usize, x: f32, z: f32) -> Optio
 /// What a click at (x, z) picks in year `k`: a works, a pit, a town, or the
 /// spot in open country; nothing off the map or at sea.
 #[allow(clippy::too_many_arguments)]
-pub fn choose(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], pits: &[PitSpot], x: f32, z: f32, k: usize) -> Option<Pick> {
+pub fn choose(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], near: &Near, x: f32, z: f32, k: usize) -> Option<Pick> {
     if !(x >= 0.0 && z >= 0.0 && (x as usize) < r.w && (z as usize) < r.h) {
         return None;
     }
-    if let Some(f) = works_at(r, slots, k, x, z) {
+    if let Some(f) = works_at(r, slots, near, k, x, z) {
         // a university stands as a works but is its town's, whose card tells of it (and in a live
         // game its place in the list of works moves as the simulation's works come before it)
         if replay::is_university(r, f) {
@@ -236,7 +264,7 @@ pub fn choose(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], pits: &
         }
         return Some(Pick::Firm(f));
     }
-    let pit = pits.iter().map(|p| ((p.x - x).hypot(p.z - z), p)).filter(|(d, _)| *d < PIT_REACH).min_by(|a, b| a.0.total_cmp(&b.0));
+    let pit = near.pits.iter().map(|p| ((p.x - x).hypot(p.z - z), p)).filter(|(d, _)| *d < PIT_REACH).min_by(|a, b| a.0.total_cmp(&b.0));
     if let Some((_, p)) = pit {
         return Some(Pick::Pit { cell: p.cell, class: p.class });
     }
@@ -262,13 +290,30 @@ pub fn at_cell(c: usize, w: usize) -> Pick {
 
 /// A thing picked by its name, for pictures and scripts with nobody at the
 /// window: "town:Oakbury" or "works:Fairfax Mill" (the first whose name
-/// starts so, ignoring case), or the error that says what there is.
-pub fn by_name(r: &Replay, k: usize, what: &str) -> Result<Pick, String> {
+/// starts so, ignoring case), or "pit:coal" (the first pit at work of a kind:
+/// stone, clay, iron or coal, or the N-th with "pit:coal:3"); or the error
+/// that says what there is.
+pub fn by_name(r: &Replay, pits: &[PitSpot], k: usize, what: &str) -> Result<Pick, String> {
     let starts = |name: &str, with: &str| name.to_lowercase().starts_with(&with.trim().to_lowercase());
     match what.split_once(':') {
         Some(("town", name)) => r.header.towns.iter().position(|t| starts(&t.name, name)).map(Pick::Town).ok_or_else(|| format!("no town is called {name}")),
         Some(("works", name)) => r.header.firms.iter().enumerate().find(|(f, firm)| starts(&firm.name, name) && replay::firm_k(r, *f, k) > 0.0).map(|(f, _)| Pick::Firm(f)).ok_or_else(|| format!("no works standing in {} is called {name}", r.y0 + k as i32)),
-        _ => Err(format!("{what}: pick takes x,z, town:NAME or works:NAME")),
+        Some(("pit", kind)) => {
+            let (kind, nth) = kind.split_once(':').map_or((kind, 1), |(k, n)| (k, n.trim().parse::<usize>().unwrap_or(1).max(1)));
+            pits.iter().filter(|p| pit_words(p.class).1.starts_with(&kind.trim().to_lowercase())).nth(nth - 1).map(|p| Pick::Pit { cell: p.cell, class: p.class }).ok_or_else(|| format!("no {nth}th pit of {kind} is at work in {}", r.y0 + k as i32))
+        }
+        _ => Err(format!("{what}: pick takes x,z, town:NAME, works:NAME or pit:KIND")),
+    }
+}
+
+/// Where a picked thing stands on the map: a town's market place, a works'
+/// yard, a pit, a spot.
+pub fn spot_of(r: &Replay, slots: &Slots, cen: &[(f32, f32)], pits: &[PitSpot], p: Pick) -> Option<(f32, f32)> {
+    match p {
+        Pick::Town(t) => cen.get(r.header.towns.get(t)?.node).copied(),
+        Pick::Firm(f) => slots.firm_pos.get(f).map(|q| (q.0, q.1)),
+        Pick::Pit { cell, class } => pits.iter().find(|q| q.cell == cell && q.class == class).map(|q| (q.x, q.z)),
+        Pick::Place { x, z, .. } => Some((x, z)),
     }
 }
 
@@ -509,21 +554,23 @@ mod tests {
         let slots = scatter::make_slots(&r, &g);
         let cen = centres(&r);
         // the town's middle cell, and its far edge, more than 700 m from the market place
-        assert_eq!(choose(&r, &g, &slots, &cen, &[], 5.5, 5.5, 0), Some(Pick::Town(0)));
+        let none = Near::default();
+        assert_eq!(choose(&r, &g, &slots, &cen, &none, 5.5, 5.5, 0), Some(Pick::Town(0)));
         let far = (0..PER_TEST).map(|i| 4.05 + 0.02 * i as f32).find(|&x| town_ground_at(&r, &g, 0, x, 5.5) == Some(0) && (x - 5.5).abs() > MARKET_REACH);
         let far = far.expect("some of the town's ground lies more than 700 m from its market place");
-        assert_eq!(choose(&r, &g, &slots, &cen, &[], far, 5.5, 0), Some(Pick::Town(0)));
+        assert_eq!(choose(&r, &g, &slots, &cen, &none, far, 5.5, 0), Some(Pick::Town(0)));
         // open country two cells north: a spot, with the cell under it
-        match choose(&r, &g, &slots, &cen, &[], 5.25, 2.75, 0) {
+        match choose(&r, &g, &slots, &cen, &none, 5.25, 2.75, 0) {
             Some(Pick::Place { x, z, cell }) => assert_eq!((x, z, cell), (5.25, 2.75, 2 * r.w + 5)),
             other => panic!("{other:?}"),
         }
         // the sea, and off the map
-        assert_eq!(choose(&r, &g, &slots, &cen, &[], 0.5, 0.5, 0), None);
-        assert_eq!(choose(&r, &g, &slots, &cen, &[], -1.0, 3.0, 0), None);
+        assert_eq!(choose(&r, &g, &slots, &cen, &none, 0.5, 0.5, 0), None);
+        assert_eq!(choose(&r, &g, &slots, &cen, &none, -1.0, 3.0, 0), None);
         // a pit within its reach, before the town's ground under it
         let pit = PitSpot { x: 5.5, z: 5.52, cell: 5 * r.w + 5, class: world::COALMINE };
-        assert_eq!(choose(&r, &g, &slots, &cen, &[pit], 5.5, 5.5, 0), Some(Pick::Pit { cell: pit.cell, class: world::COALMINE }));
+        let with_pit = Near { pits: vec![pit], ..Near::default() };
+        assert_eq!(choose(&r, &g, &slots, &cen, &with_pit, 5.5, 5.5, 0), Some(Pick::Pit { cell: pit.cell, class: world::COALMINE }));
         assert_eq!(at_cell(2 * r.w + 5, r.w), Pick::Place { x: 5.5, z: 2.5, cell: 2 * r.w + 5 });
     }
 
