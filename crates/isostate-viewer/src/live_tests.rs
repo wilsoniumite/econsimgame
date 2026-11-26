@@ -1527,6 +1527,52 @@ fn a_games_traffic_and_trade_between_towns_are_its_recordings() {
 }
 
 #[test]
+fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
+    // The roads the carts wore (`network::drawn_links`), measured on a recorded run:
+    // island 7 under the game's rules, which keep the traffic, played forty years and
+    // read back from its `run.bin`. It leans on no history but the traffic being kept:
+    // a road once drawn stays drawn while its squares are made roads, until twenty years
+    // go by in which it never carries what wears it; the drawn roads close fewer squares
+    // than every road between road squares does, and carry most of the year's carting;
+    // and with the rule off the picture is the one before.
+    let mut game = isostate_core::save::Game::new(7, 6, 0);
+    assert!(game.sim.params.traffic.enabled, "the case is played with the traffic kept");
+    for _ in 0..40 {
+        game.year().unwrap();
+        game.turn();
+    }
+    let s = &game.sim;
+    let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+    let r = replay::parse("test.bin", &bytes).expect("the game's record reads");
+    let worn = crate::network::Worn::default();
+    let last = (game.last_year() - s.content.start_year) as usize;
+    let mut before: Vec<(usize, usize, u8)> = Vec::new();
+    for k in 0..=last {
+        let drawn = crate::network::drawn_links(&r, &worn, k);
+        let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
+        for l in &before {
+            if made(l.0) && made(l.1) && !drawn.iter().any(|d| (d.0, d.1) == (l.0, l.1)) {
+                // gone back to grass: twenty quiet years
+                let (o, s) = isostate_core::traffic::link(r.w, l.0, l.1).unwrap();
+                let quiet = k + 1 >= crate::network::WORN_WINDOW as usize
+                    && (k + 1 - crate::network::WORN_WINDOW as usize..=k).all(|y| r.traffic.mode(r.n, y, o, s) != isostate_core::traffic::CART || r.traffic.weight(r.n, y, o, s) < crate::network::WORN_WEIGHT);
+                assert!(quiet, "year {k}: the road {l:?} drawn before is gone, though the carts wore it in the last twenty years");
+            }
+        }
+        before = drawn;
+    }
+    let m = crate::network::measure(&r, &worn, last);
+    eprintln!("{m:?}");
+    assert!(m.drawn > 500 && m.closed * 2 <= m.today_closed, "{m:?}");
+    let all = m.carted_drawn + m.carted_road_not_drawn + m.carted_track;
+    assert!(m.carted_drawn >= 0.7 * all && m.carted_road_not_drawn <= 0.1 * all, "{m:?}");
+    crate::network::ALL_IN_TEST.with(|a| a.set(true));
+    let off = crate::network::drawn_links(&r, &worn, last);
+    crate::network::ALL_IN_TEST.with(|a| a.set(false));
+    assert_eq!(off, crate::network::road_segments(&r, last));
+}
+
+#[test]
 fn a_games_squares_are_its_recordings_and_the_books() {
     // The squares (the core's docs/rules/squares.md, "In the record"): what a game's
     // thread hands over each year (`LiveYear::squares`) makes, in the viewer, the
