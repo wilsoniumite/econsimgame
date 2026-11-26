@@ -92,7 +92,9 @@ fn coal_laid_beside_a_town_with_none_is_worked_and_cheapens_its_coal_and_the_ses
     assert!(laid.len() >= 20 && rich > 0.3, "a stroke of size 2 over two squares lays a coalfield");
 
     let mut g = base.clone();
+    let t0 = std::time::Instant::now();
     assert_eq!(g.give(by_hand(edit.clone())).unwrap(), Done::Done);
+    eprintln!("the stroke was carried out in {:.2} ms", t0.elapsed().as_secs_f64() * 1e3);
     let ev = g.sim.events.last().unwrap();
     eprintln!("{}\n  {}", ev.title, ev.text);
     assert_eq!((ev.kind.as_str(), ev.cell), ("hand", Some(square + 1)));
@@ -155,7 +157,18 @@ fn coal_taken_from_under_the_first_citys_pits_leaves_them_idle_until_the_rule_gi
     let working: Vec<usize> = (0..N).filter(|&c| st.mine_opened[r * N + c] != 0 && st.mine_hands[(r, c)] >= 1.0 && st.catch[c] >= 0).collect();
     let t = (0..st.T_max).filter(|&t| st.town_active[t]).max_by_key(|&t| (working.iter().filter(|&&c| st.catch[c] == t as i64).count(), std::cmp::Reverse(t))).unwrap();
     let heads: Vec<usize> = working.iter().copied().filter(|&c| st.catch[c] == t as i64).collect();
-    eprintln!("{} has {} collieries at work in January {}: {:?}", st.town_name[t], heads.len(), base.sim.year, heads);
+    let w = st.world.W;
+    let first = (0..st.T_max).filter(|&t| st.town_active[t]).max_by(|&a, &b| st.pop[a].total_cmp(&st.pop[b])).unwrap();
+    eprintln!(
+        "the first city is {} ({:.0} people, at {}, {}), with {} collieries at work in its district",
+        st.town_name[first],
+        st.pop[first],
+        st.town_node[first] % w,
+        st.town_node[first] / w,
+        working.iter().filter(|&&c| st.catch[c] == first as i64).count()
+    );
+    let squares: Vec<String> = heads.iter().map(|&c| format!("{},{}", c % w, c / w)).collect();
+    eprintln!("{} ({:.0} people, at {}, {}) has {} collieries at work in January {}: {}", st.town_name[t], st.pop[t], st.town_node[t] % w, st.town_node[t] / w, heads.len(), base.sim.year, squares.join(" "));
     assert!(!heads.is_empty());
     // the stroke passes over every pit head, wide enough to take every square its lease reaches
     let size = base.sim.params.mines.reach.ceil() as u8;
