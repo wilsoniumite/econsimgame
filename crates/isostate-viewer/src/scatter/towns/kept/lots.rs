@@ -47,6 +47,18 @@
 //!    group later is taken into the form it was built as). A row of one plot
 //!    asks for a form on a house lot, any other group for one on lots thrown
 //!    together.
+//! 7. **Height follows the street** (26 November 2026). Towers go to the
+//!    main streets and the town's middle, and a street's front rises
+//!    together: a main street's frontage (a road through or a market place)
+//!    asks storeys as if its ground were half as dear again as its square's
+//!    (`MAIN_STREET`), and a lot elsewhere, outside its town's middle
+//!    (`in_middle`), no more than six (`MIDDLE_STOREYS`: terraces and mansion
+//!    blocks), with no form chosen that stands higher (`forms::choose_within`);
+//!    the offices and the closes built over by themselves likewise. When a
+//!    group is rebuilt, the rest of its front (the same street, side and
+//!    stretch of `STRETCH` plots) goes up with it in the same form to the
+//!    same height, wherever what stands would come down for it. So a street
+//!    has a wall, and no tower stands among the cottages of its own street.
 //!
 //! The same record always draws the same town: all of it is worked out from
 //! the record's years up to the one drawn, whichever year is drawn and
@@ -134,6 +146,51 @@ pub(crate) struct Group {
     /// an estate's whole block between four streets (`estates.rs`): built
     /// and rebuilt as a form on a whole block
     pub block: bool,
+    /// its front: the stretch of street it stands on (`STRETCH`), whose
+    /// groups are rebuilt together to one height (rule 7); a number among
+    /// its square's
+    pub wall: u32,
+    /// it may rise tall: it fronts a main street (a road through or a market
+    /// place), or stands in its town's middle (rule 7)
+    pub tall: bool,
+}
+
+/// The most storeys a lot asks for away from the main streets and its
+/// town's middle (rule 7): six, a mansion block's, whatever its land is
+/// worth. Dear ground there gives middle density, terraces and blocks of
+/// four to six floors; the towers go to the main streets and the middle.
+pub(crate) const MIDDLE_STOREYS: u8 = 6;
+
+/// How many plots along a street make one front, rebuilt together (rule 7):
+/// eight, some 0.4 of a square, about a street block between cross streets.
+pub(crate) const STRETCH: i32 = 8;
+
+/// How far from its town's market place, in squares, a square is its
+/// middle, where towers may stand off the main streets (rule 7).
+pub(crate) const MIDDLE_REACH: f32 = 1.5;
+
+/// How much dearer a main street's frontage is than its square's ground on
+/// the mean (rule 7): half as dear again. The record keeps one land value a
+/// square; the frontage of a road through or a market place, where the trade
+/// passes, lets for more than the back lanes behind it, and builds higher.
+pub(crate) const MAIN_STREET: f32 = 1.5;
+
+/// The storeys a group asks for (rules 2 and 7): on a main street's
+/// frontage as its ground is worth `MAIN_STREET` times its square's;
+/// elsewhere, outside its town's middle, no more than `MIDDLE_STOREYS`.
+fn asked(value: f32, knows: Knows, tall: bool, main: bool) -> u8 {
+    if super::estates::bare() {
+        return storeys_for(value, knows);
+    }
+    storeys_for(if main { value * MAIN_STREET } else { value }, knows).min(most(tall))
+}
+
+/// The most storeys a building may be built to (rule 7): as many as asked
+/// on a main street or in the town's middle, `MIDDLE_STOREYS` elsewhere; a
+/// form that stands no lower than that is not chosen there
+/// (`forms::choose_within`).
+fn most(tall: bool) -> u8 {
+    if tall || super::estates::bare() { u8::MAX } else { MIDDLE_STOREYS }
 }
 
 /// One year of a square's history: the year, how densely the square is
@@ -188,8 +245,9 @@ pub(crate) fn walk_with(groups: &[Group], partners: &[Vec<usize>], years: &[Year
     let mut since: Vec<i32> = groups.iter().map(|g| g.built).collect();
     let ask = |g: &Group, y: &Year, block: bool| {
         let lot = if block || g.block { FormLot::Block } else if g.joined { FormLot::Joined } else { FormLot::House };
-        forms::choose(&forms::Ask { knows: y.knows, year: y.year, storeys: storeys_for(y.value, y.knows), lot, use_: Use::Dwellings, pick: g.pick })
+        forms::choose_within(&forms::Ask { knows: y.knows, year: y.year, storeys: asked(y.value, y.knows, g.tall, g.front), lot, use_: Use::Dwellings, pick: g.pick }, most(g.tall))
     };
+    let together = !super::estates::bare();
     for y in years {
         // the groups first built this year are built as the form of the year (and any
         // built after 1900 in a year the walk was not given, in the first it is); one on
@@ -240,6 +298,26 @@ pub(crate) fn walk_with(groups: &[Group], partners: &[Vec<usize>], years: &[Year
             cap[i] = more;
             form[i] = Some(Built { shape: a.shape, storeys: a.storeys, year: y.year });
             since[i] = y.year;
+            // the rest of its front goes up with it, in the same form to the same height,
+            // wherever what stands would come down for it: a street gets a wall, not a
+            // tower among cottages (rule 7)
+            if together && !block && forms::spec(a.shape).lot != FormLot::Block {
+                for j in 0..n {
+                    let gj = &groups[j];
+                    if j == i || gj.wall != groups[i].wall || gj.built > y.year || by[j].is_some() || owner(j) || gj.block {
+                        continue;
+                    }
+                    let theirs = holds(a.storeys, true);
+                    if theirs < TWICE * cap[j] {
+                        continue;
+                    }
+                    rebuilt += gj.plots;
+                    held += (theirs - cap[j]) * gj.plots as f32 / plots as f32;
+                    cap[j] = theirs;
+                    form[j] = Some(Built { shape: a.shape, storeys: a.storeys, year: y.year });
+                    since[j] = y.year;
+                }
+            }
             if block {
                 for &j in &partners[i] {
                     if by[j].is_none() && groups[j].built <= y.year {
@@ -404,13 +482,19 @@ fn drawn_with(r: &Replay, k: usize, standing: &[Stood], ground: Option<(&Ground,
     let mut cells: Vec<(&u32, &Vec<usize>)> = by_cell.iter().collect();
     cells.sort_by_key(|c| *c.0);
     for (&c, list) in cells {
+        let middle = in_middle(r, k, c as usize);
+        // each group's front: its street, its side, and the stretch of it its first plot is on
+        let mut walls: HashMap<(i32, u8, i32), u32> = HashMap::default();
         let groups: Vec<Group> = list
             .iter()
             .map(|&u| {
                 let range = &units[u];
                 let s = &standing[range.start];
                 let block = s.lot.estate.is_some_and(|e| e.block);
-                Group { plots: range.len(), built: range.clone().map(|i| standing[i].year).min().unwrap_or(s.year), front: s.lot.road || s.lot.kind == 9, pick: s.lot.pl.u, joined: range.len() > 1 || s.lot.pl.row.is_none() || block, block }
+                let next = walls.len() as u32;
+                let wall = *walls.entry((s.lot.pl.run.0, s.lot.pl.run.1, s.lot.pl.index.div_euclid(STRETCH))).or_insert(next);
+                let front = s.lot.road || s.lot.kind == 9;
+                Group { plots: range.len(), built: range.clone().map(|i| standing[i].year).min().unwrap_or(s.year), front, pick: s.lot.pl.u, joined: range.len() > 1 || s.lot.pl.row.is_none() || block, block, wall, tall: front || middle }
             })
             .collect();
         // the ground each group's block would take, and the groups whose plots stand on it
@@ -500,6 +584,13 @@ pub(super) fn tell(r: &Replay, k: usize, standing: &[Stood], storeys: &[u8], dra
     );
 }
 
+/// Whether cell `c` is its town's middle in year `k`: within `MIDDLE_REACH`
+/// squares of the market place of the town it trades in (rule 7).
+pub(crate) fn in_middle(r: &Replay, k: usize, c: usize) -> bool {
+    let t = (r.catch.get(k * r.n + c).copied().unwrap_or(0) as usize).wrapping_sub(1);
+    r.header.towns.get(t).is_some_and(|t| ((c % r.w) as f32 - (t.node % r.w) as f32).hypot((c / r.w) as f32 - (t.node / r.w) as f32) <= MIDDLE_REACH)
+}
+
 /// Cell `c` in year `k` as the walk reads it.
 fn square_year(r: &Replay, k: usize, c: usize) -> Year {
     let year = r.y0 + k as i32;
@@ -554,10 +645,13 @@ pub(crate) fn office(r: &Replay, f: usize, k: usize) -> Option<Built> {
         let sq = square_year(r, y, firm.cell);
         let floors = hands / HANDS_A_STOREY * sq.value.max(1.0).sqrt();
         let asked = (floors.round().min(40.0) as u8).max(2).min(most_storeys(sq.knows));
+        // (outside its town's middle no higher than a mansion block, rule 7)
+        let cap = most(in_middle(r, y, firm.cell));
+        let asked = asked.min(cap);
         if built.is_some_and(|b| (asked as f32) <= b.storeys as f32 * 1.5) {
             continue;
         }
-        let a = forms::choose(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked, lot: FormLot::Joined, use_: Use::Offices, pick });
+        let a = forms::choose_within(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked, lot: FormLot::Joined, use_: Use::Offices, pick }, cap);
         if built.is_none_or(|b| a.storeys > b.storeys) {
             built = Some(Built { shape: a.shape, storeys: a.storeys, year: sq.year });
         }
@@ -623,10 +717,11 @@ pub(crate) fn square_to_streets(tall: &[(Vec2, f32)], streets: &[(Vec2, Vec2)]) 
 /// year `k` (the forms on its lots, `forms`, and its offices, noted as they
 /// were drawn), how many stand square to a street (`square_to_streets`), the
 /// lanes drawn and the roads together; and how many whole blocks stand, the
-/// plots they took in, and the forms on them.
-pub(super) fn tell_square(r: &Replay, k: usize, forms_tall: &[(Vec2, f32, u8, u32)], lanes: &[(Vec<Vec2>, f32)], blocks: &[(Footprint, usize)], shapes: &[Shape]) {
-    let Ok(name) = std::env::var("ISOSTATE_LOTS") else { return };
-    let Some(t) = r.header.towns.iter().position(|t| t.name == name) else { return };
+/// plots they took in, and the forms on them. Returns the offices and the
+/// closes built over by themselves that were noted (`note_tall`).
+pub(super) fn tell_square(r: &Replay, k: usize, forms_tall: &[(Vec2, f32, u8, u32)], lanes: &[(Vec<Vec2>, f32)], blocks: &[(Footprint, usize)], shapes: &[Shape]) -> Vec<(Vec2, f32, u8, u32)> {
+    let Ok(name) = std::env::var("ISOSTATE_LOTS") else { return Vec::new() };
+    let Some(t) = r.header.towns.iter().position(|t| t.name == name) else { return Vec::new() };
     let ours = |c: u32| r.catch.get(k * r.n + c as usize).copied() == Some(t as u8 + 1);
     let cen = crate::network::centres(r);
     let mut streets: Vec<(Vec2, Vec2)> = crate::network::road_segments(r, k).into_iter().map(|(a, b, _)| (Vec2::new(cen[a].0, cen[a].1), Vec2::new(cen[b].0, cen[b].1))).collect();
@@ -660,6 +755,7 @@ pub(super) fn tell_square(r: &Replay, k: usize, forms_tall: &[(Vec2, f32, u8, u3
     parks.sort_by(|a, b| a.0.total_cmp(&b.0));
     let near: Vec<String> = parks.iter().take(6).map(|&(_, c)| format!("{},{}", c % r.w, c / r.w)).collect();
     eprintln!("lots {}: {name}: {} squares with a park; the nearest its market place: {}", r.y0 + k as i32, parks.len(), near.join("; "));
+    offices
 }
 
 /// Draw an office works' building at its place on the map, its front to its
@@ -730,6 +826,7 @@ pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround,
             y -= 1;
         }
         let sq = square_year(r, y, c as usize);
+        let middle = in_middle(r, y, c as usize);
         for (n, &(parcel, sub, area)) in cell.order.iter().enumerate().take(cell.built as usize) {
             if area <= 0.0 {
                 continue;
@@ -742,7 +839,8 @@ pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround,
             let front = Vec2::new(yaw.sin(), yaw.cos());
             let side = Vec2::new(front.y, -front.x);
             let pick = world::hash2(c as i32, n as i32, 45);
-            let a = forms::choose(&forms::Ask { knows: sq.knows, year: sq.year, storeys: storeys_for(sq.value, sq.knows), lot: FormLot::Joined, use_: Use::Dwellings, pick });
+            // (no close fronts a main street: tall only in its town's middle, rule 7)
+            let a = forms::choose_within(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked(sq.value, sq.knows, middle, false), lot: FormLot::Joined, use_: Use::Dwellings, pick }, most(middle));
             let spec = forms::spec(a.shape);
             let ground = (spec.ground.0.min(0.09), spec.ground.1.min(0.07));
             // all of it on dry ground clear of what keeps a house out
@@ -818,8 +916,8 @@ mod tests {
     /// A square of forty plots built by 1900: ten pairs on its road, and four
     /// rows of five behind.
     fn old_square() -> Vec<Group> {
-        let mut g: Vec<Group> = (0..10).map(|i| Group { plots: 2, built: 1820 + i, front: true, pick: i as f32 / 10.0, joined: true, block: false }).collect();
-        g.extend((0..4).map(|i| Group { plots: 5, built: 1850 + i, front: false, pick: 0.05 + i as f32 / 4.0, joined: true, block: false }));
+        let mut g: Vec<Group> = (0..10).map(|i| Group { plots: 2, built: 1820 + i, front: true, pick: i as f32 / 10.0, joined: true, block: false, wall: i as u32, tall: true }).collect();
+        g.extend((0..4).map(|i| Group { plots: 5, built: 1850 + i, front: false, pick: 0.05 + i as f32 / 4.0, joined: true, block: false, wall: 10 + i as u32, tall: true }));
         g
     }
 
@@ -888,9 +986,9 @@ mod tests {
     fn a_dear_frontage_is_rebuilt_as_a_whole_block() {
         // a way's frontage of four plots, and two rows of the back lane on the block's ground
         let g = [
-            Group { plots: 4, built: 1850, front: true, pick: 0.2, joined: true, block: false },
-            Group { plots: 4, built: 1860, front: false, pick: 0.4, joined: true, block: false },
-            Group { plots: 3, built: 1990, front: false, pick: 0.6, joined: true, block: false },
+            Group { plots: 4, built: 1850, front: true, pick: 0.2, joined: true, block: false, wall: 0, tall: true },
+            Group { plots: 4, built: 1860, front: false, pick: 0.4, joined: true, block: false, wall: 1, tall: true },
+            Group { plots: 3, built: 1990, front: false, pick: 0.6, joined: true, block: false, wall: 2, tall: true },
         ];
         let partners = vec![vec![1, 2], Vec::new(), Vec::new()];
         let dens = |y: i32| if y < 1950 { 1.0 } else { 3.0 };
@@ -908,6 +1006,43 @@ mod tests {
         // and the same record draws the same block, whichever year the walk stops at
         let to_1960 = walk_with(&g, &partners, &years(1901, 1960, dens, |_| BLOCK_VALUE * 1.5));
         assert_eq!((to_1960.form[0], &to_1960.by[..2]), (Some(b), &dear.by[..2]));
+    }
+
+    /// Height follows the street (rule 7): on ground dear enough for towers,
+    /// the main street's frontage rises tall and the back streets no higher
+    /// than a mansion block; and a front goes up together, every group of it
+    /// to the same form and height, so that no tall building stands alone
+    /// among the houses of its own street.
+    #[test]
+    fn towers_keep_to_the_main_street_and_a_front_rises_together() {
+        // a main street's frontage of three fronts of three pairs, and a back street of three
+        // fronts of three rows, all houses of the 1890s
+        let mut g: Vec<Group> = Vec::new();
+        for f in 0..3u32 {
+            for i in 0..3 {
+                g.push(Group { plots: 2, built: 1890, front: true, pick: (f * 3 + i) as f32 / 9.0, joined: true, block: false, wall: f, tall: true });
+                g.push(Group { plots: 4, built: 1891, front: false, pick: (f * 3 + i) as f32 / 9.0, joined: true, block: false, wall: 10 + f, tall: false });
+            }
+        }
+        // ground worth five times its town's of 1900 from 1990, and a square that must hold
+        // three times its room of 1900
+        let built = walk(&g, &years(1901, 2050, |y| if y < 1990 { 1.0 } else { 3.0 }, |y| if y < 1990 { 1.0 } else { 5.0 }));
+        assert!(built.iter().any(|b| b.is_some()), "{built:?}");
+        for (gr, b) in g.iter().zip(&built) {
+            if let (false, Some(b)) = (gr.tall, b) {
+                assert!(b.storeys <= MIDDLE_STOREYS, "a back street rose to {b:?}");
+            }
+        }
+        // the main street's fronts rose tall, as its ground is dearer than the square's mean
+        let tallest = g.iter().zip(&built).filter(|(gr, _)| gr.front).filter_map(|(_, b)| *b).map(|b| b.storeys).max().unwrap_or(0);
+        assert!(tallest > MIDDLE_STOREYS, "the main street rose only to {tallest}");
+        // every front that was rebuilt was rebuilt whole, to one form and height
+        for w in [0, 1, 2, 10, 11, 12] {
+            let mine: Vec<Option<Built>> = g.iter().zip(&built).filter(|(gr, _)| gr.wall == w).map(|(_, b)| *b).collect();
+            if mine.iter().any(|b| b.is_some()) {
+                assert!(mine.iter().all(|b| *b == mine[0]), "front {w}: {mine:?}");
+            }
+        }
     }
 
     /// Land value sets the storeys and technology caps them: the same dear
@@ -928,7 +1063,7 @@ mod tests {
     /// detached house, and in 1965 on dear ground flats.
     #[test]
     fn a_new_lot_is_built_in_the_form_of_its_year() {
-        let g = [Group { plots: 2, built: 1930, front: false, pick: 0.3, joined: true, block: false }, Group { plots: 1, built: 1930, front: false, pick: 0.3, joined: false, block: false }, Group { plots: 2, built: 1965, front: true, pick: 0.3, joined: true, block: false }];
+        let g = [Group { plots: 2, built: 1930, front: false, pick: 0.3, joined: true, block: false, wall: 0, tall: true }, Group { plots: 1, built: 1930, front: false, pick: 0.3, joined: false, block: false, wall: 1, tall: true }, Group { plots: 2, built: 1965, front: true, pick: 0.3, joined: true, block: false, wall: 2, tall: true }];
         let built = walk(&g, &years(1901, 1970, |_| 1.0, |y| if y < 1960 { 1.0 } else { 4.0 }));
         assert_eq!(built[0].map(|b| b.shape), Some(Shape::SemisInterwar));
         assert_eq!(built[1].map(|b| b.shape), Some(Shape::DetachedInterwar));
