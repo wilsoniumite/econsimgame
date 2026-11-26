@@ -16,7 +16,8 @@ clay pits and mines, where it takes the hoist's place as the drive does in
 the works. **The hoist is a stand-in**, made of machinery and burning coal:
 without the content after 1900 (`tree.stage = 1`) it hauls in the works and
 at the quarries, clay pits and mines, as it did before the drive and the
-cutter, and with it it hauls nowhere. The carters are still out of reach.
+cutter, and with it it hauls nowhere. The carters' hauling is the motor
+lorry's from its find after 1905 ([lorry.md](lorry.md), `tasks.lorry`).
 Nothing can be found before 1901, so
 the played century is untouched: every fact of the standing check is the
 same to the digit with either switch on and off. Two more settings are for

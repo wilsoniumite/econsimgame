@@ -11,6 +11,11 @@ off", below). A hand can turn it on in a sandbox, on the Rules tab's row
 the rule for machines and tasks as it stands ([tasks.md](tasks.md)) and adds no
 good, no method and nothing drawn.
 
+**With the lorry** ([lorry.md](lorry.md), on since 26 November 2026) tried again on islands 1 to 8 with
+the lorry on: 2050 over 1970 reaches 1.20 (1.14 with the lorry alone; with pace since, 1.16 and 1.18),
+but the towns' share in 2050 is 0.493 against 0.550 with both off (with pace, 0.488 against 0.556), so
+tending still stands off; that page says what it waits on.
+
 **Tending** is feeding and minding a process, fitting and driving: the largest
 class of the works' hours, 0.37 of them in 1900 and 0.44 in 2050 on main
 (islands 1 to 8), and the one no machine took in the works before this rule.

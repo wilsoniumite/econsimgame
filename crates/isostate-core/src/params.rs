@@ -398,6 +398,11 @@ pub struct Params {
     /// Python; see docs/rules/who-works.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub who_works: crate::who_works::WhoWorksParams,
+    /// The lorry's roads: its saving had by the road under it, and from 1901 no
+    /// made road unmade for want of traffic (not in the Python; see
+    /// docs/rules/lorry.md, which has the lorry itself, `tasks.lorry`).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub lorry: crate::lorry::LorryParams,
     /// Works that ask each month for a twelfth of the plant still to come, not
     /// a quarter, so that it comes in over a year on the mean (not in the
     /// Python; on under the game's rules from 1901; see docs/rules/pace.md).
@@ -628,6 +633,7 @@ pub fn default_params() -> Params {
         // traffic (docs/rules/traffic.md): off
         traffic: crate::traffic::TrafficParams::default(),
         who_works: crate::who_works::WhoWorksParams::default(),
+        lorry: crate::lorry::LorryParams::default(),
         pace: crate::pace::PaceParams::default(),
     }
 }
@@ -704,6 +710,10 @@ pub fn game_params() -> Params {
     // who works (docs/rules/who-works.md): from 1901 the hands are counted by age,
     // so that school, the university and the pension take hands out of work
     P.who_works = crate::who_works::WhoWorksParams::game();
+    // the lorry (docs/rules/lorry.md): from the motor vehicle's find, lorries take the
+    // carters' hauling (`tasks.lorry`, in the tasks' rule), their saving is had by
+    // the road under them, and from 1901 no made road falls back for want of traffic
+    P.lorry = crate::lorry::LorryParams::game();
     // pace (docs/rules/pace.md): from 1901 a works asks each month for a twelfth of
     // the plant still to come, not a quarter, so that it comes in over a year on the
     // mean; the cure of the timber-and-brick cycle (docs/probes/tr-timber.md), on

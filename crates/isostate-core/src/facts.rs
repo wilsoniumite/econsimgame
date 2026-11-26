@@ -719,6 +719,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::tasks::facts(r) {
         b.num(name, kind, v);
     }
+    // the lorry (docs/rules/lorry.md): the carters' lorries, every tenth year from 1900
+    for (name, kind, v) in crate::lorry::facts(r) {
+        b.num(name, kind, v);
+    }
     // pay (docs/rules/pay.md): each class's pay, reckoned from the hands and not played
     for (name, kind, v) in crate::pay::facts(r) {
         b.num(name, kind, v);

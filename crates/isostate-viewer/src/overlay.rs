@@ -1155,7 +1155,11 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 }
             }
             let all: f64 = by.iter().sum();
-            let words = ["by cart", "by boat", "by rail", "by sea"];
+            // the lorry (the core's docs/rules/lorry.md): the record's two bits of mode say
+            // only "by road", so the year's share of the carting's hauling done by lorry,
+            // which a run with the lorry keeps as a series, says how much of that was lorries
+            let lorries = crate::replay::annual(r, "lorry_share", k).filter(|v| v.is_finite() && *v >= 0.005);
+            let words = if lorries.is_some() { ["by road", "by boat", "by rail", "by sea"] } else { ["by cart", "by boat", "by rail", "by sea"] };
             let mut shares: Vec<(f64, &str)> = by.iter().zip(words).map(|(&v, w)| (v / all.max(1e-9), w)).filter(|s| s.0 >= 0.005).collect();
             shares.sort_by(|a, b| b.0.total_cmp(&a.0));
             let shares: Vec<String> = shares.iter().map(|(v, w)| format!("{:.0}% {w}", v * 100.0)).collect();
@@ -1163,8 +1167,12 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
                 Some(town) => format!(" The busiest way, near {}, carried {} {}.", town_name(r, town), amount(top.0), words[t.mode(r.n, k, top.1, top.2) as usize & 3]),
                 None => format!(" The busiest way carried {} {}.", amount(top.0), words[t.mode(r.n, k, top.1, top.2) as usize & 3]),
             };
+            let (brown, by_lorry) = match lorries {
+                Some(v) => ("brown by road, cart or lorry", format!(" By road, lorries did {:.0}% of the carting's hauling this year, and carts and horses the rest.", v * 100.0)),
+                None => ("brown by cart", String::new()),
+            };
             let note = format!(
-                "Each way between two squares is drawn as wide as the weight carried over it in the year, both ways together, in the goods' units: brown by cart, blue by river or canal, black by rail, pale blue by sea. Of the weight carried, times how far: {}.{busiest}",
+                "Each way between two squares is drawn as wide as the weight carried over it in the year, both ways together, in the goods' units: {brown}, blue by river or canal, black by rail, pale blue by sea. Of the weight carried, times how far: {}.{by_lorry}{busiest}",
                 shares.join(", ")
             );
             Wash { cells, legend: legend(title, note, &TRAFFIC_INK, &sc, None), soft: 0.5, lines: false }

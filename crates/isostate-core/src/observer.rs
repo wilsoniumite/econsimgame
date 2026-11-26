@@ -173,6 +173,9 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::linked::add_series(&mut reg, P, n_months);
     // pay (docs/rules/pay.md): each class's pay, reckoned from 1900
     crate::pay::add_series(&mut reg, P, n_months);
+    // the lorry (docs/rules/lorry.md): the hauling done by lorry, while the lorry may be
+    // found (before the ages, whose series come after everyone's: tests/ages.rs)
+    crate::lorry::add_series(&mut reg, P, n_months);
     // ages (docs/rules/ages.md): the people's ages, reckoned beneath the played totals
     crate::ages::add_series(&mut reg, P, n_months);
     // state (docs/rules/state.md): the rate on pay, and what the treasury pays out
@@ -292,6 +295,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     crate::purse::record_month(st, P, &mut s, t, gdp);
     // who works (docs/rules/who-works.md): nought until it acts
     crate::who_works::record_month(st, P, &mut s, t);
+    // the lorry (docs/rules/lorry.md): nought until it is found
+    crate::lorry::record_month(st, P, &mut s, t);
     st.series = s;
 }
 

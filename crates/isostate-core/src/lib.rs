@@ -56,6 +56,7 @@ pub mod landwater;
 pub mod linked;
 pub mod live;
 pub mod longrun;
+pub mod lorry;
 pub mod machines;
 pub mod mat;
 pub mod mines;
