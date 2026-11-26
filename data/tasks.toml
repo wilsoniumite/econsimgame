@@ -621,6 +621,10 @@ discover = {}
 idea = "industrial_robot"
 needs = ["office_computing"]
 switch = "tending"
+# Under `tasks.tending_wide` (docs/rules/tending.md, "Where the hands go") the robot reaches the tending
+# of the land, the pits and the carts as well: the milking robot and the tractor that steers itself, the
+# shearer at the coal face, the depot's robots.
+wide = ["farm", "pasture", "forestry", "quarry", "claypit", "ironmine", "coalmine", "carting"]
 # Refitted once (25 November 2026): at 1.0 the towns' target in the year found was 0.611 on the mean of
 # islands 1 to 8 (0.561 to 0.698; found 1979 to 1994), so the unit was made exp(ln(1000) * (0.611 - 0.55))
 # = 1.52 times as dear, to bring the mean to 0.55.
@@ -654,6 +658,8 @@ discover = {}
 idea = "lights_out_line"
 needs = ["models"]
 switch = "tending"
+# Under `tasks.tending_wide`, as the robot: the field, the pit and the lorry that run themselves.
+wide = ["farm", "pasture", "forestry", "quarry", "claypit", "ironmine", "coalmine", "carting"]
 # Refitted once (25 November 2026): at 1.0 the towns' target in the year found was 0.967 on the mean of
 # islands 1 to 8 (0.924 to 0.999; found 2031 to 2044), pressed against the reach of the whole class, so
 # that this refit is rough, so the unit was made exp(ln(1000) * (0.967 - 0.92)) = 1.39 times as dear, to
