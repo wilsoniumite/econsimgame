@@ -248,7 +248,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     let mut c = RoadCheck { off_surface: (0.0, Vec2::ZERO), off_ribbon: (f32::MIN, Vec2::ZERO), ..Default::default() };
     let waters = network::Waters::new(r, g);
     let height_along = network::height_along;
-    let segs = network::road_segments(r, k);
+    let segs = network::drawn_links(r, &g.worn, k);
     let v2 = |p: (f32, f32)| Vec2::new(p.0, p.1);
     // every link: what carries it over water, and where water lies under it with nothing to carry it
     #[allow(clippy::type_complexity)]
@@ -471,6 +471,13 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
     }
     for k in years {
         let t0 = std::time::Instant::now();
+        // the roads the carts wore against every road between road squares (`network::drawn_links`)
+        let m = network::measure(r, &g.worn, k);
+        let all = (m.carted_drawn + m.carted_road_not_drawn + m.carted_track).max(1e-9);
+        eprintln!(
+            "worn {}: {} links drawn closing {} squares ({} with a cell of town ground), {} of them diagonals, against {} links closing {} by every road; of the carting, {:.3} on roads drawn, {:.3} on made roads not drawn, {:.3} on tracks",
+            m.year, m.drawn, m.closed, m.closed_town, m.diagonals, m.today, m.today_closed, m.carted_drawn / all, m.carted_road_not_drawn / all, m.carted_track / all
+        );
         for line in network::water_check(r, g, cen, k) {
             eprintln!("{line}");
         }

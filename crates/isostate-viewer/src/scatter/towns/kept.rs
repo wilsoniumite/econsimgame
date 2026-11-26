@@ -715,6 +715,10 @@ pub(crate) struct LaneOf {
     /// (`lots::in_middle`): what its surface follows
     pub rank: estates::Rank,
     pub middle: bool,
+    /// a road through the town the carts did not wear, drawn as the town's
+    /// own street (`network::drawn_links`): nothing is laid out by it that
+    /// was not laid out by the road before
+    pub unworn: bool,
 }
 
 /// A street that may be laid, and what has been asked of it so far.
@@ -1506,13 +1510,17 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     let mut lane_of: Vec<LaneOf> = Vec::new();
     let mut roads: Vec<(Vec<Vec2>, f32, LaneOf)> = Vec::new();
     let now = r.y0 + k as i32;
+    // the roads the carts wore, which the ways between squares draw (`network::drawn_links`): a
+    // road through the town that they did not wear is drawn here as a street of the town's own,
+    // along its houses and over its built-up ground, and has no road beyond
+    let worn: std::collections::HashSet<i32> = crate::network::drawn_links(r, &g.worn, k).into_iter().filter_map(|(c, m, _)| link(r, c, m)).map(|(lo, dir)| ((lo * 4 + dir) * 64) as i32).collect();
     for (i, st) in lay.streets.iter().enumerate() {
         let s = &st.way;
         let mid = (s.a + s.b) * 0.5;
         let middle = lots::in_middle(r, k, (mid.y.floor().clamp(0.0, (r.h - 1) as f32) as usize) * r.w + mid.x.floor().clamp(0.0, (r.w - 1) as f32) as usize);
         let rank = estates::Rank::of(s.kind, s.width, s.estate.is_some(), s.estate.is_some_and(|e| e.circle));
-        let of = LaneOf { source: s.source(), year: r.y0 + s.since as i32, estate: s.estate.map(|e| (e.pattern, e.year)), circle: false, rank, middle };
-        if s.road {
+        let of = LaneOf { source: s.source(), year: r.y0 + s.since as i32, estate: s.estate.map(|e| (e.pattern, e.year)), circle: false, rank, middle, unworn: s.road && !worn.contains(&s.id) };
+        if s.road && worn.contains(&s.id) {
             // a road through is drawn by the ways between squares (`network`); on a town's
             // ground, from the year main streets are tarred, it is drawn again over that
             // as a town's main street, where it runs straight
@@ -1841,8 +1849,10 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         }
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    // a filled square's ground that no street's plots reach is built over close by close (`lots::infill`)
-    let infill = lots::infill(r, g, k, town, &standing, &blocks, &lanes, near_plot, lk, into);
+    // a filled square's ground that no street's plots reach is built over close by close (`lots::infill`),
+    // which keeps clear of the roads through as it did when every one was drawn as a road
+    let kept_clear: Vec<(Vec<Vec2>, f32)> = lanes.iter().zip(&lane_of).filter(|(_, of)| !of.unworn).map(|(l, _)| l.clone()).collect();
+    let infill = lots::infill(r, g, k, town, &standing, &blocks, &kept_clear, near_plot, lk, into);
     census.infill = infill.len();
     census.infill_estates = infill.iter().filter(|f| estates.contains_key(&(((f.at.y.floor().max(0.0) as usize).min(r.h - 1) * r.w + (f.at.x.floor().max(0.0) as usize).min(r.w - 1)) as u32))).count();
     census.estates = estates.len();
@@ -2335,6 +2345,41 @@ mod tests {
         let all = |l: &Layout| l.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), s.year)).collect::<Vec<_>>();
         assert_eq!(all(&with), all(&without));
         assert_eq!(with.lanes, without.lanes);
+    }
+
+    /// The roads the carts wore (`network::drawn_links`) move no house and
+    /// no street: in a record that kept the traffic and in which the carts
+    /// wore no road, so that every road through the made-up town is drawn as
+    /// the town's own street, every house stands where it stood, of the year
+    /// it was, and is the same house, on the estate and off it, in 1900 and
+    /// after, as with every road drawn by the rule before (`ALL_IN_TEST`);
+    /// every lane drawn before is drawn the same, and the roads the network
+    /// no longer draws are drawn by the town, along its built-up ground.
+    #[test]
+    fn a_road_the_carts_did_not_wear_moves_no_house_and_is_drawn_as_the_towns_street() {
+        let (mut r, _) = with_an_estate();
+        // the traffic kept, and nothing carted anywhere
+        r.traffic.goods = vec![0; r.ny * r.n * 4];
+        r.traffic.mode = vec![0; r.ny * r.n];
+        let g = world::build_ground(&r);
+        let houses = |l: &Layout| -> Vec<(((i32, u8), i32), u32, [u32; 2], i32, What)> {
+            l.standing.iter().zip(&l.whats).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), s.lot.cell, [s.lot.pl.p.x.to_bits(), s.lot.pl.p.y.to_bits()], s.year, *w)).collect()
+        };
+        for k in [2, 4, 6] {
+            let worn = laid(&r, &g, k, &|_, _| false);
+            crate::network::ALL_IN_TEST.with(|a| a.set(true));
+            let before = laid(&r, &g, k, &|_, _| false);
+            crate::network::ALL_IN_TEST.with(|a| a.set(false));
+            assert!(crate::network::drawn_links(&r, &g.worn, k).is_empty(), "year {k}: a road the carts never wore is drawn");
+            assert!(!crate::network::road_segments(&r, k).is_empty());
+            assert!(before.standing.len() > 80, "year {k}: {} houses", before.standing.len());
+            assert_eq!(houses(&worn), houses(&before), "year {k}");
+            // every lane as before, and the roads as the town's streets after them in their places
+            let old: Vec<_> = worn.lanes.iter().zip(&worn.lane_of).filter(|(_, of)| !of.unworn).map(|(l, _)| l.clone()).collect();
+            assert_eq!(old, before.lanes, "year {k}");
+            let streets = worn.lane_of.iter().filter(|of| of.unworn).count();
+            assert!(streets > 0 && worn.roads.is_empty(), "year {k}: {streets} roads drawn as streets, {} as main streets", worn.roads.len());
+        }
     }
 
     /// An estate has streets of its own, of the pattern of its year, laid on

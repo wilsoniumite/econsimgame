@@ -1526,6 +1526,45 @@ fn a_games_traffic_and_trade_between_towns_are_its_recordings() {
     assert!(lines.starts_with("Trades most with") && lines.lines().count() == 1 + crate::traffic::PARTNERS, "{lines}");
 }
 
+#[test]
+fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
+    // The roads the carts wore (`network::drawn_links`), measured on a recorded run:
+    // island 7 under the game's rules, which keep the traffic, played forty years and
+    // read back from its `run.bin`. It leans on no history but the traffic being kept:
+    // a road once drawn stays drawn while its squares are made roads; the drawn roads
+    // close fewer squares than every road between road squares does, and carry most of
+    // the year's carting; and with the rule off the picture is the one before.
+    let mut game = isostate_core::save::Game::new(7, 6, 0);
+    assert!(game.sim.params.traffic.enabled, "the case is played with the traffic kept");
+    for _ in 0..40 {
+        game.year().unwrap();
+        game.turn();
+    }
+    let s = &game.sim;
+    let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+    let r = replay::parse("test.bin", &bytes).expect("the game's record reads");
+    let worn = crate::network::Worn::default();
+    let last = (game.last_year() - s.content.start_year) as usize;
+    let mut before: Vec<(usize, usize, u8)> = Vec::new();
+    for k in 0..=last {
+        let drawn = crate::network::drawn_links(&r, &worn, k);
+        let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
+        for l in &before {
+            assert!(!made(l.0) || !made(l.1) || drawn.iter().any(|d| (d.0, d.1) == (l.0, l.1)), "year {k}: the road {l:?} drawn before is gone");
+        }
+        before = drawn;
+    }
+    let m = crate::network::measure(&r, &worn, last);
+    eprintln!("{m:?}");
+    assert!(m.drawn > 500 && m.closed * 2 <= m.today_closed, "{m:?}");
+    let all = m.carted_drawn + m.carted_road_not_drawn + m.carted_track;
+    assert!(m.carted_drawn >= 0.7 * all && m.carted_road_not_drawn <= 0.1 * all, "{m:?}");
+    crate::network::ALL_IN_TEST.with(|a| a.set(true));
+    let off = crate::network::drawn_links(&r, &worn, last);
+    crate::network::ALL_IN_TEST.with(|a| a.set(false));
+    assert_eq!(off, crate::network::road_segments(&r, last));
+}
+
 /// A square near the first town whose hand's list has a works allowed, and
 /// the method that promises most there (as the Works tool offers it).
 fn a_square_for_a_works(a: &Table) -> (usize, String) {

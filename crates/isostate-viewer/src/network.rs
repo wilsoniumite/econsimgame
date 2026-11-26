@@ -993,6 +993,262 @@ pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
     out
 }
 
+/// What a link must carry by cart in a year for that year to wear it, in
+/// the goods' units of weight: the simulation's own first threshold, at
+/// which a square's traffic makes it a track (`road_thresholds`, the core's
+/// params.rs), here read on the link (the core's docs/rules/traffic.md).
+pub const WORN_WEIGHT: f32 = 1500.0;
+/// In how many years a link must carry `WORN_WEIGHT` by cart for the carts
+/// to have worn a road along it. Once worn it is kept: a road paid for is
+/// not unmade by quiet (docs/designs/ways.md, part 2).
+pub const WORN_YEARS: u16 = 20;
+/// A year a link carries this much by cart, a turnpike's traffic (the
+/// core's third threshold), wears it as `HEAVY_COUNTS` years do: a new way
+/// that takes a heavy flow at once (to a new pit, a new works) is worn in
+/// four such years, not twenty.
+pub const WORN_HEAVY: f32 = 40_000.0;
+pub const HEAVY_COUNTS: u16 = 5;
+
+/// The roads the carts wore, as far as the record has been gone through:
+/// for each link (`c * 4 + slot`, the core's `traffic::SLOTS`), the years it
+/// carried the rule's weight or more by cart, and the first year (counted
+/// from the start) it was worn; `u16::MAX` for none yet. Kept in
+/// `Ground::worn`, by the rule `WORN_WEIGHT` in `WORN_YEARS` years.
+pub struct Worn {
+    known: std::sync::Mutex<WornKnown>,
+    /// the weight a year, and in how many years
+    weight: f32,
+    years: u16,
+}
+
+impl Default for Worn {
+    fn default() -> Worn {
+        Worn::by(WORN_WEIGHT, WORN_YEARS)
+    }
+}
+
+#[derive(Default)]
+struct WornKnown {
+    /// how many years have been gone through
+    through: usize,
+    years: Vec<u16>,
+    since: Vec<u16>,
+}
+
+impl Worn {
+    /// Wear by another rule than the game's (for the measure, `tests::measure_a_recorded_run`).
+    pub fn by(weight: f32, years: u16) -> Worn {
+        Worn { known: Default::default(), weight, years }
+    }
+
+    /// An edit taken back (back.rs): the years from `from` (counted from the
+    /// start) are gone through again when next asked for. The counts cannot
+    /// be unwound a year at a time, so everything is gone through again.
+    pub fn forget_from(&self, from: usize) {
+        if let Ok(mut known) = self.known.lock() {
+            if from < known.through {
+                *known = WornKnown::default();
+            }
+        }
+    }
+}
+
+/// Whether cell `c` is a town's ground in year `k`, as the town's streets
+/// are laid on it (`scatter::towns`).
+fn town_ground(r: &Replay, k: usize, c: usize) -> bool {
+    let off = k * r.n + c;
+    if r.kept() {
+        r.built[off] > 0
+    } else {
+        r.use_[off] == 10 || r.mix_a[off] == world::URBAN || r.mix_b[off] == world::URBAN
+    }
+}
+
+thread_local! {
+    /// In a test: draw every road by `road_segments`' rule, as before the
+    /// roads the carts wore (as `ISOSTATE_WORN=off` does for a run).
+    pub static ALL_IN_TEST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the roads are drawn by wear (`drawn_links`): unless
+/// `ISOSTATE_WORN=off` asks for the picture before, to set the two side by side.
+fn by_wear() -> bool {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    !ALL_IN_TEST.with(|a| a.get()) && !*OFF.get_or_init(|| std::env::var("ISOSTATE_WORN").is_ok_and(|v| v == "off"))
+}
+
+/// The roads drawn in year `k`, as (cell, neighbouring cell, level 2 or 3),
+/// each link once and in the order `road_segments` gives them. A link
+/// between two squares of made road or turnpike is drawn where the carts
+/// wore it (`Worn`): where it has carried `WORN_WEIGHT` or more by cart in
+/// `WORN_YEARS` years, counted over every year of the record up to `k`, a
+/// year of `WORN_HEAVY` or more counting `HEAVY_COUNTS`, a diagonal as a
+/// diagonal; and once worn it stays drawn while both
+/// its squares are made roads. A trunk road's or a bypass's link is drawn
+/// where `road_segments`' rule draws it, as always, so that the state's
+/// roads keep their lines, and as a diagonal too where the carts wore one. A run that kept no traffic (the port's rules, or a record made
+/// before 25 November 2026) has every road drawn by `road_segments`, and so
+/// does a year past what the record holds.
+///
+/// A town's streets are laid along every road through its ground, worn or
+/// not (`scatter::towns`), so that no street or house moves; where the
+/// carts did not wear one, the town draws it as its own street, along its
+/// houses and its built-up ground (`kept.rs`), and the country beyond has no
+/// road there.
+///
+/// Which links are drawn is decided here alone; how a link is drawn (its
+/// course, ribbon, bridges) is `route` and `year_nets`.
+pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)> {
+    let today = road_segments(r, k);
+    if !r.traffic.kept() || k >= r.filled.min(r.ny) || !by_wear() {
+        return today;
+    }
+    let mut known = worn.known.lock().unwrap();
+    wear_through(r, worn, &mut known, k);
+    let (w, h, n) = (r.w, r.h, r.n);
+    let tr = &r.trans[k * n..(k + 1) * n];
+    let state = |c: usize, m: usize| (tr[c] & 64 != 0 && tr[m] & 64 != 0) || (tr[c] & 128 != 0 && tr[m] & 128 != 0);
+    let mut today = today.into_iter().peekable();
+    let mut out = Vec::new();
+    for c in 0..n {
+        if tr[c] & 3 < 2 {
+            continue;
+        }
+        let (x, y) = ((c % w) as isize, (c / w) as isize);
+        for (s, (dx, dy)) in isostate_core::traffic::SLOTS.into_iter().enumerate() {
+            let (nx, ny) = (x + dx, y + dy);
+            if nx < 0 || nx >= w as isize || ny >= h as isize {
+                continue;
+            }
+            let m = ny as usize * w + nx as usize;
+            let lv = (tr[c] & 3).min(tr[m] & 3);
+            if lv < 2 {
+                continue;
+            }
+            // (road_segments gives the same links in the same order, less some diagonals)
+            let drawn_today = today.next_if(|&(a, b, _)| a == c && b == m).is_some();
+            let keep = (state(c, m) && drawn_today) || known.since[c * 4 + s] as usize <= k;
+            if keep {
+                out.push((c, m, lv));
+            }
+        }
+    }
+    out
+}
+
+/// Go through the record's years up to `k` for `Worn`. In the record's
+/// first `WORN_YEARS` years a link is worn by carrying `WORN_WEIGHT` in
+/// every year so far: the island's roads are older than the record, and
+/// what the carts use from its first year is all there is to go by.
+fn wear_through(r: &Replay, rule: &Worn, known: &mut WornKnown, k: usize) {
+    let n = r.n;
+    if known.years.len() != n * 4 {
+        *known = WornKnown { through: 0, years: vec![0; n * 4], since: vec![u16::MAX; n * 4] };
+    }
+    while known.through <= k {
+        let y = known.through;
+        let need = rule.years.min(y as u16 + 1);
+        for c in 0..n {
+            for s in 0..4 {
+                let l = c * 4 + s;
+                if r.traffic.mode(n, y, c, s) == isostate_core::traffic::CART && r.traffic.weight(n, y, c, s) >= rule.weight {
+                    known.years[l] += if r.traffic.weight(n, y, c, s) >= WORN_HEAVY { HEAVY_COUNTS } else { 1 };
+                    if known.years[l] >= need && known.since[l] == u16::MAX {
+                        known.since[l] = y as u16;
+                    }
+                }
+            }
+        }
+        known.through += 1;
+    }
+}
+
+/// How many squares of four cells the links close: blocks of four cells
+/// whose four sides (the links between them east and south) are all drawn,
+/// a square 2 km on a side. The measure of the lattice in the picture.
+pub fn closed_squares(w: usize, h: usize, links: &[(usize, usize, u8)]) -> usize {
+    let mut side = vec![[false; 2]; w * h];
+    for &(c, m, _) in links {
+        if m == c + 1 {
+            side[c][0] = true;
+        } else if m == c + w {
+            side[c][1] = true;
+        }
+    }
+    (0..w * h).filter(|&c| c % w + 1 < w && c / w + 1 < h && side[c][0] && side[c][1] && side[c + 1][1] && side[c + w][0]).count()
+}
+
+/// The roads of a year measured (`measure`): how many links today's rule
+/// (`road_segments`) draws and how many squares they close, the same for
+/// the links the carts wore (`drawn_links`), and where the year's carting
+/// went: the weight carried by cart times the length of the link, on the
+/// links drawn, on made roads not drawn, and on tracks and open ground.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RoadMeasure {
+    pub year: i32,
+    pub today: usize,
+    pub today_closed: usize,
+    pub drawn: usize,
+    pub closed: usize,
+    /// the closed squares with a cell of town ground among their four
+    pub closed_town: usize,
+    /// diagonals drawn that today's rule leaves out
+    pub diagonals: usize,
+    pub carted_drawn: f64,
+    pub carted_road_not_drawn: f64,
+    pub carted_track: f64,
+}
+
+/// Measure the roads of year `k` (`RoadMeasure`), by the rule `worn`.
+pub fn measure(r: &Replay, worn: &Worn, k: usize) -> RoadMeasure {
+    let today = road_segments(r, k);
+    let drawn = drawn_links(r, worn, k);
+    let (w, n) = (r.w, r.n);
+    let tr = &r.trans[k * n..(k + 1) * n];
+    let on_town = |c: usize| town_ground(r, k, c);
+    let mut side = vec![[false; 2]; n];
+    for &(c, m, _) in &drawn {
+        if m == c + 1 {
+            side[c][0] = true;
+        } else if m == c + w {
+            side[c][1] = true;
+        }
+    }
+    let closed: Vec<usize> = (0..n).filter(|&c| c % w + 1 < w && c / w + 1 < r.h && side[c][0] && side[c][1] && side[c + 1][1] && side[c + w][0]).collect();
+    let set: std::collections::HashSet<(usize, usize)> = drawn.iter().map(|&(c, m, _)| (c, m)).collect();
+    let was: std::collections::HashSet<(usize, usize)> = today.iter().map(|&(c, m, _)| (c, m)).collect();
+    let mut out = RoadMeasure {
+        year: r.y0 + k as i32,
+        today: today.len(),
+        today_closed: closed_squares(w, r.h, &today),
+        drawn: drawn.len(),
+        closed: closed.len(),
+        closed_town: closed.iter().filter(|&&c| [c, c + 1, c + w, c + w + 1].into_iter().any(on_town)).count(),
+        diagonals: drawn.iter().filter(|&&(c, m, _)| m != c + 1 && m != c + w && !was.contains(&(c, m))).count(),
+        ..Default::default()
+    };
+    if !r.traffic.kept() {
+        return out;
+    }
+    for c in 0..n {
+        for s in 0..4 {
+            let Some(m) = isostate_core::traffic::other_end(w, r.h, c, s) else { continue };
+            if r.traffic.mode(n, k, c, s) != isostate_core::traffic::CART {
+                continue;
+            }
+            let carted = r.traffic.weight(n, k, c, s) as f64 * isostate_core::traffic::slot_len(s);
+            if set.contains(&(c, m)) {
+                out.carted_drawn += carted;
+            } else if (tr[c] & 3).min(tr[m] & 3) >= 2 {
+                out.carted_road_not_drawn += carted;
+            } else {
+                out.carted_track += carted;
+            }
+        }
+    }
+    out
+}
+
 /// Where the railway has sidings in year `k`: two at a big town's station,
 /// one at a middling town's, and one in a cell where three works or more
 /// stand by the line.
@@ -1030,7 +1286,7 @@ fn sidings(r: &Replay, cen: &[(f32, f32)], k: usize) -> Vec<crate::rails::Siding
 pub fn water_check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<String> {
     g.detours.forget();
     let t0 = std::time::Instant::now();
-    let segs = road_segments(r, k);
+    let segs = drawn_links(r, &g.worn, k);
     for &(c, m, _) in &segs {
         route(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1), r.round());
     }
@@ -1143,7 +1399,7 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     // square 64 and a bypass's 128; a link between two such squares is drawn in
     // tarmac, a bypass's paler, until their look is drawn (a later piece)
     let tr = &r.trans[k * r.n..(k + 1) * r.n];
-    for (c, m, lv) in road_segments(r, k) {
+    for (c, m, lv) in drawn_links(r, &g.worn, k) {
         let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
         let trunk = tr[c] & 64 != 0 && tr[m] & 64 != 0;
         let colour = match (trunk, tr[c] & 128 != 0 || tr[m] & 128 != 0) {
@@ -1162,6 +1418,63 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The roads the carts wore, measured on recorded runs: for each run
+    /// named in `ISOSTATE_WORN_RUNS` (paths to `run.bin`, apart by `;`) and
+    /// each rule in `ISOSTATE_WORN_RULES` (`weight:years`, apart by `,`; the
+    /// game's if none), a line a year of 1800, 1850, 1900, 1950, 2000 and
+    /// 2050 with the measure (`RoadMeasure`). Run by hand, with
+    /// `cargo test -p isostate-viewer measure_a_recorded_run -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn measure_a_recorded_run() {
+        let Ok(paths) = std::env::var("ISOSTATE_WORN_RUNS") else { return };
+        let rules: Vec<(f32, u16)> = std::env::var("ISOSTATE_WORN_RULES").map_or(vec![(WORN_WEIGHT, WORN_YEARS)], |v| {
+            v.split(',').map(|r| {
+                let (a, b) = r.split_once(':').unwrap();
+                (a.parse().unwrap(), b.parse().unwrap())
+            }).collect()
+        });
+        for path in paths.split(';') {
+            let bytes = std::fs::read(path).unwrap();
+            let r = crate::replay::parse(path, &bytes).unwrap();
+            for &(weight, years) in &rules {
+                let worn = Worn::by(weight, years);
+                for year in [1800, 1850, 1900, 1950, 2000, 2050] {
+                    let k = (year - r.y0) as usize;
+                    if k >= r.ny {
+                        continue;
+                    }
+                    let m = measure(&r, &worn, k);
+                    if std::env::var_os("ISOSTATE_WORN_HEAVY").is_some() {
+                        // the heaviest carting on made roads not drawn: where, how much, and its years of wear
+                        let drawn: std::collections::HashSet<(usize, usize)> = drawn_links(&r, &worn, k).into_iter().map(|(c, m, _)| (c, m)).collect();
+                        let known = worn.known.lock().unwrap();
+                        let mut heavy: Vec<(f32, usize, usize, u16, u8, u8)> = Vec::new();
+                        for c in 0..r.n {
+                            for s in 0..4 {
+                                let Some(d) = isostate_core::traffic::other_end(r.w, r.h, c, s) else { continue };
+                                let (tc, td) = (r.trans[k * r.n + c], r.trans[k * r.n + d]);
+                                if r.traffic.mode(r.n, k, c, s) == isostate_core::traffic::CART && (tc & 3).min(td & 3) >= 2 && !drawn.contains(&(c, d)) {
+                                    heavy.push((r.traffic.weight(r.n, k, c, s), c, d, known.years[c * 4 + s], tc, td));
+                                }
+                            }
+                        }
+                        heavy.sort_by(|a, b| b.0.total_cmp(&a.0));
+                        for (wt, c, d, yrs, tc, td) in heavy.iter().take(12) {
+                            println!("  {year}: {wt:.0} carted between {},{} and {},{}, {yrs} years of wear, trans {tc} and {td}", c % r.w, c / r.w, d % r.w, d / r.w);
+                        }
+                    }
+                    let all = m.carted_drawn + m.carted_road_not_drawn + m.carted_track;
+                    println!(
+                        "{path} rule {weight} in {years} years, {year}: today {} links closing {}; drawn {} ({:.2} of today's) closing {} ({} with a cell of town ground), {} diagonals today's rule leaves out; of the year's carting (weight by length) {:.3} on drawn links, {:.3} on made roads not drawn, {:.3} on tracks",
+                        m.today, m.today_closed, m.drawn, m.drawn as f64 / m.today.max(1) as f64, m.closed, m.closed_town, m.diagonals,
+                        m.carted_drawn / all.max(1e-9), m.carted_road_not_drawn / all.max(1e-9), m.carted_track / all.max(1e-9)
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn the_top_of_a_road_steps_where_a_ramp_ends_above_it_and_bends_where_two_cross() {

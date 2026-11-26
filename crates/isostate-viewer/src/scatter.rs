@@ -273,7 +273,7 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
             out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
-    for (c, m, lv) in crate::network::road_segments(r, k) {
+    for (c, m, lv) in crate::network::drawn_links(r, &g.worn, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
     // the railway where it really runs, with room for its banks: every point of every line that
@@ -1598,7 +1598,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // (office works drawn as buildings of the forms, for ISOSTATE_TIMING)
     let mut offices = 0usize;
     // the year's roads, which an office building turns to face (`towns::lots::facing`)
-    let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::road_segments(r, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
+    let road_lines: Vec<(bevy::math::Vec2, bevy::math::Vec2)> = crate::network::drawn_links(r, &g.worn, k).into_iter().map(|(a, b, _)| (bevy::math::Vec2::new(cen[a].0, cen[a].1), bevy::math::Vec2::new(cen[b].0, cen[b].1))).collect();
     // what each works' plan is made from this year, and the plans themselves. Where many are
     // not made yet (a game just opened, a replay opened on a late year or moved a long way)
     // they are made on every core; most years want a handful
@@ -1678,7 +1678,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     works_b.append(crate::rails::structures(&rail_year, g, lk));
     crate::rails::standing(&rail_year, lod, lk, &mut works_b, &mut smoke);
     // (both found in network.rs, where a cart on the road reads them too)
-    for (c, m, lv) in crate::network::road_segments(r, k) {
+    for (c, m, lv) in crate::network::drawn_links(r, &g.worn, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         // crossings (the core's docs/rules/crossings.md): a bridge only where the run built one, else a ford or a ferry
         let crossed = r.crossed(c, m, k);
@@ -1795,7 +1795,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
-    let roads = RoadIndex::new(r, cen, k);
+    let roads = RoadIndex::new(r, g, cen, k);
     for (s, &open) in slots.hedge.iter().zip(&slots.hedge_open) {
         if year < open {
             continue;
@@ -1978,9 +1978,9 @@ struct RoadIndex {
 }
 
 impl RoadIndex {
-    fn new(r: &Replay, cen: &[(f32, f32)], k: usize) -> RoadIndex {
+    fn new(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadIndex {
         let mut cells: std::collections::HashMap<usize, Vec<((f32, f32), (f32, f32))>> = Default::default();
-        for (c, m, _) in crate::network::road_segments(r, k) {
+        for (c, m, _) in crate::network::drawn_links(r, &g.worn, k) {
             let seg = (cen[c], cen[m]);
             cells.entry(c).or_default().push(seg);
             cells.entry(m).or_default().push(seg);

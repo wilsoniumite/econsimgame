@@ -286,19 +286,33 @@ fn line(g: &Ground, a: (f32, f32), b: (f32, f32)) -> Vec<Vec3> {
 
 /// The links of year `k` drawn on the scale: (square, slot, weight, mode),
 /// heaviest last so that they lie on top.
-pub fn drawn_links(r: &Replay, k: usize, sc: &Scale) -> Vec<(usize, usize, f32, u8)> {
+///
+/// A link carted along between two squares of made road is drawn only where
+/// the map draws the road (`network::drawn_links`), so that no ribbon runs
+/// where there is no road under it: what the year's carting took over a
+/// link the carts had not yet worn is left out (on island 7, 1.1 per cent of
+/// the carting's weight by length in 1900 and none in 2050). Carting over
+/// tracks and open ground, which the map has never drawn as a road, is
+/// drawn as before.
+pub fn drawn_links(r: &Replay, worn: &crate::network::Worn, k: usize, sc: &Scale) -> Vec<(usize, usize, f32, u8)> {
     let mut out = Vec::new();
     if !r.traffic.kept() {
         return out;
     }
+    let roads: std::collections::HashSet<(usize, usize)> = crate::network::drawn_links(r, worn, k).into_iter().map(|(c, m, _)| (c, m)).collect();
+    let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
     for c in 0..r.n {
         for s in 0..4 {
             let w = r.traffic.weight(r.n, k, c, s);
             if w <= 0.0 || w < sc.lo * FAINT {
                 continue;
             }
-            if tf::other_end(r.w, r.h, c, s).is_some() {
-                out.push((c, s, w, r.traffic.mode(r.n, k, c, s)));
+            if let Some(d) = tf::other_end(r.w, r.h, c, s) {
+                let mode = r.traffic.mode(r.n, k, c, s);
+                if mode == tf::CART && made(c) && made(d) && !roads.contains(&(c, d)) {
+                    continue;
+                }
+                out.push((c, s, w, mode));
             }
         }
     }
@@ -309,12 +323,23 @@ pub fn drawn_links(r: &Replay, k: usize, sc: &Scale) -> Vec<(usize, usize, f32, 
 /// The ribbons of year `k` on scale `sc`, `near` times as wide as over the whole island.
 pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale, near: f32) -> Builder {
     let mut b = Builder::default();
-    for (i, (c, s, w, m)) in drawn_links(r, k, sc).into_iter().enumerate() {
+    let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
+    for (i, (c, s, w, m)) in drawn_links(r, &g.worn, k, sc).into_iter().enumerate() {
         let Some(d) = tf::other_end(r.w, r.h, c, s) else { continue };
         let t = sc.at(w);
         let width = (NARROW + (WIDE - NARROW) * t * t) * near;
         let col = mix(PAPER, INKS[m as usize & 3], 0.35 + 0.65 * t);
-        let mut pts = line(g, cen[c], cen[d]);
+        // carting on a made road follows the road's own way (round a meander or a lake, as `network::route`)
+        let mut pts = if m == tf::CART && made(c) && made(d) {
+            let way = crate::network::route(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[d].0, cen[d].1), r.round());
+            way.pts.windows(2).enumerate().flat_map(|(j, p)| {
+                let seg = line(g, (p[0].x, p[0].y), (p[1].x, p[1].y));
+                // (each length after the first begins where the last ended)
+                seg.into_iter().skip(if j == 0 { 0 } else { 1 })
+            }).collect()
+        } else {
+            line(g, cen[c], cen[d])
+        };
         // a hair higher for each one laid, so the heavier lie over the lighter where they meet
         let up = 1e-6 * i as f32;
         pts.iter_mut().for_each(|p| p.y += up);
