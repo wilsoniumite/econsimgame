@@ -65,6 +65,7 @@ pub mod names;
 pub mod ndimage;
 pub mod observer;
 pub mod owners;
+pub mod pace;
 pub mod params;
 pub mod pay;
 pub mod people;
