@@ -58,6 +58,9 @@ struct PatchworkParams {
     // shore there is mud and sand, not shingle (0 leaves every shore exactly
     // as it was drawn before)
     soft_shore: f32,
+    // 1 when the map view has cells whose tint lies on built ground only
+    // (overlay.rs `Lie`): the lower half of the overlay's texture is then read
+    overlay_built: f32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
@@ -1101,25 +1104,32 @@ fn park(sp: Spot) -> vec3<f32> {
     return c;
 }
 
-// Works stand in yards of cinder and gravel with lanes between them.
-fn works_yard(sp: Spot) -> vec3<f32> {
-    let q = sp.p * 3.5;
-    let qf = 3.5 * sp.foot;
-    let id = vec2<i32>(floor(q));
-    let b = hash2(id.x, id.y, 93);
-    let base = paint.yard.rgb;
-    let cinder = paint.yard_cinder.rgb;
-    let gravel = paint.yard_gravel.rgb;
-    var yard = base;
-    if (b < 0.3) {
-        yard = cinder;
-    } else if (b > 0.72) {
-        yard = gravel;
-    }
-    let average = base * 0.42 + cinder * 0.3 + gravel * 0.28;
-    var c = mix(average, yard, detail(10.0, sp.foot));
-    let lane = 1.0 - (1.0 - lines(q.x, qf, 0.07)) * (1.0 - lines(q.y, qf, 0.07));
-    c = mix(c, paint.yard_lane.rgb, 0.8 * lane);
+// How much of works ground is laid with cinder and hard standing at a spot,
+// 0 to 1: drifts a few hundred metres across with frayed edges, laid by a
+// noise turned against the map and bent, and never by a tile, so that no
+// edge of it runs along the map's axes (shader_twin.rs measures it).
+fn works_drift(p: vec2<f32>) -> f32 {
+    let t = vec2<f32>(0.8 * p.x - 0.6 * p.y, 0.6 * p.x + 0.8 * p.y);
+    let q = t + 0.22 * vec2<f32>(vnoise(t.x * 1.9 + 4.1, t.y * 1.9 + 6.7, 191), vnoise(t.x * 1.9 + 8.3, t.y * 1.9 + 2.2, 192));
+    let n = 0.7 * vnoise(q.x * 3.3, q.y * 3.3, 193) + 0.3 * vnoise(q.x * 8.9 + 1.7, q.y * 8.9 + 5.3, 197);
+    return clamp(0.5 + 0.9 * n, 0.0, 1.0);
+}
+
+// Works ground: what lies between the works' own yards and the ways, both of
+// which are drawn over it (the yards with the works, the ways as ribbons).
+// Rough grass on made ground, worn to bare earth and spread with cinder and
+// gravel in drifts. It has no lanes and no tiles of its own: until 26
+// November 2026 it was cut into squares of 571 m on the map's axes, each its
+// own colour, with lanes between, and a town of 2050 read as a board.
+fn works_ground(sp: Spot) -> vec3<f32> {
+    let d = works_drift(sp.p);
+    let grass = mix(grass_season(paint.rough_grass.rgb, sp.ph), paint.yard.rgb, 0.5);
+    // close to, the hard ground is cinder in one place and gravel in another
+    let t = vec2<f32>(0.6 * sp.p.x + 0.8 * sp.p.y, -0.8 * sp.p.x + 0.6 * sp.p.y);
+    let n = vnoise(t.x * 17.0, t.y * 17.0, 199);
+    let hard_near = mix(paint.yard_cinder.rgb, paint.yard_gravel.rgb, smoothstep(-0.35, 0.35, n));
+    let hard = mix(mix(paint.yard_cinder.rgb, paint.yard_gravel.rgb, 0.45), hard_near, detail(17.0, sp.foot));
+    let c = mix(grass, hard, 0.85 * smoothstep(0.45, 0.85, d));
     return mottled(c, sp, 0.05);
 }
 
@@ -1159,7 +1169,7 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case CLAYPIT: { c = mottled(paint.clay_pit.rgb, sp, 0.08); }
         case IRONMINE: { c = mottled(paint.iron_mine.rgb, sp, 0.08); }
         case COALMINE: { c = mottled(paint.colliery.rgb, sp, 0.12); }
-        case WORKS: { c = works_yard(sp); }
+        case WORKS: { c = works_ground(sp); }
         case URBAN: {
             // (task A) built-up ground, or the open closes of the town's edge
             // From across the island the houses are a pixel or less, and the
@@ -1229,20 +1239,104 @@ fn overlay_tap(c: vec2<i32>) -> vec4<f32> {
     return textureLoad(overlay_cells, clamp(c, vec2<i32>(0), lim), 0);
 }
 
+// How a cell's tint lies (overlay.rs `Lie`), from the lower half of the
+// overlay's texture: in r, 0 over all its land, 1 over its built ground only,
+// 2 as a soft patch over any ground (ground gone, under a trend); in gba, the
+// tint of the land under a built cell's tint, for ground there that is not built.
+fn overlay_lie(c: vec2<i32>) -> vec4<f32> {
+    let lim = vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1);
+    return textureLoad(overlay_cells, clamp(c, vec2<i32>(0), lim) + vec2<i32>(0, i32(ground.height)), 0);
+}
+
+// world::warp_raw: the warp that bends the squares into the shapes built
+// ground takes. A parcel is town ground where its point, so warped, lies in a
+// square of town ground (world::class_key).
+fn warp_raw(p: vec2<f32>) -> vec2<f32> {
+    let wx = p.x + 0.40 * vnoise(p.x * 0.7, p.y * 0.7, 5) + 0.15 * vnoise(p.x * 2.3, p.y * 2.3, 9);
+    let wy = p.y + 0.40 * vnoise(p.x * 0.7 + 31.7, p.y * 0.7 + 17.3, 7) + 0.15 * vnoise(p.x * 2.3 + 5.1, p.y * 2.3 + 9.7, 13);
+    return vec2<f32>(wx, wy);
+}
+
+// How far a built cell's tint runs across the edge of its square, in the
+// warped squares: its tints blend within a quarter of a square of the edge.
+const BUILT_SOFT: f32 = 0.25;
+
+// Where a view of town ground reads its built tints for the spot `p`: the
+// spot warped as the parcels are (warp_raw), and frayed a little more at the
+// scale of a few fields (330 m, by up to 180 m), so that the edges of the
+// tints wander as a hedge line does; where the warp alone bends little, the
+// sides of the squares would otherwise run on straight for half a kilometre
+// along the map's axes (shader_twin.rs measures it).
+fn built_at(p: vec2<f32>) -> vec2<f32> {
+    let fray = 0.09 * vec2<f32>(vnoise(p.x * 6.1 + 2.7, p.y * 6.1 + 8.1, 221), vnoise(p.x * 6.1 + 6.4, p.y * 6.1 + 3.9, 223));
+    return warp_raw(p) + fray;
+}
+
+// The part of a view that goes by built ground, at a spot `f` of the way
+// between four cells' middles in the warped map (taps `t`, lies `l`): its tint,
+// and in w how strongly it lies there. Only cells whose tint lies on built
+// ground count. The strength is how much of the four's weight is theirs (half
+// at the edge of their warped squares, as the parcels' class changes there),
+// faded from nothing at that edge to full a fifth of a square in, so that the
+// tint follows the warped outline of the ground and no edge of a square; on
+// ground that is not built it is nought unless the cells are soft patches.
+fn built_reach(f: vec2<f32>, t00: vec4<f32>, t10: vec4<f32>, t01: vec4<f32>, t11: vec4<f32>, l00: f32, l10: f32, l01: f32, l11: f32, built: f32) -> vec4<f32> {
+    let wx = smoothstep(0.5 - BUILT_SOFT, 0.5 + BUILT_SOFT, f.x);
+    let wy = smoothstep(0.5 - BUILT_SOFT, 0.5 + BUILT_SOFT, f.y);
+    let w00 = (1.0 - wx) * (1.0 - wy) * step(0.002, t00.a);
+    let w10 = wx * (1.0 - wy) * step(0.002, t10.a);
+    let w01 = (1.0 - wx) * wy * step(0.002, t01.a);
+    let w11 = wx * wy * step(0.002, t11.a);
+    let b00 = w00 * step(0.5, l00);
+    let b10 = w10 * step(0.5, l10);
+    let b01 = w01 * step(0.5, l01);
+    let b11 = w11 * step(0.5, l11);
+    let on = b00 + b10 + b01 + b11;
+    if (on <= 0.001) {
+        return vec4<f32>(0.0);
+    }
+    let tint = (b00 * t00.rgb + b10 * t10.rgb + b01 * t01.rgb + b11 * t11.rgb) / on;
+    let reach = on / max(w00 + w10 + w01 + w11, 1e-4);
+    let gone = (b00 * step(1.5, l00) + b10 * step(1.5, l10) + b01 * step(1.5, l01) + b11 * step(1.5, l11)) / on;
+    return vec4<f32>(tint, max(built, gone) * smoothstep(0.5, 0.9, reach));
+}
+
 // The overlay washed over the ground colour `col` at `p`: the tint of the
 // square the economy works in, as flat colour on a paper map, with the fields
 // and hedges showing through faintly. The edges of the squares wander a
 // little, as if drawn by hand, and where two regions meet (two towns' market
-// areas) there is an ink line, kept at least a pixel and a half wide.
-fn overlay_wash(col: vec3<f32>, p: vec2<f32>, foot: f32, land: f32) -> vec3<f32> {
+// areas) there is an ink line, kept at least a pixel and a half wide. A view
+// of town ground (residents, growth, the town part of rent, what a town's
+// works made, and a trend of these) tints the ground that is built by its
+// own outline instead (`built`: 1 where the spot is town, works or derelict
+// ground), fading at its edge, and the land round it as the country.
+fn overlay_wash(col: vec3<f32>, p: vec2<f32>, foot: f32, land: f32, built: f32) -> vec3<f32> {
     let q = p + 0.11 * vec2<f32>(vnoise(p.x * 1.7 + 3.1, p.y * 1.7 + 9.2, 91), vnoise(p.x * 1.7 + 7.7, p.y * 1.7 + 1.3, 93));
     let b = q - 0.5;
     let i0 = vec2<i32>(floor(b));
     let f = b - floor(b);
-    let t00 = overlay_tap(i0);
-    let t10 = overlay_tap(i0 + vec2<i32>(1, 0));
-    let t01 = overlay_tap(i0 + vec2<i32>(0, 1));
-    let t11 = overlay_tap(i0 + vec2<i32>(1, 1));
+    var t00 = overlay_tap(i0);
+    var t10 = overlay_tap(i0 + vec2<i32>(1, 0));
+    var t01 = overlay_tap(i0 + vec2<i32>(0, 1));
+    var t11 = overlay_tap(i0 + vec2<i32>(1, 1));
+    var bt = vec4<f32>(0.0);
+    if (ground.overlay_built > 0.0) {
+        // a built cell's tint stands for its built ground: the land round it
+        // takes the country's tint it carries
+        let l00 = overlay_lie(i0);
+        let l10 = overlay_lie(i0 + vec2<i32>(1, 0));
+        let l01 = overlay_lie(i0 + vec2<i32>(0, 1));
+        let l11 = overlay_lie(i0 + vec2<i32>(1, 1));
+        t00 = vec4<f32>(select(t00.rgb, l00.gba, l00.r > 0.002), t00.a);
+        t10 = vec4<f32>(select(t10.rgb, l10.gba, l10.r > 0.002), t10.a);
+        t01 = vec4<f32>(select(t01.rgb, l01.gba, l01.r > 0.002), t01.a);
+        t11 = vec4<f32>(select(t11.rgb, l11.gba, l11.r > 0.002), t11.a);
+        // and the built ground by its own outline, read in the warped map
+        let wq = built_at(p) - 0.5;
+        let j0 = vec2<i32>(floor(wq));
+        let lie = vec4<f32>(overlay_lie(j0).r, overlay_lie(j0 + vec2<i32>(1, 0)).r, overlay_lie(j0 + vec2<i32>(0, 1)).r, overlay_lie(j0 + vec2<i32>(1, 1)).r) * 255.0;
+        bt = built_reach(wq - floor(wq), overlay_tap(j0), overlay_tap(j0 + vec2<i32>(1, 0)), overlay_tap(j0 + vec2<i32>(0, 1)), overlay_tap(j0 + vec2<i32>(1, 1)), lie.x, lie.y, lie.z, lie.w, built);
+    }
     // blend the four squares round the nearest corner, leaving out any with no tint
     let s = max(ground.overlay_soft, 0.75 * foot);
     let wx = smoothstep(0.5 - s, 0.5 + s, f.x);
@@ -1255,7 +1349,7 @@ fn overlay_wash(col: vec3<f32>, p: vec2<f32>, foot: f32, land: f32) -> vec3<f32>
     if (cover <= 0.001) {
         return col;
     }
-    let tint = (w00 * t00.rgb + w10 * t10.rgb + w01 * t01.rgb + w11 * t11.rgb) / cover;
+    let tint = mix((w00 * t00.rgb + w10 * t10.rgb + w01 * t01.rgb + w11 * t11.rgb) / cover, bt.rgb, bt.w);
     // the ground under the wash, as light and dark only
     let grey = dot(col, vec3<f32>(0.30, 0.59, 0.11));
     var washed = tint * (0.74 + 0.52 * grey);
@@ -1492,7 +1586,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     col = mix(col, paint.shore_far.rgb, 0.6 * shore);
     // a map overlay, when one is chosen; without one nothing here runs
     if (ground.overlay > 0.0) {
-        col = overlay_wash(col, p, foot, landk * (1.0 - wetk));
+        let on_built = select(0.0, 1.0, cls == URBAN || cls == WORKS || cls == DERELICT);
+        col = overlay_wash(col, p, foot, landk * (1.0 - wetk), on_built);
     }
 
     pbr_input.material.base_color = vec4<f32>(srgb_to_linear(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0))), 1.0);
