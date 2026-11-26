@@ -116,8 +116,9 @@ methods = ["steel_frame"]
 # The land's seven sectors and the carters. Under `tasks.land` a land unit pays its share for work to a
 # mixture of hands and machine units, in these classes, wherever a machine below names its sector in
 # `on`. With the content after 1900 the tractor names the farms, the pastures and the woods, the combine
-# the farms' and the pastures' tending, and the cutter the pits; no machine names the carters yet, so their shares wait. The land's machines of
-# docs/rules/machines.md (farm machinery, nitrogen, breeding) stand beside these.
+# the farms' and the pastures' tending, and the cutter the pits; the lorry names the carters (under
+# `tasks.lorry`, docs/rules/lorry.md). The land's machines of docs/rules/machines.md (farm machinery,
+# nitrogen, breeding) stand beside these.
 # ----------------------------------------------------------------------------------------------------
 
 [[sector]]
@@ -139,8 +140,8 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 # ----------------------------------------------------------------------------------------------------
 # Machines for tasks. Each `[[use]]` is one machine:
 #   class           the class it works in; it may hold the tasks from `from` to `reach` of it
-#   on              where it is used: "works", and the land's sectors it reaches by name ("carting" is
-#                   read and passed over: no machine reaches the carters yet)
+#   on              where it is used: "works", the land's sectors it reaches by name, and "carting", the
+#                   carters (the lorry: docs/rules/lorry.md)
 #   plant, run      goods bought once for one machine, and goods a month to keep one working
 #   minders         worker-months a month of minding one machine
 #   life            years a machine stands: a twelfth of this many years' part wears out a month
@@ -161,8 +162,8 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #   switch          (may be left out) a switch of the rule the use stands behind, by name: while it is
 #                   off the use is never found, and has no cost, no part, no order and no plant, so the
 #                   run is the run without it. Today the names are "computing" (`tasks.computing`),
-#                   "models" (`tasks.models`), "office_machines" (`tasks.office_machines`) and "tending"
-#                   (`tasks.tending`); the file refuses any other
+#                   "models" (`tasks.models`), "office_machines" (`tasks.office_machines`), "tending"
+#                   (`tasks.tending`) and "lorry" (`tasks.lorry`); the file refuses any other
 #   idea            (may be left out) an idea of the tree, a [[tech]] of the content by name, that the use
 #                   waits on: it is found only at a year's turn after the island has found that idea, by
 #                   the tree's own rules; a use whose idea the content lacks is not laid
@@ -658,3 +659,47 @@ switch = "tending"
 # that this refit is rough, so the unit was made exp(ln(1000) * (0.967 - 0.92)) = 1.39 times as dear, to
 # bring the mean to 0.92.
 scale = 1.39
+
+# ----------------------------------------------------------------------------------------------------
+# The motor lorry (docs/rules/lorry.md), behind its own switch, `tasks.lorry`: the carters' hauling
+# (loading, carrying, the horses' work), the class that is seven tenths of the carting's hours. Each town's
+# carting means to hold a share of it and buys lorries for that share out of the carting it is paid, as a
+# land sector buys its machines; an hour of the carting's work then takes fewer hands and costs less, and
+# the freight by road falls where it is found (the cost graph's land squares, `lorry::road_mult`). It waits
+# on the motor vehicle (`idea`), an idea of the tree's stage 6, and is found at the year's turn after the
+# island has found it. Made of machinery and steel, six tenths and four tenths by value, as the tractor and
+# the combine are (no good stands for motor vehicles yet: docs/rules/lorry.md, "Why no motor works"), and
+# run on oil, which the island makes from coal.
+#
+# Sized, as the design's table of machines sizes it, to take a fifth of hauling when found: a unit costs
+# 1.04 of a month's wage, six tenths of it the return a works must see and the wear on its plant ((0.12 +
+# 1/10) / 12 a month on 34 months' wages of plant), 0.15 of a hand its driver and the rest oil. At the
+# island's prices of about 1925 (wage 10.5, machinery 3.0, steel 2.4, oil about 5): plant 357, 71.4
+# machinery and 59.5 steel; oil 2.8 a month, 0.56; minders 0.15. At that cost a hand is worth 0.96 units,
+# which takes ln(0.96 / 0.3) / ln(100 / 0.3) = 0.20 of hauling.
+# Quality grows nine per cent a year to a cap of 50, not the design's four to 6: a lorry of 1925 carried
+# three tons at twenty kilometres an hour and one of 1965 twenty at seventy, some twenty-three times the load
+# moved an hour by one driver in forty years, and the diesel engine of the 1930s took half the fuel a
+# ton-kilometre; together some thirty times a unit's work for its plant, fuel and driver (1.09^40 = 31).
+# RUN: at seven per cent to 30 the hands a load takes were halved 52 years after the find on the mean of
+# islands 1 to 8 (find 1923, half 1975), and at eight to 40, from the ton-kilometres alone, 46 years (44
+# to 49 on every island of sixteen), where the pass asks forty.
+# PROVISIONAL: sized by hand from prices read off main's sweep; not refitted.
+[[use]]
+name = "lorry"
+target = 1910
+class = "haul"
+on = ["carting"]
+from = 0.0
+reach = 1.0
+plant = { machinery = 71.4, steel = 59.5 }
+run = { oil = 0.56 }
+minders = 0.15
+life = 10.0
+pace = 0.09
+cap = 50.0
+found_after = 1905
+discover = {}
+idea = "motor_vehicle"
+switch = "lorry"
+scale = 1.0

@@ -1248,3 +1248,29 @@ found_after = 2030
 stage = 6
 headline = "A works with its lights out at {town}"
 story = "{who} opens a works at {town} that runs in the dark: the line is fed, watched and mended by machines, and the few who work there come by day to see to what the machines cannot."
+
+# ====================================================================================================
+# Stage 6, the lorry (docs/rules/lorry.md): the motor vehicle, the idea the motor lorry waits on (`idea` in
+# data/tasks.toml). Not a works: an engine that burns oil on a steel chassis, known as an invention is,
+# found by the tree's hazard on what the island has made and spread between towns as every idea is. It
+# draws its numbers afresh from the seed, its name and the year (`rng::idea_stream`), as the tending ideas
+# do, and is sought only while the lorry may be found (`tasks.lorry`), so that with the lorry off the island
+# is the island without it. Found on machinery and oil made: an engine needs an engineering trade, and it
+# needs oil to run, which the island makes from coal (no oilfield; stage 6, "Oil, nitrogen and the land"),
+# so the lorry's fuel needs no invention of its own and an island that makes no oil has no lorry. The
+# thresholds are the moving line's machinery (islands 1 to 8 had made 2.3 to 10.4 million units by 1910)
+# and the tractor's oil (300 units: the first oil works' first months), so that the idea comes within a
+# few years of an island's first oil. No good and no motor works stand behind it yet: a new good moves the
+# played century (docs/rules/lorry.md, "Why no motor works"), so the lorry is made of machinery and steel,
+# as the tractor and the combine are.
+# ====================================================================================================
+
+[[tech]]
+name = "motor_vehicle"
+label = "The motor vehicle"
+discover = { machinery = 6000000.0, oil = 300.0 }
+target = 1905
+found_after = 1905
+stage = 6
+headline = "Motor lorries on the road at {town}"
+story = "{who} bolts an oil engine to a steel chassis at {town} and sells the first motor lorries to the carriers. One driver takes in a morning what a carter and two horses took in a week, if the road will bear it."

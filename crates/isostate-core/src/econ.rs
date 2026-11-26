@@ -560,7 +560,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // who works (docs/rules/who-works.md): from 1901 the people in work, counted by age
     crate::who_works::supply(st, P, &mut supply);
     // carting (docs/rules/carting.md): the hands that carted last month's goods are not for hire
-    crate::carting::take_carters(st, P, &mut supply);
+    crate::carting::take_carters(st, C, P, &mut supply);
     // mines (docs/rules/mines.md): nor are the hands sinking new workings
     crate::mines::take_crews(st, P, &mut supply);
     // canals (docs/rules/canals.md): nor are the navvies digging a canal. They come
@@ -872,6 +872,14 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             }
         }
     }
+    // the lorry (docs/rules/lorry.md): the carters' lorries ask for their oil with
+    // the day's trade, and for their plant (below) beside the works' orders
+    let cbuy = crate::tasks::cart_orders(st, C, P);
+    if let Some(b) = &cbuy {
+        for k in 0..T * G {
+            R.data[k] += b.run.data[k];
+        }
+    }
     // harvest: the year's weather is felt here, after the hands are hired and the
     // machines asked for on an average year's yield. From here on Y is the crop
     // actually brought in.
@@ -903,6 +911,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                     R[(t, g)] += b.plant[(t * NS + s, g)];
                 }
             }
+        }
+    }
+    if let Some(b) = &cbuy {
+        for k in 0..T * G {
+            R.data[k] += b.plant.data[k];
         }
     }
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
@@ -1108,6 +1121,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             }
         }
     }
+    // the lorry: the oil at the day's trade's fill, the lorries at the plant orders'
+    let cart_got = cbuy.as_ref().map(|b| crate::tasks::cart_got(b, &fill, &fill_plant));
+    if let Some((got, _, _)) = &cart_got {
+        for k in 0..T * G {
+            sold.data[k] += got.data[k];
+        }
+    }
     let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for (pr, rq) in st.projects.iter().zip(&proj_req) {
         let got: Vec<f64> = (0..G).map(|g| rq[g] * fill_plant[(pr.town, g)]).collect(); // tree: plant waits
@@ -1226,6 +1246,17 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         merch[t] += hh_spend[t] + lord_spend[t];
         sales_value[t] += hh_spend[t] + lord_spend[t];
     }
+    // the lorry (docs/rules/lorry.md): the hauliers own their lorries, so the town's
+    // households pay for the lorries' oil and plant, out of the carting they are paid
+    let cart_pay: Vec<f64> = match &cart_got {
+        Some((got, _, _)) => (0..T).map(|t| pairwise_sum_by(G, |g| got[(t, g)] * p[(t, g)])).collect(),
+        None => Vec::new(),
+    };
+    for (t, &v) in cart_pay.iter().enumerate() {
+        st.hh_cash[t] -= v;
+        merch[t] += v;
+        sales_value[t] += v;
+    }
     if families::active(st) {
         families::pay_spending(st, &fam_budget, &lord_budget, &lord_spend);
         let rest = families::take_urban_rents(st, &urban_pay);
@@ -1273,6 +1304,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // tasks: the land's plant goes into place as it arrives (paid above, in the rent)
     if let (Some(b), Some((_, plant))) = (&lbuy, &land_got) {
         crate::tasks::land_deliver(st, C, b, plant);
+    }
+    // the lorry: its plant goes into place as it arrives (paid above, by the households)
+    if let (Some(b), Some((_, plant, run_fill))) = (&cbuy, &cart_got) {
+        crate::tasks::cart_deliver(st, C, b, plant, run_fill);
     }
 
     let mut proj_spend = 0.0;
@@ -1475,6 +1510,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             a: &a, use_f: &use_f, pin: &pin,
             hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
+            cart_tasks: cart_got.as_ref().map(|c| &c.0),
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
             oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got, uni_got: &uni_got,
             land_tasks: land_books.as_ref().or(land_got.as_ref().map(|g| &g.0)),

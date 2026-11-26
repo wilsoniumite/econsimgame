@@ -97,12 +97,19 @@ pub fn step_len(k: usize) -> f64 {
 /// Python: `build_graph(world, road, rail, port_mask)`, with the forest cover passed
 /// in rather than stashed in the world dict (`world["_cover"]`).
 pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], cover: &[f64]) -> Graph {
+    build_graph_with(world, road, rail, port_mask, cover, &ROAD_MULT)
+}
+
+/// `build_graph` with a land square's cost by road level given (not in the
+/// Python): the lorry's year (`lorry::road_mult`, docs/rules/lorry.md) cheapens
+/// the squares where it runs. With `ROAD_MULT` it is `build_graph`.
+pub fn build_graph_with(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], cover: &[f64], road_mult: &[f64; 4]) -> Graph {
     let (H, W) = (world.H, world.W);
     let N = H * W;
     let cell: Vec<f64> = (0..N)
         .map(|c| {
             let woods = if cover[c] > 0.6 && road[c] == 0 { 0.25 } else { 0.0 };
-            TERRAIN_COST[world.terrain[c] as usize] * ROAD_MULT[road[c] as usize] * (1.0 + woods)
+            TERRAIN_COST[world.terrain[c] as usize] * road_mult[road[c] as usize] * (1.0 + woods)
         })
         .collect();
     let mut w = vec![f64::INFINITY; N * 8];

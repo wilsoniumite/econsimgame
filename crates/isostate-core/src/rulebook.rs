@@ -205,6 +205,7 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "state" => to_json(&P.state),
         "traffic" => to_json(&P.traffic),
         "who_works" => to_json(&P.who_works),
+        "lorry" => to_json(&P.lorry),
         _ => None,
     }
 }
@@ -214,10 +215,12 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
 /// lesser switch for the land, and its ceiling on yield and its freeze year,
 /// which are nothing (`null`, "none" on the tab) unless a sweep sets them; and
 /// the machines that tend (`tasks.tending`, docs/rules/tending.md), which stand
-/// off under the game's rules and are turned on here by hand.
+/// off under the game's rules and are turned on here by hand, and the lorry
+/// (`tasks.lorry`, docs/rules/lorry.md), which is left out of the params' file
+/// while it is off.
 fn skipped_inside(P: &Params, rule: &str) -> Vec<(&'static str, Value)> {
     match rule {
-        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from)), ("tending", json!(P.tasks.tending))],
+        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from)), ("tending", json!(P.tasks.tending)), ("lorry", json!(P.tasks.lorry))],
         _ => Vec::new(),
     }
 }

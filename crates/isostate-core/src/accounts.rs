@@ -658,6 +658,10 @@ pub struct Month<'a> {
     pub hh_spend: &'a [f64],
     pub lord_spend: &'a [f64],
     pub urban_pay: &'a [f64],
+    /// What the carters' lorries got, oil and plant, by town and good, bought by
+    /// the town's households, who own them (the lorry, docs/rules/lorry.md; None
+    /// until one is found).
+    pub cart_tasks: Option<&'a Mat>,
     pub q_hh: &'a Mat,
     pub q_l: &'a Mat,
     pub share: &'a Mat,
@@ -689,6 +693,21 @@ impl Books {
         let f64s = [&a.goods, &a.land, &a.methods, &a.towns, &a.needs, &a.trade, &a.uses, &a.works, &a.works_in, &a.months, &a.wages, &a.cash, &a.rent_sector, &self.mk, &self.ml, &self.div, &self.last_cash];
         let years: usize = self.years.iter().map(|y| std::mem::size_of::<IslandYear>() + 8 * (y.rent_by_sector.len() + y.need_households.len() + y.need_landlords.len()) + 16 * y.to_families.len()).sum();
         8 * (f64s.iter().map(|v| v.len()).sum::<usize>() + self.stock.data.len()) + 4 * (self.last_months.len() + self.last_works_in.len() + self.last_wages.len()) + years
+    }
+
+    /// The carting paid in the k-th year of the run, by what was carted: the
+    /// works' materials and output, the land's produce to market, and the trade
+    /// between towns (`IslandYear::carting` in its three parts; for the lorry's
+    /// probe, `examples/lorry.rs`). None until the year is complete.
+    pub fn carting_parts(&self, k: usize) -> Option<[f64; 3]> {
+        let y = self.year(k)?;
+        let mut out = [0.0; 3];
+        for r in y.towns.chunks(KT) {
+            out[0] += r[T_CART_WORKS] as f64;
+            out[1] += r[T_CART_LAND] as f64;
+            out[2] += r[T_CART_TRADE] as f64;
+        }
+        Some(out)
     }
 
     /// The books of the k-th year of the run (None until it is complete).
@@ -1137,6 +1156,16 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         }
         if st.cn.navvies.len() == T {
             a.towns[kt + T_NAVVIES] += st.cn.navvies[t];
+        }
+        // the lorry: the households' purchase of their lorries' oil and plant
+        if let Some(got) = m.cart_tasks {
+            for g in 0..G {
+                let x = got[(t, g)];
+                if x != 0.0 {
+                    a.goods[(t * G + g) * KG + G_HH] += x;
+                    a.towns[kt + T_SPEND_HH] += x * p[(t, g)];
+                }
+            }
         }
         for g in 0..G {
             let k = (t * G + g) * KG;

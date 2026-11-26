@@ -134,6 +134,12 @@ pub struct TasksParams {
     /// file while off, as `computing` is.
     #[serde(skip_serializing_if = "is_false")]
     pub tending: bool,
+    /// The motor lorry takes the carters' hauling after 1900
+    /// (`docs/rules/lorry.md`): the use of the file with `switch = "lorry"`,
+    /// found once the island has found the motor works. Left out of the
+    /// params' file while off, as `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub lorry: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -143,7 +149,7 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false, lorry: false }
     }
 }
 
@@ -163,6 +169,7 @@ impl TasksParams {
             "models" => self.models,
             "office_machines" => self.office_machines,
             "tending" => self.tending,
+            "lorry" => self.lorry,
             _ => false,
         }
     }
@@ -170,7 +177,7 @@ impl TasksParams {
 
 /// The switches of `TasksParams` a `[[use]]` of the file may stand behind
 /// (`switch = "computing"`): a use behind one that is off is never found.
-pub const USE_SWITCHES: [&str; 4] = ["computing", "models", "office_machines", "tending"];
+pub const USE_SWITCHES: [&str; 5] = ["computing", "models", "office_machines", "tending", "lorry"];
 
 /// The year from which the ceiling on yield is in force, and before which the
 /// best years it reads are kept.
@@ -191,6 +198,8 @@ pub struct Use {
     /// Used on each of the land's sectors, by its place in the content (read
     /// only under `land`).
     pub on_sector: Vec<bool>,
+    /// Used by the carters (`on = ["carting"]`: the lorry, docs/rules/lorry.md).
+    pub on_carting: bool,
     /// Goods bought once for one machine, and a month to keep it working.
     pub plant: Vec<(usize, f64)>,
     pub run: Vec<(usize, f64)>,
@@ -442,8 +451,7 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             return Err(format!("tasks: {:?} needs 0 <= from < reach <= 1, a life and a scale above nothing and a cap of one or more", u.name));
         }
         // where it is used: the works, a land sector the content has (one it lacks
-        // is passed over, as a method of a later stage is), or the carters, whom
-        // no machine reaches yet and who are passed over too
+        // is passed over, as a method of a later stage is), or the carters (the lorry)
         let mut on_sector = vec![false; C.NS];
         for o in &u.on {
             if let Some(i) = C.sector_name.iter().position(|x| x == o) {
@@ -459,6 +467,7 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             reach: u.reach,
             on_works: u.on.iter().any(|o| o == "works"),
             on_sector,
+            on_carting: u.on.iter().any(|o| o == "carting"),
             plant,
             run,
             minders: u.minders,
@@ -672,6 +681,17 @@ pub struct TasksYear {
     pub farm_hands: f64,
     pub nitrogen_out: f64,
     pub breeding_out: f64,
+    /// The carting, once a lorry is found (docs/rules/lorry.md; nothing before):
+    /// its work a month (as by hand), the share of its hauling the lorries in
+    /// place did and the share meant, the hands an hour of its work took (1 by
+    /// hand), the cost of an hour of it over the wage (each town by its bill),
+    /// and the lorries' plant in place at the year's end, at the towns' prices.
+    pub cart_work: f64,
+    pub cart_held: f64,
+    pub cart_aim: f64,
+    pub cart_hands: f64,
+    pub cart_kappa: f64,
+    pub cart_book: f64,
 }
 
 /// The year so far.
@@ -703,6 +723,10 @@ struct Acc {
     use_run: Vec<[f64; 2]>,
     /// The farms: output, hands, and output with nitrogen and with breeding.
     farm: [f64; 4],
+    /// The carting (the lorry): its work, the part of its hauling held by the
+    /// lorries in place and meant, its hands, its bill, and the bill times the
+    /// cost of an hour of its work over the wage.
+    cart: [f64; 6],
 }
 
 /// What the rule keeps (`st.tasks`). Empty while it is off.
@@ -778,6 +802,32 @@ pub struct TasksState {
     /// would give it at the end of the year it was found, each town weighted
     /// by the work of the sectors it reaches (NaN until then).
     pub land_share_found: Vec<f64>,
+    // ---- the carters' lorries (docs/rules/lorry.md; empty until a use on the carting is found)
+    /// By town: the share of each class of the carting's work the lorries would
+    /// hold at this month's prices, the uses that would hold it, the share the
+    /// town's carting means to hold (what its order for plant is sized to), and
+    /// the share its lorries in place can do this month (never above it).
+    pub cart_target: Vec<[f64; K]>,
+    cart_parts: Vec<[Vec<(usize, f64, f64)>; K]>,
+    pub cart_auto: Vec<[f64; K]>,
+    pub cart_held: Vec<[f64; K]>,
+    /// By town and plant good (`TaskTable::plant_goods`): the lorries' plant in
+    /// place; by town, the share of last month's order for it filled, and how
+    /// well their run goods were filled last month.
+    pub cart_plant: Vec<Vec<f64>>,
+    pub cart_fill: Vec<f64>,
+    pub cart_run_fill: Vec<f64>,
+    /// By town, this month: the carting's work the bill pays for (worker-months
+    /// a month, as by hand), the hands an hour of it takes, and what the lorries
+    /// cost an hour of it (return and wear on their plant, and their run goods).
+    pub cart_work: Vec<f64>,
+    pub cart_hands: Vec<f64>,
+    pub cart_cost: Vec<f64>,
+    /// The island's cost of an hour of the carting's work over the wage in the
+    /// year just closed (each town's weighted by its bill; nothing before the
+    /// lorry carts anything): what the cost graph's land squares are multiplied
+    /// by in the next year (`lorry::road_mult`).
+    pub cart_kappa: f64,
     /// Every year's record.
     pub years: Vec<TasksYear>,
     acc: Acc,
@@ -1263,7 +1313,14 @@ pub fn mix_at(st: &State, C: &Content, P: &Params, t: usize, s: usize, price: &d
 /// class; None where they hold nothing.
 fn mix_with(st: &State, C: &Content, P: &Params, t: usize, s: usize, auto: &[f64; K], price: &dyn Fn(usize) -> f64) -> Option<Mix> {
     let sh = C.tasks.sector.get(s)?;
-    let (mach, held) = hold(st, C, P, sh, auto, &|k| land_parts(st, t, s, k))?;
+    mix_of(st, C, P, sh, auto, &|k| land_parts(st, t, s, k), price)
+}
+
+/// The mixture for an hour of work whose classes are `sh`, where machines hold
+/// `auto` of each class and `ps_of(k)` are the uses that would hold class `k`;
+/// None where they hold nothing. (The land's sectors' and the carters' alike.)
+fn mix_of<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K], ps_of: &dyn Fn(usize) -> &'a [(usize, f64, f64)], price: &dyn Fn(usize) -> f64) -> Option<Mix> {
+    let (mach, held) = hold(st, C, P, sh, auto, ps_of)?;
     let tb = &C.tasks;
     let mut hands: f64 = (0..K).map(|k| sh[k] * (1.0 - held[k])).sum();
     let machine_work: f64 = (0..K).map(|k| sh[k] * held[k]).sum();
@@ -1543,11 +1600,21 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             s.land_target = vec![vec![[0.0; K]; NS]; T];
             s.land_parts = vec![vec![Default::default(); NS]; T];
         }
+        // the carters (the lorry, docs/rules/lorry.md): from the month a use on the carting is found
+        let carting = P.carting.enabled && tb.uses.iter().enumerate().any(|(u, us)| us.on_carting && s.found.get(u).is_some_and(|&y| y >= 0) && us.allowed(P));
+        if carting {
+            fit_cart(st, C);
+        } else {
+            // (the lorry's switch thrown off by hand after its find: no lorry is
+            // priced, nothing is meant, and the carting goes back to hands)
+            st.tasks.cart_target.iter_mut().for_each(|x| *x = [0.0; K]);
+            st.tasks.cart_parts.iter_mut().for_each(|p| *p = Default::default());
+        }
         for t in 0..T {
             for u in 0..nu {
                 let us = &tb.uses[u];
                 let w = st.wage[t];
-                let used = us.on_works || (land && us.on_sector.iter().any(|&b| b));
+                let used = us.on_works || (land && us.on_sector.iter().any(|&b| b)) || (carting && us.on_carting);
                 // (a use behind a switch thrown off by hand after its find is priced
                 // nowhere, and its works fall back as their machines wear)
                 let known = st.town_active[t] && used && st.tasks.found[u] >= 0 && w > 0.0 && us.allowed(P);
@@ -1576,6 +1643,13 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
                         st.tasks.land_target[t][s][k] = ps.iter().map(|p| p.2).fold(0.0, f64::max);
                         st.tasks.land_parts[t][s][k] = ps;
                     }
+                }
+            }
+            if carting {
+                for k in 0..K {
+                    let ps = work_out_parts(st, C, t, k, &|u| u.on_carting);
+                    st.tasks.cart_target[t][k] = ps.iter().map(|p| p.2).fold(0.0, f64::max);
+                    st.tasks.cart_parts[t][k] = ps;
                 }
             }
         }
@@ -1701,6 +1775,10 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
     }
     // ---- the land: each town's sectors toward their targets, the plant worn
     let by_hand = if land && on { land_end_month(st, C, P, &mut acc, step) } else { None };
+    // ---- the carters' lorries likewise (docs/rules/lorry.md)
+    if cart_on(st, P) {
+        cart_end_month(st, C, P, &mut acc, step);
+    }
     // the land's hands by class and the carters, for the facts and the reckoning of pay (pay.rs)
     land_hands_month(st, C, &mut acc, by_hand);
     st.tasks.acc = acc;
@@ -1861,6 +1939,185 @@ fn life_of(C: &Content, f: usize, st: &State) -> f64 {
     C.tasks.uses.iter().filter(|u| u.on_works && sh[u.class] > 0.0 && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
 }
 
+// ---------------------------------------------------------------- the carters (the lorry)
+
+/// A use on the carting has been found and may act: the lorry
+/// (docs/rules/lorry.md). Until then the carters are the port's to the byte.
+fn cart_on(st: &State, P: &Params) -> bool {
+    active(st, P) && P.carting.enabled && !st.tasks.cart_auto.is_empty()
+}
+
+/// The carting's tables as long as the towns'.
+fn fit_cart(st: &mut State, C: &Content) {
+    let (T, np) = (st.T_max, C.tasks.plant_goods.len());
+    let s = &mut st.tasks;
+    if s.cart_auto.len() != T {
+        s.cart_target.resize(T, [0.0; K]);
+        s.cart_parts.resize(T, Default::default());
+        s.cart_auto.resize(T, [0.0; K]);
+        s.cart_held.resize(T, [0.0; K]);
+        s.cart_plant.resize(T, vec![0.0; np]);
+        s.cart_fill.resize(T, 1.0);
+        s.cart_run_fill.resize(T, 1.0);
+        s.cart_work.resize(T, 0.0);
+        s.cart_hands.resize(T, 1.0);
+        s.cart_cost.resize(T, 0.0);
+    }
+}
+
+/// The uses that would hold class `k` of town `t`'s carting, cheapest first.
+fn cart_parts(st: &State, t: usize, k: usize) -> &[(usize, f64, f64)] {
+    st.tasks.cart_parts.get(t).map_or(&[], |p| &p[k][..])
+}
+
+/// The carting's hiring, at the start of the month (`carting::take_carters`):
+/// what each town's lorries in place can do (`cart_held`, from their plant over
+/// last month's work), and, at last month's prices, the hands an hour of the
+/// carting's work takes (`cart_hands`, 1 by hand) and what the lorries cost an
+/// hour of it beside their drivers (`cart_cost`: the return and wear on their
+/// plant, and their oil). False until a lorry is found, and then the caller
+/// hires the carters as it always has.
+pub fn cart_hiring(st: &mut State, C: &Content, P: &Params) -> bool {
+    if !cart_on(st, P) {
+        return false;
+    }
+    fit_cart(st, C);
+    let sh = C.tasks.carting;
+    for t in 0..st.T_max {
+        let (mut h, mut m) = (1.0, 0.0);
+        if st.town_active[t] {
+            let auto = st.tasks.cart_auto[t];
+            let hours = st.tasks.cart_work[t];
+            let held = held_by_plant(st, C, P, &sh, &auto, hours, &st.tasks.cart_plant[t], &|k| cart_parts(st, t, k));
+            st.tasks.cart_held[t] = held;
+            if let Some(mx) = mix_of(st, C, P, &sh, &held, &|k| cart_parts(st, t, k), &|g| st.price[(t, g)]) {
+                // the carters are hired for last month's fill of the lorries' oil: the
+                // part of the lorries' work it left idle is done by hand, as on the land
+                h = mx.hands + mx.machine_work * (1.0 - st.tasks.cart_run_fill[t]);
+                m = mx.cost;
+            }
+        }
+        st.tasks.cart_hands[t] = h;
+        st.tasks.cart_cost[t] = m;
+    }
+    true
+}
+
+/// What the carters' lorries ask for in a month, by town: the oil of the
+/// lorries in place for the month's work (with the day's trade), and a quarter
+/// of what their plant lacks for the share each town's carting means to hold
+/// (beside the works' orders for plant).
+pub struct CartBuy {
+    pub run: Mat,
+    pub plant: Mat,
+}
+
+/// The month's `CartBuy` (`econ::step_month`); None where nothing is asked.
+pub fn cart_orders(st: &State, C: &Content, P: &Params) -> Option<CartBuy> {
+    if !cart_on(st, P) {
+        return None;
+    }
+    let (T, G) = (st.T_max, C.G);
+    let sh = C.tasks.carting;
+    let (mut run, mut plant) = (Mat::zeros(T, G), Mat::zeros(T, G));
+    let mut any = false;
+    for t in (0..T).filter(|&t| st.town_active[t]) {
+        let w = st.tasks.cart_work[t];
+        if !(w > 0.0) {
+            continue;
+        }
+        let price = |g: usize| st.price[(t, g)];
+        if let Some(mx) = mix_of(st, C, P, &sh, &st.tasks.cart_held[t], &|k| cart_parts(st, t, k), &price) {
+            for &(g, v) in &mx.run {
+                run[(t, g)] += w * v;
+                any = true;
+            }
+        }
+        if let Some(aim) = mix_of(st, C, P, &sh, &st.tasks.cart_auto[t], &|k| cart_parts(st, t, k), &price) {
+            for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
+                let need = aim.plant.iter().find(|p| p.0 == g).map_or(0.0, |p| w * p.1);
+                let x = 0.25 * (need - st.tasks.cart_plant[t][j]).max(0.0);
+                if x > 0.0 {
+                    plant[(t, g)] = x;
+                    any = true;
+                }
+            }
+        }
+    }
+    any.then_some(CartBuy { run, plant })
+}
+
+/// What the market gave the lorries' orders: the oil at the day's trade's
+/// fill and the plant at the plant orders' (`fill`, `fill_plant`). Gives all
+/// they got, the plant alone, and by town the least fill of their oil.
+pub fn cart_got(b: &CartBuy, fill: &Mat, fill_plant: &Mat) -> (Mat, Mat, Vec<f64>) {
+    let (T, G) = (b.run.rows, b.run.cols);
+    let (mut got, mut plant) = (Mat::zeros(T, G), Mat::zeros(T, G));
+    let mut run_fill = vec![1.0f64; T];
+    for t in 0..T {
+        for g in 0..G {
+            let r = b.run[(t, g)];
+            if r > 0.0 {
+                run_fill[t] = run_fill[t].min(fill[(t, g)]);
+            }
+            plant[(t, g)] = b.plant[(t, g)] * fill_plant[(t, g)];
+            got[(t, g)] = r * fill[(t, g)] + plant[(t, g)];
+        }
+    }
+    (got, plant, run_fill)
+}
+
+/// The lorries' plant goes into place as it arrives, and the share of the
+/// order filled and the fill of their oil are kept for next month.
+pub fn cart_deliver(st: &mut State, C: &Content, b: &CartBuy, plant: &Mat, run_fill: &[f64]) {
+    for t in 0..st.T_max.min(st.tasks.cart_plant.len()) {
+        let (mut asked, mut paid) = (0.0, 0.0);
+        for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
+            asked += b.plant[(t, g)] * st.price[(t, g)];
+            paid += plant[(t, g)] * st.price[(t, g)];
+            st.tasks.cart_plant[t][j] += plant[(t, g)];
+        }
+        st.tasks.cart_fill[t] = if asked > 1e-12 { (paid / asked).clamp(0.0, 1.0) } else { 1.0 };
+        st.tasks.cart_run_fill[t] = run_fill[t];
+    }
+}
+
+/// The carting's month's end (`end_month`): the year's sums; each town's
+/// carting moved toward its target as a works is (gated by the fill of its
+/// order for lorries, down no faster than they wear); the lorries worn.
+fn cart_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: f64) {
+    let tb = &C.tasks;
+    let sh = tb.carting;
+    let life = tb.uses.iter().filter(|u| u.on_carting && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0);
+    let wear = 1.0 / (12.0 * life);
+    for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+        let work = st.tasks.cart_work[t];
+        if work > 0.0 && st.wage[t] > 0.0 {
+            let aim = hold(st, C, P, &sh, &st.tasks.cart_auto[t], &|k| cart_parts(st, t, k)).map_or(0.0, |h| h.1[HAUL]);
+            let (h, m) = (st.tasks.cart_hands[t], st.tasks.cart_cost[t]);
+            let kappa = h + m / st.wage[t];
+            let bill = work * (h * st.wage[t] + m);
+            acc.cart[0] += work;
+            acc.cart[1] += work * st.tasks.cart_held[t][HAUL];
+            acc.cart[2] += work * h;
+            acc.cart[3] += bill;
+            acc.cart[4] += bill * kappa;
+            acc.cart[5] += work * aim;
+        }
+        for k in 0..K {
+            let (x, target) = (st.tasks.cart_auto[t][k], st.tasks.cart_target[t][k]);
+            st.tasks.cart_auto[t][k] = toward(tb, cart_parts(st, t, k), k, x, target, step, st.tasks.cart_fill[t]);
+            st.tasks.cart_held[t][k] = st.tasks.cart_held[t][k].min(st.tasks.cart_auto[t][k]);
+        }
+        st.tasks.cart_plant[t].iter_mut().for_each(|v| *v *= 1.0 - wear);
+    }
+}
+
+/// The lorries' plant in place, at the towns' prices.
+fn cart_book(st: &State, C: &Content) -> f64 {
+    st.tasks.cart_plant.iter().enumerate().map(|(t, row)| C.tasks.plant_goods.iter().enumerate().map(|(j, &g)| row[j] * st.price[(t, g)]).sum::<f64>()).sum()
+}
+
 // ---------------------------------------------------------------- the year
 
 /// The year's end (`sim::end_year`, after the books close and before the
@@ -1923,7 +2180,18 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         farm_hands: acc.farm[1] / n,
         nitrogen_out: acc.farm[2] / n,
         breeding_out: acc.farm[3] / n,
+        cart_work: acc.cart[0] / n,
+        cart_held: if acc.cart[0] > 0.0 { acc.cart[1] / acc.cart[0] } else { 0.0 },
+        cart_aim: if acc.cart[0] > 0.0 { acc.cart[5] / acc.cart[0] } else { 0.0 },
+        cart_hands: if acc.cart[0] > 0.0 { acc.cart[2] / acc.cart[0] } else { 0.0 },
+        cart_kappa: if acc.cart[3] > 0.0 { acc.cart[4] / acc.cart[3] } else { 0.0 },
+        cart_book: cart_book(st, C),
     });
+    // the lorry (docs/rules/lorry.md): the cost of an hour of the carting's work
+    // over the wage this year, which next year's cost graph reads
+    if acc.cart[3] > 0.0 {
+        st.tasks.cart_kappa = acc.cart[4] / acc.cart[3];
+    }
     // a use of the land alone, in the year it was found: the towns' share for it
     if st.tasks.land_share_found.len() != nu {
         st.tasks.land_share_found = vec![f64::NAN; nu];
@@ -1936,7 +2204,11 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         }
         let (mut a, mut b) = (0.0, 0.0);
         for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
-            let work: f64 = (0..NS).filter(|&s| us.on_sector[s]).map(|s| st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0)).sum();
+            let mut work: f64 = (0..NS).filter(|&s| us.on_sector[s]).map(|s| st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0)).sum();
+            // the lorry: each town by its carting's work
+            if us.on_carting {
+                work += st.tasks.cart_work.get(t).copied().unwrap_or(0.0);
+            }
             let x = st.tasks.share[t][u];
             if work > 0.0 && x.is_finite() {
                 a += work * x;
