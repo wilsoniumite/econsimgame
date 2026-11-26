@@ -62,6 +62,8 @@ mod town_flow;
 mod traffic;
 mod trains;
 mod ui;
+// what's new, read from docs/DEVLOG.md (H, then What's new)
+mod whats_new;
 mod work_charts;
 mod world;
 mod year;
@@ -1107,6 +1109,7 @@ fn main() {
         .add_plugins(carts::plugin)
         .add_plugins(note::plugin)
         .add_plugins(backlog_seen::plugin)
+        .add_plugins(whats_new::plugin)
         .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);
