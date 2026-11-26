@@ -1107,3 +1107,7 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
 - **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
   wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
   "The trap", `hands.short_rise`.
+- **pits at the size of their market**: the merchants take a quarry's, clay pit's, iron mine's or
+  colliery's make only as far as the town asks for the good and their shelves have room, the working
+  hires for what they take, and no town sinks a working into a glut. Off on the settled island for now:
+  a marked difference between the starts. [mines.md](mines.md), G, `mines.glut`.
