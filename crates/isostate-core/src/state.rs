@@ -612,13 +612,20 @@ pub struct State {
     /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
     pub hw: crate::highways::HighwayState,
 
+    // ---------------- frontier (docs/rules/frontier.md; empty while `frontier.enabled` is off)
+    /// Each town's share of free land within its reach, as the year's people were reckoned.
+    pub frontier: crate::frontier::FrontierState,
+
+    // ---------------- immigration (docs/rules/immigration.md; empty while it is off)
+    /// The settlers who came to each town this year, and each year's for the island.
+    pub immigration: crate::immigration::ImmigrationState,
+    // ---------------- care (docs/rules/care.md; empty while `care.enabled` is off)
+    /// What the watcher of care keeps of each year: its hands, its spending
+    /// and its price. The observer's alone.
+    pub care: crate::care::CareState,
     // ---------------- squares (docs/rules/squares.md; empty while `squares.enabled` is off)
     /// Squares of 125 m in every cell with something built: each square's
     /// tenant and the year it was taken, and each works' and working's squares.
     /// Read by no rule.
     pub sq: crate::squares::SquareBook,
-    // ---------------- care (docs/rules/care.md; empty while `care.enabled` is off)
-    /// What the watcher of care keeps of each year: its hands, its spending
-    /// and its price. The observer's alone.
-    pub care: crate::care::CareState,
 }

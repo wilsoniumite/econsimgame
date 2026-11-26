@@ -418,16 +418,30 @@ pub struct Params {
     /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub highways: crate::highways::HighwayParams,
-    /// Squares of 125 m kept where something is built: which works, house
-    /// blocks, park, pit or derelict ground stands where in its cell, and since
-    /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
+    /// Which start: the settled island, or landfall, one town in a corner (not
+    /// in the Python; a choice, not a rule: the settled island under both sets
+    /// of rules; see docs/rules/landfall.md).
     #[serde(default, skip_serializing_if = "is_default")]
-    pub squares: crate::squares::SquaresParams,
+    pub start: crate::landfall::StartParams,
+    /// Births that answer to free land, and towns founded at a hamlet's size
+    /// where land is free (not in the Python; off under the game's rules, on
+    /// with the landfall start; see docs/rules/frontier.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub frontier: crate::frontier::FrontierParams,
+    /// Settlers who come by ship from abroad (not in the Python; off under the
+    /// game's rules, on with the landfall start; see docs/rules/immigration.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub immigration: crate::immigration::ImmigrationParams,
     /// Care: a need for work of presence in the towns, which richer and older
     /// households buy more of and no machine takes (not in the Python; see
     /// docs/rules/care.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub care: crate::care::CareParams,
+    /// Squares of 125 m kept where something is built: which works, house
+    /// blocks, park, pit or derelict ground stands where in its cell, and since
+    /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub squares: crate::squares::SquaresParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -657,8 +671,11 @@ pub fn default_params() -> Params {
         pace: crate::pace::PaceParams::default(),
         haulage: crate::haulage::HaulageParams::default(),
         highways: crate::highways::HighwayParams::default(),
-        squares: crate::squares::SquaresParams::default(),
+        start: crate::landfall::StartParams::default(),
+        frontier: crate::frontier::FrontierParams::default(),
+        immigration: crate::immigration::ImmigrationParams::default(),
         care: crate::care::CareParams::default(),
+        squares: crate::squares::SquaresParams::default(),
     }
 }
 
@@ -750,13 +767,13 @@ pub fn game_params() -> Params {
     // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
     // street, where what they save pays
     P.highways = crate::highways::HighwayParams::game();
-    // squares (docs/rules/squares.md): the place of everything built, kept in
-    // squares of 125 m from 1750; a shadow that no rule reads
-    P.squares = crate::squares::SquaresParams::game();
     // care (docs/rules/care.md): from the island's find of it, a need for work of
     // presence in the towns, which richer and older households buy more of and no
     // machine takes
     P.care = crate::care::CareParams::game();
+    // squares (docs/rules/squares.md): the place of everything built, kept in
+    // squares of 125 m from 1750; a shadow that no rule reads
+    P.squares = crate::squares::SquaresParams::game();
     P
 }
 

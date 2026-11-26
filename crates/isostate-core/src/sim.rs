@@ -35,11 +35,15 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
 /// `init_state` with the random streams given (the parity tests replay numpy's draws).
 pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
     // land: an island made by water, from its own stream, in place of the port's
-    let world = if P.land.enabled {
+    let mut world = if P.land.enabled {
         crate::landcells::generate_land(P.seed, P.W, P.H, P.n_towns, &P.land)
     } else {
         generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58)
     };
+    // landfall (docs/rules/landfall.md): one town in a corner, chosen after the island is made
+    if P.start.landfall {
+        crate::landfall::settle(&mut world);
+    }
     let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
     seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
     (st, rng)
@@ -82,7 +86,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     let wsum = pairwise_sum(&wts);
     st.pop = vec![0.0; T];
     for (k, &w) in wts.iter().enumerate() {
-        st.pop[k] = P.pop0 as f64 * w / wsum;
+        st.pop[k] = crate::landfall::people(P) * w / wsum;
     }
 
     // cells

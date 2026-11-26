@@ -1084,12 +1084,6 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   made, bought or held: every sum over the goods takes the goods of the start in numpy's order and a
   later good after them, and the families' typical good is reckoned on the goods of the start. How to
   add a good after 1900 is there in a few lines. [goods.md](goods.md).
-- **squares** (a shadow, read by no rule): every cell with something built keeps sixteen by sixteen
-  squares of 125 m, each with its tenant (a works, a pit, house blocks, a park, a town's open ground,
-  derelict ground) and the year it was taken, allotted once a year from the books' shares and never laid
-  out afresh; nothing in the economy, the books or the news moves with it. The record and a live game
-  carry them as a log of what each year's end changed, the same in both. [squares.md](squares.md),
-  `squares.enabled`.
 - **care** (acts only once the island finds it, from 1908): a ninth need, served by one good made in
   towns by hospitals and homes of care, every hour of it presence, which no machine of the tasks' rule
   takes, learning nothing and with no economies of size, not carried and not kept; households' want of it
@@ -1100,3 +1094,23 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   making, so the market's shortage of current no longer stands the stations' machines idle and makes the
   shortage worse. Traced from the slumps when machines tend, which it halves. [tending.md](tending.md),
   "The slumps", `tasks.own_run`.
+- **squares** (a shadow, read by no rule): every cell with something built keeps sixteen by sixteen
+  squares of 125 m, each with its tenant (a works, a pit, house blocks, a park, a town's open ground,
+  derelict ground) and the year it was taken, allotted once a year from the books' shares and never laid
+  out afresh; nothing in the economy, the books or the news moves with it. The record and a live game
+  carry them as a log of what each year's end changed, the same in both. [squares.md](squares.md),
+  `squares.enabled`.
+
+**Off under the game's rules, on with the landfall start.** The start itself is a choice, not a rule:
+the settled island under both sets of rules, and landfall, one town of 5,000 at a harbour in a corner,
+where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfall`). These come with it:
+
+- **frontier**: a town's births less deaths rise by up to 1.8 points a year where the land within 40 km
+  of it is free and its hands work the land, and a district whose land is half free may be made a town
+  at 500 people. [frontier.md](frontier.md), `frontier.enabled`, `frontier.hamlets`.
+- **immigration**: settlers come by ship to the ports as far as the living there stands above that
+  abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money.
+  [immigration.md](immigration.md), `immigration.enabled`.
+- **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
+  wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
+  "The trap", `hands.short_rise`.
