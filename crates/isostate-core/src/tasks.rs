@@ -156,9 +156,10 @@ impl Default for TasksParams {
 impl TasksParams {
     /// The game's. The machines that tend (`tending`) stand off under the
     /// game's rules too (docs/rules/tending.md, "Why it stands off"): a hand
-    /// turns them on, on the Rules tab or with `--set tasks.tending=true`.
+    /// turns them on, on the Rules tab or with `--set tasks.tending=true`. The
+    /// lorry (`lorry`, docs/rules/lorry.md) is on.
     pub fn game() -> TasksParams {
-        TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, ..TasksParams::default() }
+        TasksParams { enabled: true, land: true, computing: true, models: true, office_machines: true, lorry: true, ..TasksParams::default() }
     }
 
     /// Whether the switch of this name, which a `[[use]]` may name (`switch`),

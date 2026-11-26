@@ -263,10 +263,15 @@
 # second era; run.bin moves with it, with the traffic record's two layers
 # (way_goods, way_mode) and the four tending ideas in the content's list
 # (tasks.tending stands off); 1750-1900 held
+# Taken: 1901-2050 economy, books, news and run.bin: the lorry (tasks.lorry,
+# lorry.roads, lorry.keep; docs/rules/lorry.md), found after 1905, takes the
+# carters' hauling, its saving is had by the road under it, and from 1901 no
+# made road falls back for want of traffic; the content's list of ideas has
+# the motor vehicle; 1750-1900 held, since nothing of it acts before 1901
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x2f6d88876f1de4d8
-1901-2050 books    0xb3f1368510121418
-1901-2050 news     0x7f84c447b382fb6e
-1901-2050 run.bin  0xc84551beff51707f
+1901-2050 economy  0x626a31a726487b4a
+1901-2050 books    0x4ff44e5186d35f38
+1901-2050 news     0x9f6ac10774f8c3a3
+1901-2050 run.bin  0x1805777c3de1e316
