@@ -177,6 +177,13 @@ fn cut_years(r: &mut Replay, kept: usize) {
     for row in h.left.iter_mut().skip(kept) {
         row.clear();
     }
+    // (GROUND-BRUSH: what the hand laid down or took away, let go as the workings are)
+    for row in h.now.iter_mut().skip(kept) {
+        row.clear();
+    }
+    if h.now.iter().all(|w| w.is_empty()) {
+        h.now.clear();
+    }
     // the year's pits, quarries and mines
     for row in r.workings.iter_mut().skip(kept) {
         row.clear();
