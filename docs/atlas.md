@@ -404,9 +404,9 @@ does not do that.
 
 - The panel in the game, and the hand on it: a kind of works forbidden from
   a date, then a recipe's numbers (the backlog's item).
-- The ideas in the game, and the hand on the timeline: an idea dragged to a
-  year is a pin (`docs/lab.md`), which the core already carries out; no
-  button gives one yet.
+- The ideas in a recorded run. In the game the plate is a panel with the
+  hand on it since 26 November 2026 (the viewer's README, "The island's
+  ideas"): an idea dragged to a year is found then, found now or held back.
 - The uses of the tasks rule town by town: they are found by the island
   whole, so the third plate draws them for the island only.
 - Prices and volumes of carting by way: that is the second plate, the moving.

@@ -212,8 +212,8 @@ month it was given, so the session played again gives the pin again in the
 same month, and the island is the same to the last digit. Its news, "By hand:
 Electrical works pinned to 1885", stands in the island's history, and the
 find, when it comes, is told as a discovery "in the year it was pinned to".
-The game has no button for it yet; the hand on the atlas's timeline is a
-later piece.
+In the game a pin is given by a drag on the island's ideas (the viewer's
+README, "The island's ideas").
 
 A pinned idea still takes the number its year's draw would have taken, and
 the pin decides only what comes of it, so both arms of an island draw the

@@ -74,6 +74,11 @@ fn every_idea_has_a_row_and_the_years_are_the_games_own_finds() {
     let (P, content) = game(1830);
     let (sim, learnt) = play(&P, content.clone(), &[]);
     let (st, C) = (&sim.st, &sim.content);
+    let t0 = std::time::Instant::now();
+    for _ in 0..50 {
+        let _ = ideas(&sim, &learnt);
+    }
+    eprintln!("the island's ideas told in {:.3} ms on the mean of 50", t0.elapsed().as_secs_f64() * 1e3 / 50.0);
     let i = ideas(&sim, &learnt);
     assert_eq!((i.from, i.now, i.end), (1750, sim.year, 1830));
 
