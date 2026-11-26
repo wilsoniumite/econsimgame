@@ -56,7 +56,7 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         let s: f64 = C.tasks.method[m].iter().sum();
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
-    assert_eq!(C.M, 50, "the 44 of the tree's stage 1 and the six of stage 6 (docs/rules/tree.md, \"After 1900: electricity\", \"Oil, nitrogen and the land\" and \"Offices and steel frames\")");
+    assert_eq!(C.M, 51, "the 44 of the tree's stage 1 and the seven of stage 6 (docs/rules/tree.md, \"After 1900: electricity\", \"Oil, nitrogen and the land\" and \"Offices and steel frames\"; docs/rules/care.md)");
     // the content after 1900 lays the electric drive, the tractor, the cutter and
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it

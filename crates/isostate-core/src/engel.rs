@@ -196,6 +196,25 @@ pub fn les(budget_pc: &[f64], unit: &Mat, gamma: &[f64], beta: &[f64], rich: &[f
     (q, sub)
 }
 
+/// `les` with a richer set for each town (`rich`, T by S): care's want
+/// (docs/rules/care.md) gives each town its own. The same arithmetic as `les`,
+/// a town at a time.
+pub fn les_rows(budget_pc: &[f64], unit: &Mat, gamma: &[f64], beta: &[f64], rich: &Mat, E: &EngelParams) -> (Mat, Vec<f64>) {
+    let (T, S) = (unit.rows, unit.cols);
+    let mut q = Mat::zeros(T, S);
+    let mut sub = vec![0.0; T];
+    for t in 0..T {
+        sub[t] = pairwise_sum_by(S, |s| gamma[s] * unit[(t, s)]);
+        let extra = (budget_pc[t] - sub[t]).max(0.0);
+        let scale = if budget_pc[t] < sub[t] { budget_pc[t] / sub[t].max(1e-12) } else { 1.0 };
+        let moved = if sub[t] > 0.0 { (sub[t] * richer_part(budget_pc[t] / sub[t], E)).min(extra) } else { 0.0 };
+        for s in 0..S {
+            q[(t, s)] = gamma[s] * scale + (beta[s] * extra + (rich[(t, s)] - beta[s]) * moved) / unit[(t, s)].max(1e-12);
+        }
+    }
+    (q, sub)
+}
+
 /// A Fisher price index from (p0, q0) to (p1, q1): the geometric mean of the
 /// index on the old basket and the index on the new one. 1 if nothing was bought.
 pub fn fisher(p0: &[f64], q0: &[f64], p1: &[f64], q1: &[f64]) -> f64 {
