@@ -1253,6 +1253,13 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::highways::facts(r) {
         b.num(name, kind, v);
     }
+    // the two starts (docs/rules/landfall.md): what the colony's standing check reads, for
+    // every run of either start, under the people's heading
+    b.group = GROUPS[0];
+    for (name, kind, v) in crate::landfall::facts(r, &ann) {
+        b.num(name, kind, v);
+    }
+    b.group = GROUPS[6];
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
