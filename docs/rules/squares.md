@@ -68,10 +68,28 @@ The weights of the placing rule are in the code, at `squares::score`: they place
 
 Island 7, game rules, six families, to 2050 (`cargo run --profile work -p isostate-core --example squares -- --seeds 7 --to 2050 --check`). Squares held, by tenant:
 
-RESULTS_TABLE
+| year | cells with a table | works | house blocks | park | pits | derelict | town's open ground | built (all but open) | works alive | of them with no square | of them in pieces |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1750 | 257 | 2,636 | 17,391 | 0 | 46 | 0 | 2,544 | 20,073 | 351 | 26 | 0 |
+| 1800 | 330 | 6,643 | 25,870 | 0 | 262 | 0 | 6,980 | 32,775 | 455 | 19 | 21 |
+| 1850 | 515 | 19,097 | 35,196 | 0 | 725 | 0 | 9,632 | 55,018 | 910 | 68 | 108 |
+| 1900 | 979 | 43,923 | 69,318 | 0 | 1,158 | 98 | 21,215 | 114,497 | 1,364 | 60 | 222 |
+| 1950 | 1,099 | 112,676 | 72,436 | 1,962 | 726 | 0 | 5,185 | 187,800 | 2,303 | 97 | 391 |
+| 2000 | 1,114 | 143,442 | 52,937 | 1,909 | 706 | 881 | 3,018 | 199,875 | 2,148 | 113 | 276 |
+| 2050 | 1,180 | 183,849 | 50,029 | 1,899 | 962 | 679 | 2,753 | 237,418 | 2,340 | 60 | 292 |
 
-The judge reckoned about 260,000 built squares by 2050, 186,000 of them works and at most 78,000 house blocks.
+The judge reckoned about 260,000 built squares by 2050, 186,000 of them works and at most 78,000 house blocks: 237,418, of them 183,849 works and 50,029 house blocks. The house blocks were most in 1930 (83,101) and have given ground to the works since.
+
+Every year of that run, and of islands 1 to 8 to 2050 (`--seeds 1-8 --check`), `squares::check` held: each works' squares its ground within a square, each cell's works and pits theirs, a town cell's town ground the cell less its works and pits, its house blocks and park their counts, no square with two tenants, no holding in more pieces than its annexes allow, no derelict ground off a derelict cell, and every square that kept its tenant kept its year. With the switch on and off the game's golden hashes are the same, all seven (`tests/golden_game.rs`), and so are the months, the news and the record of island 5 to 1790 (`tests/squares.rs`).
+
+**What it costs.** The year's allotting, timed alone beside a run of island 7 to 2050 (`--time`): TIMING.
 
 ## What worries me
 
-WORRIES
+- **The works' ground.** The squares draw the books' ground exactly, and the books give a works 2,000 m² a hand of capacity in every trade and year (`works::land_take`). By 1950 the works hold most of the largest town's middle, a cell each as a slab of squares, and the houses are pushed to the edge cells; on island 7 the works' squares pass the houses' about 1930 and are 3.7 times them by 2050. That is the judge's point, and his stage 7 (the ground a works takes) should come before any picture leans on these squares.
+- **Works in pieces.** A works hemmed in by other works and pits takes an annex. By 1790 that is 3 to 8 per cent of the works on islands 1 to 8, and on island 7 by 2050 292 of 2,340 (12 per cent), nearly all on cells the works hold nine tenths of. Without moving a neighbour no rule can avoid it once a cell is that full; the mend is the ground rule above, or letting a works cross its cell's edge (it never does here, since the books keep its ground on its cell, and so the cells' lattice still shows in the works' outlines).
+- **Stars.** A cell's ways are the viewer's half-links from its meeting place to each of its eight neighbours', so in a cell part built the house blocks gather along an X or a star (the pictures of 1800 and 1850). A cell whose roads are kept by link, or a high street, would give a truer frame.
+- **The park comes in specks.** The park takes the poorest squares of each cell filled whole, which are the wet and steep ones scattered about it: green specks, not a park. A park should be one piece, grown as a works is.
+- **Water.** The books count a coastal cell whole. Houses and parks are kept on the dry ground, but works are not: 1,725 squares of works and pits on island 7 lie under the sea or a lake in 2050, where a cell's works hold more than its dry ground. The town's open ground takes the rest of the water.
+- **An old cell is solid.** A town cell built long ago is filled toward the ceiling, so its house blocks take nearly all of its dry ground and leave no open ground: a small old town (Maredge, island 7) is one solid block of 256 squares. Streets are lines over squares and take none, but a later picture will want lanes, yards and gardens inside a block.
+- **Once a year.** A works founded in the year has its squares at the year's end, not on its founding day; the books share land out once a year too, so nothing reads the difference.
