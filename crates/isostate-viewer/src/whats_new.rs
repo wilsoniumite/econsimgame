@@ -320,6 +320,8 @@ pub fn new_count(entries: &[Entry], seen: Option<&Seen>, week_start: &str) -> us
 struct Ready {
     entries: Vec<Entry>,
     new: usize,
+    /// nothing had been shown before, so the new are the last seven days'
+    first: bool,
     /// where the devlog was read from, or why it was not
     from: Result<PathBuf, String>,
 }
@@ -419,7 +421,7 @@ fn begin(mut commands: Commands, about: Option<Res<crate::note::About>>, mut wn:
             Err(why) => println!("what's new: {why}"),
         }
         if let Ok(mut s) = slot.lock() {
-            *s = Some(Ready { entries, new, from });
+            *s = Some(Ready { entries, new, first: seen.is_none(), from });
         }
     });
 }
@@ -482,10 +484,11 @@ fn arrive(reading: Option<Res<Reading>>, mut wn: ResMut<WhatsNew>, mut head: Que
     wn.new = ready.new;
     let said = match &ready.from {
         Ok(_) => {
+            let since = if ready.first { "in the last seven days, as nothing has been shown here before" } else { "since you last looked" };
             let new = match ready.new {
-                0 => "Nothing is new since you last looked.".to_string(),
-                1 => "One is new since you last looked, marked so.".to_string(),
-                n => format!("{n} are new since you last looked, marked so."),
+                0 => format!("Nothing is new {since}."),
+                1 => format!("One is new {since}, marked so."),
+                n => format!("{n} are new {since}, marked so."),
             };
             format!("{} entries of docs/DEVLOG.md as it stood when the game began, the newest first. {new} A click on an entry opens it whole.", ready.entries.len())
         }
