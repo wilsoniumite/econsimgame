@@ -1103,7 +1103,7 @@ thread_local! {
 
 /// Whether the roads are drawn by wear (`drawn_links`): unless
 /// `ISOSTATE_WORN=off` asks for the picture before, to set the two side by side.
-fn by_wear() -> bool {
+pub fn by_wear() -> bool {
     static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     !ALL_IN_TEST.with(|a| a.get()) && !*OFF.get_or_init(|| std::env::var("ISOSTATE_WORN").is_ok_and(|v| v == "off"))
 }

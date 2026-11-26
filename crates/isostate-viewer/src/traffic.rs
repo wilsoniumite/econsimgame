@@ -301,7 +301,8 @@ pub fn drawn_links(r: &Replay, worn: &crate::network::Worn, k: usize, sc: &Scale
         return out;
     }
     let roads: std::collections::HashSet<(usize, usize)> = crate::network::drawn_links(r, worn, k).into_iter().map(|(c, m, _)| (c, m)).collect();
-    let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
+    // (with every road drawn, `ISOSTATE_WORN=off`, every link is drawn, as before)
+    let made = |c: usize| crate::network::by_wear() && r.trans[k * r.n + c] & 3 >= 2;
     for c in 0..r.n {
         for s in 0..4 {
             let w = r.traffic.weight(r.n, k, c, s);
@@ -324,7 +325,7 @@ pub fn drawn_links(r: &Replay, worn: &crate::network::Worn, k: usize, sc: &Scale
 /// The ribbons of year `k` on scale `sc`, `near` times as wide as over the whole island.
 pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale, near: f32) -> Builder {
     let mut b = Builder::default();
-    let made = |c: usize| r.trans[k * r.n + c] & 3 >= 2;
+    let made = |c: usize| crate::network::by_wear() && r.trans[k * r.n + c] & 3 >= 2;
     for (i, (c, s, w, m)) in drawn_links(r, &g.worn, k, sc).into_iter().enumerate() {
         let Some(d) = tf::other_end(r.w, r.h, c, s) else { continue };
         let t = sc.at(w);
