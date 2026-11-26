@@ -2,7 +2,9 @@
 
 Carting takes labour. Not in the Python. The switch is `carting.enabled`; the
 code is `carting.rs` and five marked lines in `econ::step_month`. The
-diagnosis this answers is `docs/probes/dx-rail.md`, section 2.
+diagnosis this answers is `docs/probes/dx-rail.md`, section 2. After 1900 the
+motor lorry takes the carters' hauling, and the bill pays for an hour of work
+at what hands and lorries together cost ([lorry.md](lorry.md)).
 
 ## What was wrong
 
