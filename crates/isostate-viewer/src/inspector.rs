@@ -51,6 +51,15 @@ pub struct Answers {
 }
 
 impl Answers {
+    /// An edit taken back (back.rs): every answer is of the island as it
+    /// stood after the edit, and is let go, to be asked again.
+    pub fn forget(&mut self) {
+        self.told.clear();
+        self.asked.clear();
+        self.took.clear();
+        self.version += 1;
+    }
+
     /// For a scripted run: each new answer is printed once.
     pub fn printing() -> Answers {
         Answers { print: true, ..default() }
@@ -399,7 +408,7 @@ mod tests {
 
     #[test]
     fn an_answer_is_said_in_one_line_and_a_works_is_asked_for_by_its_slot() {
-        let told = Told { title: "Melbourne".into(), as_of: "March 1791".into(), groups: vec![Group { name: "People".into(), rows: vec![("people in the town".into(), "9,690".into()), ("hands in works".into(), "1,200".into())] }], ideas: None };
+        let told = Told { title: "Melbourne".into(), as_of: "March 1791".into(), groups: vec![Group { name: "People".into(), rows: vec![("people in the town".into(), "9,690".into()), ("hands in works".into(), "1,200".into())] }], ideas: None, making: None };
         assert_eq!(said(&Ok(told)), "Melbourne, March 1791 | People: people in the town 9,690; hands in works 1,200");
         assert_eq!(said(&Err("The square at 3, 4 is sea.".into())), "refused: The square at 3, 4 is sea.");
         assert_eq!(thing_of(Pick::Firm(12)), Thing::Works(12));

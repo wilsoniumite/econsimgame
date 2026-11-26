@@ -401,6 +401,16 @@ impl HandOver {
         (run == self.run || k != latest).then_some(k)
     }
 
+    /// An edit taken back (back.rs): the meshes still on their way are of a
+    /// run that is gone, and are let go of; what is on screen stays, with its
+    /// fingerprints, until the year on the clock is built again.
+    pub fn forget(&mut self) {
+        self.queue.clear();
+        self.arriving.clear();
+        self.ready.clear();
+        (self.year, self.began) = (None, None);
+    }
+
     /// Let no mesh go in this frame, which has work enough of its own: the
     /// one a year arrives in (the pump writes it into the run and lays out
     /// its works, the flags and fences are built, the panel is drawn again)
