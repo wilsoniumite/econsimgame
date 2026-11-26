@@ -131,6 +131,10 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // and with who works by age off (docs/rules/who-works.md), which came after: its
     // series are in the fingerprint, though they are nothing to 1900
     P.who_works = Default::default();
+    // and with the lorry off (docs/rules/lorry.md), which came after: its series is in the
+    // fingerprint, though it is nothing to 1900
+    P.tasks.lorry = false;
+    P.lorry = Default::default();
     let mut s = sim::start(&P, game_content());
     while s.year <= 1900 {
         sim::run_year(&mut s).unwrap();

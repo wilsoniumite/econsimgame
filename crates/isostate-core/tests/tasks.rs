@@ -7,7 +7,7 @@
 //! computing and to 2030 for models) under the game's rules with six
 //! families, with the switches they lean on set by name (`tasks.enabled`,
 //! `tasks.land`, `tasks.yield_cap`, `tasks.computing`, `tasks.models`,
-//! `tasks.office_machines`) and
+//! `tasks.office_machines`; the lorry, `tasks.lorry` and `lorry`, off) and
 //! every other rule as the game has it. What they check
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
@@ -28,7 +28,10 @@ fn params(on: bool) -> Params {
     P.seed = 7;
     P.n_families = 6;
     P.end_year = Some(END);
-    P.tasks = TasksParams { enabled: on, ..TasksParams::game() };
+    // played without the lorry and its roads (docs/rules/lorry.md), which came after:
+    // its series is in the run's fingerprint, and from 1901 it changes island 7's history
+    P.tasks = TasksParams { enabled: on, lorry: false, ..TasksParams::game() };
+    P.lorry = Default::default();
     P
 }
 
@@ -267,6 +270,11 @@ fn island_7_to_1925() {
     let mut empty = content(&P);
     empty.tasks.uses.clear();
     empty.tasks.plant_goods.clear();
+    // the motor vehicle, which only the lorry waits on, is then an idea like any other
+    // and would be sought: it is held back past the run, as it is with the lorry off
+    if let Some(t) = empty.tech_name.iter().position(|n| n == "motor_vehicle") {
+        empty.tech_after[t] = 9999;
+    }
     let none = check_of(P, empty);
     let off = check_of(params(false), content(&params(false)));
     let (on, none, off) = (on.join().unwrap(), none.join().unwrap(), off.join().unwrap());
@@ -344,7 +352,8 @@ fn island_7_to_1925_on_the_land() {
 /// years on. The combine, which tends and comes from 1935, is not waited for.
 fn starts(s: &sim::Sim) -> Option<i64> {
     let f = &s.st.tasks.found;
-    let haul: Vec<i64> = s.content.tasks.uses.iter().zip(f).filter(|(u, _)| u.class == tasks::HAUL).map(|(_, &y)| y).collect();
+    // (the lorry, a haul use behind its own switch, off in these runs, is never found)
+    let haul: Vec<i64> = s.content.tasks.uses.iter().zip(f).filter(|(u, _)| u.class == tasks::HAUL && u.allowed(&s.params)).map(|(_, &y)| y).collect();
     if haul.is_empty() || haul.iter().any(|&y| y < 0) { None } else { haul.iter().copied().max() }
 }
 
