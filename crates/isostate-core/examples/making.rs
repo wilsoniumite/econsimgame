@@ -11,7 +11,8 @@
 //! the town with the most people; `--list` names the towns with their people
 //! and their hands on the land and in works; `--every` gives a line a town,
 //! its boxes of the land and the works by hands. `--said` prints what each box
-//! and ribbon says under the pointer; `--all` prints every ribbon.
+//! and ribbon says under the pointer; `--all` prints every ribbon; `--hand`
+//! what the panel's menus offer the hand for each kind of works.
 #![allow(non_snake_case)]
 use isostate_core::inspect::{self, Thing};
 use isostate_core::params::Rules;
@@ -21,10 +22,11 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seed, mut year, mut to) = (7u64, 1800i64, 1900i64);
     let (mut towns, mut list, mut largest, mut said, mut all, mut every) = (Vec::<String>::new(), false, false, false, false, false);
+    let mut hand = false;
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
-        let flag = matches!(args[i].as_str(), "--list" | "--largest" | "--said" | "--all" | "--every");
+        let flag = matches!(args[i].as_str(), "--list" | "--largest" | "--said" | "--all" | "--every" | "--hand");
         match args[i].as_str() {
             "--seed" => seed = next().parse().expect("a seed"),
             "--year" => year = next().parse().expect("a year"),
@@ -35,6 +37,7 @@ fn main() {
             "--said" => said = true,
             "--all" => all = true,
             "--every" => every = true,
+            "--hand" => hand = true,
             other => panic!("unknown option {other}"),
         }
         i += if flag { 1 } else { 2 };
@@ -138,5 +141,33 @@ fn main() {
         }
         println!("  each good's ribbons against its books: the worst differs by {:.2e} of what flows", worst);
         println!("  (made in {:.3} ms the first time, {:.3} ms on the mean of a hundred)", 1000.0 * once, 1000.0 * mean);
+        // TOWN-FLOW-HAND: --hand, what the panel's menus offer for each kind
+        if hand {
+            println!("  what the hand may do, kind by kind:");
+            for k in &m.hand {
+                let build = match &k.build {
+                    Ok(o) => format!("build {} on {}, {}, for {:.0}, {:.0}% a year", o.label.to_lowercase(), o.cell % st.world.W, o.cell / st.world.W, o.cost, 100.0 * o.ret),
+                    Err(why) => format!("none offered: {why}"),
+                };
+                println!("    {:<22} {} standing; {build}", m.good_label[k.good], k.standing.len());
+                for x in &k.methods {
+                    let state = if x.forbidden {
+                        "turned off by hand".to_string()
+                    } else if x.standing > 0 {
+                        format!("in use, {} works", x.standing)
+                    } else if x.known {
+                        "known, used by none".to_string()
+                    } else if x.discover.is_some() {
+                        "found nowhere yet".to_string()
+                    } else {
+                        format!("known in {} towns, not here", x.towns)
+                    };
+                    println!("        {:<30} {state}", x.label);
+                }
+                for l in &k.by_hand {
+                    println!("        {l}");
+                }
+            }
+        }
     }
 }

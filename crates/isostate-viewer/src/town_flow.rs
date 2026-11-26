@@ -1029,12 +1029,13 @@ mod tests {
             cols: 4,
             nodes,
             ribbons,
-            faint: vec![isostate_core::making::Faint { good: 6, label: "Glassworks".into(), col: 2, said: vec!["glass".into()] }],
+            faint: vec![isostate_core::making::Faint { good: 6, label: "Glassworks".into(), col: 2, said: vec!["glass".into()], known: true }],
             goods: vec![GoodFlow::default()],
             good_label: ["Grain", "Coal", "Iron", "Wool", "Cloth", "Tools", "Glass"].iter().map(|s| s.to_string()).collect(),
             good_colour: ["#d6b85a", "#2e2b28", "#5b6670", "#e8e1cf", "#a8476b", "#6e5b45", "#9fd0c8"].iter().map(|s| s.to_string()).collect(),
             hands: 670.0,
             said: String::new(),
+            hand: Vec::new(),
         }
     }
 

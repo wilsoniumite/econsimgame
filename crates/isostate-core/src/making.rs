@@ -153,7 +153,9 @@ pub struct Ribbon {
     pub said: Vec<String>,
 }
 
-/// A kind of works the town knows the idea of and has none of.
+/// A kind of works the town knows the idea of and has none of; or (TOWN-FLOW-HAND,
+/// `known` false) one whose idea is found nowhere on the island yet, which the
+/// hand may find here.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Faint {
     /// the good it would make
@@ -161,6 +163,64 @@ pub struct Faint {
     pub label: String,
     pub col: usize,
     pub said: Vec<String>,
+    /// the town knows a method of it (false: its idea is found nowhere yet)
+    pub known: bool,
+}
+
+// ---------------------------------------------------------------- TOWN-FLOW-HAND: the hand's figures
+
+/// What the hand may do to one kind of works in the town, as the island
+/// stands when the making is asked for (the panel's menus): for every kind
+/// with works standing, and every faint kind.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KindHand {
+    pub good: usize,
+    /// the good's name (`Content::good_name`), for `Edit::CloseKind`
+    pub good_name: String,
+    /// the works of the kind standing now, the smallest first (`edits::kind_works`)
+    pub standing: Vec<Standing>,
+    /// every method that makes the good
+    pub methods: Vec<MethodHand>,
+    /// the works "Build another here" would build, or why none is offered
+    /// (`edits::best_build`)
+    pub build: Result<crate::edits::Offer, String>,
+    /// what the hand has done to this kind here, the titles of its news, oldest first
+    pub by_hand: Vec<String>,
+}
+
+/// A works standing, for the menu.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Standing {
+    /// its slot (`Edit::CloseWorks`)
+    pub works: usize,
+    pub name: String,
+    /// its method's label
+    pub label: String,
+    /// its plant: what it can make in a month
+    pub plant: f64,
+}
+
+/// A method that makes a kind's good, and where it stands in the town.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MethodHand {
+    pub method: usize,
+    /// its name (`Content::method_name`), for `Edit::Forbid` and `Edit::Allow`
+    pub name: String,
+    pub label: String,
+    /// works of it standing in the town
+    pub standing: usize,
+    /// the town knows it (above `KNOWS`)
+    pub known: bool,
+    /// it was known before 1750 or has been found on the island
+    pub found: bool,
+    /// how many towns know it
+    pub towns: usize,
+    /// turned off in the town by hand (`edits::forbidden`)
+    pub forbidden: bool,
+    /// its idea's name, for `Edit::Discover`, where the hand may find it here
+    pub discover: Option<String>,
+    /// its recipe in words
+    pub recipe: String,
 }
 
 /// One good's flow through the town in the year, in its units: what came
@@ -201,12 +261,19 @@ pub struct Making {
     pub hands: f64,
     /// a line on what the chart is
     pub said: String,
+    /// TOWN-FLOW-HAND: what the hand may do to each kind, works standing or faint
+    pub hand: Vec<KindHand>,
 }
 
 impl Making {
     /// The goods' flows, by good.
     pub fn flow(&self, g: usize) -> Option<&GoodFlow> {
         self.goods.iter().find(|f| f.good == g)
+    }
+
+    /// What the hand may do to the kind that makes good g.
+    pub fn hand_of(&self, g: usize) -> Option<&KindHand> {
+        self.hand.iter().find(|k| k.good == g)
     }
 }
 
@@ -225,7 +292,68 @@ pub fn town_making(sim: &Sim, t: usize) -> Result<Making, String> {
     }
     let tb = accounts::town_books(st, C, t, None).ok_or_else(|| format!("No year has closed yet, so {}'s books have nothing to show: the chart comes after the first January.", st.town_name[t]))?;
     let knows = |m: usize| st.know[(t, m)] > KNOWS;
-    Ok(from_books(C, &tb, &knows, &st.town_name))
+    let mut making = from_books(C, &tb, &knows, &st.town_name);
+    hand(sim, t, &mut making);
+    Ok(making)
+}
+
+/// TOWN-FLOW-HAND: the hand's figures for a making (`KindHand`), as the
+/// island stands now, and the faint kinds whose idea is found nowhere yet.
+fn hand(sim: &Sim, t: usize, making: &mut Making) {
+    let (st, C) = (&sim.st, &sim.content);
+    let knows = |m: usize| st.know[(t, m)] > KNOWS;
+    let tech = |m: usize| crate::edits::tech_of_method(C, m);
+    let found = |m: usize| tech(m).is_some_and(|k| C.tech_known[k] || st.tech_year[k] >= 0);
+    // kinds whose every method is unknown here and one is found nowhere: the hand may find it here
+    let made_here: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_town[f] == t).map(|f| C.method_out[st.f_method[f]]).collect();
+    let (_, depth) = crate::atlas::depths(C);
+    let last = making.cols.max(3) - 1;
+    for g in 0..C.G {
+        let ms: Vec<usize> = (0..C.M).filter(|&m| C.method_out[m] == g).collect();
+        if ms.is_empty() || made_here.contains(&g) || making.faint.iter().any(|f| f.good == g) || ms.iter().any(|&m| knows(m)) || ms.iter().all(|&m| found(m)) {
+            continue;
+        }
+        let nowhere: Vec<usize> = ms.iter().copied().filter(|&m| !found(m)).collect();
+        let d = nowhere.iter().map(|&m| depth[m]).min().unwrap_or(1).clamp(1, last - 1);
+        let label = if nowhere.len() == 1 { C.method_label[nowhere[0]].clone() } else { format!("{} ({} kinds)", C.good_label[g], nowhere.len()) };
+        let mut said = vec![format!("Its idea is found nowhere on the island yet: it would make {}.", lower(&C.good_label[g]))];
+        said.extend(nowhere.iter().map(|&m| format!("{}: {}.", C.method_label[m], recipe(C, m))));
+        making.faint.push(Faint { good: g, label, col: d, said, known: false });
+    }
+    // every kind on the chart, standing or faint
+    let mut goods: Vec<usize> = making.nodes.iter().filter_map(|n| n.good.filter(|_| n.kind == Kind::Works)).collect();
+    goods.extend(made_here.iter().copied());
+    goods.extend(making.faint.iter().map(|f| f.good));
+    goods.sort_unstable();
+    goods.dedup();
+    let news: Vec<&crate::state::Event> = sim.events.iter().filter(|e| e.kind == "hand" && e.town == Some(t)).collect();
+    for g in goods {
+        let standing: Vec<Standing> = crate::edits::kind_works(st, C, t, g)
+            .into_iter()
+            .map(|f| Standing { works: f, name: st.f_name[f].clone(), label: C.method_label[st.f_method[f]].clone(), plant: st.f_K[f] })
+            .collect();
+        let methods: Vec<MethodHand> = (0..C.M)
+            .filter(|&m| C.method_out[m] == g)
+            .map(|m| MethodHand {
+                method: m,
+                name: C.method_name[m].clone(),
+                label: C.method_label[m].clone(),
+                standing: standing.iter().filter(|s| st.f_method[s.works] == m).count(),
+                known: knows(m),
+                found: found(m),
+                towns: (0..st.T_max).filter(|&i| st.town_active[i] && st.know[(i, m)] > KNOWS).count(),
+                forbidden: crate::edits::forbidden(st, t, m),
+                discover: tech(m).filter(|_| !found(m)).map(|k| C.tech_name[k].clone()),
+                recipe: recipe(C, m),
+            })
+            .collect();
+        let of_kind = |e: &&&crate::state::Event| {
+            e.firm.is_some_and(|f| f < st.F_count && C.method_out[st.f_method[f]] == g)
+                || e.tech.is_some_and(|k| C.tech_kind[k] == "method" && C.method_name.iter().position(|n| *n == C.tech_name[k]).is_some_and(|m| C.method_out[m] == g))
+        };
+        let by_hand = news.iter().filter(of_kind).map(|e| e.title.clone()).collect();
+        making.hand.push(KindHand { good: g, good_name: C.good_name[g].clone(), standing, methods, build: crate::edits::best_build(sim, t, g), by_hand });
+    }
 }
 
 /// Where a figure of the books goes on the chart.
@@ -635,7 +763,7 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
         let label = if ms.len() == 1 { C.method_label[ms[0]].clone() } else { format!("{} ({} kinds)", C.good_label[g], ms.len()) };
         let mut said = vec![format!("None stands here, though the town knows how: it would make {}.", gl(g))];
         said.extend(ms.iter().map(|&m| format!("{}: {}.", C.method_label[m], recipe(C, m))));
-        faint.push(Faint { good: g, label, col: d, said });
+        faint.push(Faint { good: g, label, col: d, said, known: true });
     }
 
     let hands = fig("hands_land") + fig("hands_works");
@@ -653,6 +781,7 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
         good_colour: C.good_color.clone(),
         hands,
         said,
+        hand: Vec::new(),
     }
 }
 

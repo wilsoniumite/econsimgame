@@ -744,6 +744,8 @@ fn waiting_what(edit: &isostate_core::edits::Edit, n: &Names) -> Option<String> 
             None => format!("a university founded at square {cell}"),
         }),
         Edit::CloseUniversity { town } => Some(format!("the university of {} closed", (n.town)(*town))),
+        // TOWN-FLOW-HAND (town_flow.rs)
+        Edit::CloseKind { town, good } => Some(format!("the works making {} in {} closed, and the kind forbidden there", good.replace('_', " "), (n.town)(*town))),
         _ => None,
     }
 }
@@ -771,8 +773,11 @@ fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
         Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
         Edit::Pin { idea, year, when } => format!("By hand: {idea} {} {year}", if *when == isostate_core::edits::PinWhen::In { "pinned to" } else { "held back until" }),
+        // TOWN-FLOW-HAND (town_flow.rs)
+        Edit::Forbid { town: t, method } => format!("By hand: {} turned off in {}", (n.method)(method), town(*t)),
+        Edit::Allow { town: t, method } => format!("By hand: {} turned on again in {}", (n.method)(method), town(*t)),
         // (said by `waiting_what`)
-        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } => String::new(),
+        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } | Edit::CloseKind { .. } => String::new(),
     }
 }
 

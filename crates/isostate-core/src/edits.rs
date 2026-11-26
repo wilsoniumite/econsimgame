@@ -224,6 +224,18 @@ pub enum Edit {
     FoundUniversity { cell: usize },
     /// A town's university closed. It waits for the year's turn.
     CloseUniversity { town: usize },
+    // TOWN-FLOW-HAND (the hand on a town's making, docs/designs/sandbox.md):
+    /// A method (by `Content::method_name`) turned off in a town: no new works
+    /// of it may stand there, founded by the island, by a family, opened next
+    /// door as a sister or built by hand. The works of it standing keep it
+    /// until they close. Carried out at once.
+    Forbid { town: usize, method: String },
+    /// A method turned off by hand in a town turned on again. At once.
+    Allow { town: usize, method: String },
+    /// Every works of a town that makes a good (by `Content::good_name`)
+    /// closed, and every method that makes it turned off there: "Close all and
+    /// forbid this kind here". It waits for the year's turn.
+    CloseKind { town: usize, good: String },
 }
 
 /// What a pin asks of its idea.
@@ -332,7 +344,7 @@ impl Edit {
     /// (`check`), kept with the orders that wait, and carried out in January,
     /// after the books are closed. The others are carried out at once.
     pub fn at_turn(&self) -> bool {
-        matches!(self, Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. })
+        matches!(self, Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } | Edit::CloseKind { .. })
     }
 }
 
@@ -373,6 +385,9 @@ pub struct Ledger {
     pub count: usize,
     /// The pins standing (`Edit::Pin`), which `pin_says` reads.
     pub pins: Vec<Pin>,
+    /// TOWN-FLOW-HAND: the methods turned off by hand, as (town, method),
+    /// which `forbidden` reads.
+    pub forbidden: Vec<(usize, usize)>,
 }
 
 /// A factor the hand may use, or a sentence saying why not.
@@ -451,6 +466,17 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
             let year = sim.year;
             let (title, text) = crate::university::close(&mut sim.st, *t, year).expect("checked that a university is open there");
             (format!("By hand: {title}"), text, Some(*t))
+        }
+        // TOWN-FLOW-HAND: a method off or on in a town, and a kind closed and forbidden
+        Edit::Forbid { town: t, method } | Edit::Allow { town: t, method } => {
+            let (said, m) = method_here(sim, *t, method, matches!(edit, Edit::Forbid { .. }))?;
+            tech = tech_of_method(&sim.content, m);
+            said
+        }
+        Edit::CloseKind { town: t, good } => {
+            let (said, m) = close_kind(sim, *t, good)?;
+            tech = m.and_then(|m| tech_of_method(&sim.content, m));
+            said
         }
     };
     let when = sim.year as f64 + (months_played(sim) as f64 + 0.5) / 12.0;
@@ -733,6 +759,7 @@ fn what_waits(edit: &Edit) -> &'static str {
         Edit::CloseWorks { .. } => "a works closed by hand",
         Edit::FoundUniversity { .. } => "a university founded by hand",
         Edit::CloseUniversity { .. } => "a university closed by hand",
+        Edit::CloseKind { .. } => "a kind of works closed and forbidden by hand",
         _ => "this edit",
     }
 }
@@ -751,6 +778,7 @@ pub fn check(sim: &Sim, edit: &Edit) -> Result<(), String> {
         Edit::CloseWorks { works } => closable(sim, *works),
         Edit::FoundUniversity { cell } => university_town(sim, *cell).map(|_| ()),
         Edit::CloseUniversity { town } => crate::university::may_close(&sim.st, &sim.params, *town),
+        Edit::CloseKind { town, good } => kind_plan(sim, *town, good).map(|_| ()),
         _ => Ok(()),
     }
 }
@@ -811,6 +839,12 @@ fn hand_works(sim: &Sim, m: usize, cell: usize, i: usize) -> (Option<HandWorks>,
         return (None, Err(format!("{} is not known in {} yet", C.method_label[m], st.town_name[i])));
     }
     let K = works::entry_K(st, C, P, i, m);
+    // TOWN-FLOW-HAND: a method turned off here by hand is refused, as it is to the island's own entrants
+    if forbidden(st, i, m) {
+        let ev = firms::evaluate_sites(st, C, P, i, m, &[cell], K, families::prices(st), families::wages(st));
+        let cost = ev.cap_cost * 1.15;
+        return (Some(HandWorks { K, ev, cost }), Err(forbidden_words(st, C, i, m)));
+    }
     let ev = firms::evaluate_sites(st, C, P, i, m, &[cell], K, families::prices(st), families::wages(st));
     let cost = ev.cap_cost * 1.15;
     let allowed = if st.F_count >= st.f_alive.len() {
@@ -1055,4 +1089,213 @@ pub fn run_with(P: &Params, content: Content, edits: &[Dated]) -> Result<RunResu
     let mut result = sim::finish(sim);
     result.params = P.clone();
     Ok(result)
+}
+
+// ---------------------------------------------------------------- the hand on a town's making (TOWN-FLOW-HAND)
+//
+// The viewer's Making panel (a town's making, `making.rs`) is also a handle:
+// a click on a box of works offers to build another, close one, or close all
+// and forbid the kind; a click on a faint kind offers to build one, or to find
+// its idea; and each method that makes the box's good can be turned off for
+// the town or on again. Building and closing one are the tray's own edits
+// (`BuildWorks`, `CloseWorks`); the rest are `Forbid`, `Allow` and
+// `CloseKind`, here.
+//
+// A method turned off is kept in the ledger (`Ledger::forbidden`), and the
+// rules that found works ask `forbidden` before they weigh a method in a town:
+// the island's entrants (`firms::entry`), a works opening a sister next door
+// (`firms::spawn_sister`), the families (`families`), and the hand
+// (`hand_works`). The list is empty in every run with no such edit, so those
+// rules are the port's and the game's to the bit. A works keeps the method it
+// was built with all its life, so a method turned off stops new works of it;
+// the works of it standing go on until they close, by their own rules or by
+// the hand.
+
+/// Whether method m is turned off by hand in town i.
+pub fn forbidden(st: &State, i: usize, m: usize) -> bool {
+    !st.by_hand.forbidden.is_empty() && st.by_hand.forbidden.contains(&(i, m))
+}
+
+/// The sentence that refuses a works of a method turned off in a town.
+fn forbidden_words(st: &State, C: &Content, i: usize, m: usize) -> String {
+    format!("{} may not be built in {}: it was turned off there by hand", C.method_label[m], st.town_name[i])
+}
+
+/// A method's place among the ideas (`Content::tech_name`), for the news.
+pub fn tech_of_method(C: &Content, m: usize) -> Option<usize> {
+    (0..C.NT).find(|&t| C.tech_kind[t] == "method" && C.tech_name[t] == C.method_name[m])
+}
+
+/// The works of town t that make good g, standing now: the smallest plant
+/// first, and of two alike the newer. "Close one" closes the first.
+pub fn kind_works(st: &State, C: &Content, t: usize, g: usize) -> Vec<usize> {
+    let mut ws: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_town[f] == t && C.method_out[st.f_method[f]] == g).collect();
+    ws.sort_by(|&a, &b| st.f_K[a].total_cmp(&st.f_K[b]).then(b.cmp(&a)));
+    ws
+}
+
+fn works_count(n: usize) -> String {
+    if n == 1 { "1 works".to_string() } else { format!("{n} works") }
+}
+
+/// A method turned off (`off`) or on again in a town: the news's title, text
+/// and town, and the method.
+fn method_here(sim: &mut Sim, t: usize, method: &str, off: bool) -> Result<((String, String, Option<usize>), usize), String> {
+    let C = &sim.content;
+    let Some(m) = C.method_name.iter().position(|n| n == method) else {
+        return Err(format!("there is no method called {method:?}"));
+    };
+    town_ok(sim, t)?;
+    let st = &mut sim.st;
+    let (label, place) = (C.method_label[m].clone(), st.town_name[t].clone());
+    let standing = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_town[f] == t && st.f_method[f] == m).count();
+    let k = st.by_hand.forbidden.iter().position(|&x| x == (t, m));
+    if off {
+        if k.is_some() {
+            return Err(format!("{label} is turned off in {place} already"));
+        }
+        st.by_hand.forbidden.push((t, m));
+        let title = format!("By hand: {label} turned off in {place}");
+        let text = format!(
+            "{label} was turned off in {place} by hand: no new works of it may stand there, whether the town's savers would found it, a family, or the hand itself, nor may a works of it open another next door. {}",
+            match standing {
+                0 => "None of it stands there now.".to_string(),
+                1 => "The one works of it standing keeps the way it was built with until it closes.".to_string(),
+                n => format!("The {n} works of it standing keep the way they were built with until they close."),
+            }
+        );
+        Ok(((title, text, Some(t)), m))
+    } else {
+        let Some(k) = k else {
+            return Err(format!("{label} is not turned off in {place}"));
+        };
+        st.by_hand.forbidden.remove(k);
+        let title = format!("By hand: {label} turned on again in {place}");
+        let text = format!("{label} was turned on again in {place} by hand: new works of it may stand there again, as the island and its families judge them.");
+        Ok(((title, text, Some(t)), m))
+    }
+}
+
+/// What a `CloseKind` would do as the island stands: the good, the works to
+/// close (`kind_works`) and the methods that make it, or why nothing would.
+fn kind_plan(sim: &Sim, t: usize, good: &str) -> Result<(usize, Vec<usize>, Vec<usize>), String> {
+    let (st, C) = (&sim.st, &sim.content);
+    let Some(g) = C.good_name.iter().position(|n| n == good) else {
+        return Err(format!("there is no good called {good:?}"));
+    };
+    town_ok(sim, t)?;
+    let ms: Vec<usize> = (0..C.M).filter(|&m| C.method_out[m] == g).collect();
+    if ms.is_empty() {
+        return Err(format!("no works on this island makes {}", C.good_label[g].to_lowercase()));
+    }
+    let ws = kind_works(st, C, t, g);
+    if ws.is_empty() && ms.iter().all(|&m| forbidden(st, t, m)) {
+        return Err(format!("no works in {} makes {}, and every way of making it is turned off there already", st.town_name[t], C.good_label[g].to_lowercase()));
+    }
+    Ok((g, ws, ms))
+}
+
+/// Every works of a town that makes a good closed at the turn, as a works
+/// closed by hand is (`close_works`: `firms::close_firm`, which sends each
+/// one's cash where it always goes, then `sim::after_transport` once), and
+/// every method of the good turned off there. The news's title, text and
+/// town, and the first method, for the news's idea.
+fn close_kind(sim: &mut Sim, t: usize, good: &str) -> Result<((String, String, Option<usize>), Option<usize>), String> {
+    let (g, ws, ms) = kind_plan(sim, t, good)?;
+    let year = sim.year;
+    let Sim { st, content: C, params: P, .. } = sim;
+    let names: Vec<String> = ws.iter().map(|&f| st.f_name[f].clone()).collect();
+    let cash: f64 = ws.iter().map(|&f| st.f_cash[f].max(0.0)).sum();
+    for &f in &ws {
+        firms::close_firm(st, C, P, f, year);
+    }
+    if !ws.is_empty() {
+        sim::after_transport(st, C, P);
+    }
+    let newly: Vec<usize> = ms.iter().copied().filter(|&m| !forbidden(st, t, m)).collect();
+    st.by_hand.forbidden.extend(newly.iter().map(|&m| (t, m)));
+    let (place, gl) = (st.town_name[t].clone(), C.good_label[g].to_lowercase());
+    let title = format!("By hand: the works making {gl} in {place} closed ({}), and no more may be built there", ws.len());
+    let ways: Vec<String> = ms.iter().map(|&m| C.method_label[m].to_lowercase()).collect();
+    let closed = if names.is_empty() {
+        "None stood to be closed.".to_string()
+    } else {
+        format!(
+            "{} closed: {}. Their cash of {} went where any closing works' money goes.",
+            works_count(names.len()),
+            crate::inspect::and_list(&names),
+            fmt_thousands_f0(cash)
+        )
+    };
+    let text = format!(
+        "At the turn of {year} the hand closed every works in {place} that made {gl}, and turned off every way of making it there ({}): no new works of it may stand in {place} until a way is turned on again. {closed}",
+        crate::inspect::and_list(&ways)
+    );
+    Ok(((title, text, Some(t)), ms.first().copied()))
+}
+
+/// The works "Build another here" (or "Build one here") would build in town
+/// t to make good g: of every method of the good that a `BuildWorks` would
+/// build in the town now, on the square of the town's district where it
+/// should return most a year, the best of them. Its method's name, the square,
+/// what it costs and what it should return; or the sentence that says why
+/// none would be offered, in the edit's own words. As the tray does, a works
+/// expected to lose money is not offered.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Offer {
+    pub method: String,
+    pub label: String,
+    pub cell: usize,
+    pub cost: f64,
+    pub ret: f64,
+}
+
+/// The `Offer` for good g in town t (see it), or why there is none. It only
+/// reads.
+pub fn best_build(sim: &Sim, t: usize, g: usize) -> Result<Offer, String> {
+    let (st, C, P) = (&sim.st, &sim.content, &sim.params);
+    town_ok(sim, t)?;
+    let place = &st.town_name[t];
+    let mut why: Vec<String> = Vec::new();
+    let mut best: Option<Offer> = None;
+    let district: Vec<usize> = (0..st.N).filter(|&c| st.catch[c] == t as i64 && families::buildable(st, c).is_ok()).collect();
+    for m in (0..C.M).filter(|&m| C.method_out[m] == g) {
+        if !(st.know[(t, m)] > 0.02) {
+            why.push(format!("{} is not known in {place} yet", C.method_label[m]));
+            continue;
+        }
+        if forbidden(st, t, m) {
+            why.push(forbidden_words(st, C, t, m));
+            continue;
+        }
+        let K = works::entry_K(st, C, P, t, m);
+        let cells: Vec<usize> = district.iter().copied().filter(|&c| works::room_on_cell(st, C, P, c, m, K).is_ok()).collect();
+        if cells.is_empty() {
+            why.push(format!("no square of {place}'s district has room for {}", C.method_label[m].to_lowercase()));
+            continue;
+        }
+        let ev = firms::evaluate_sites(st, C, P, t, m, &cells, K, families::prices(st), families::wages(st));
+        let cell = cells[crate::util::argmax(&ev.roi)];
+        // the edit's own judgement on that square
+        match build_plan(sim, &C.method_name[m], cell) {
+            Ok((_, _, w)) => {
+                let o = Offer { method: C.method_name[m].clone(), label: C.method_label[m].clone(), cell, cost: w.cost, ret: w.ev.roi[0] };
+                if best.as_ref().is_none_or(|b| o.ret > b.ret) {
+                    best = Some(o);
+                }
+            }
+            Err(e) => why.push(e),
+        }
+    }
+    match best {
+        Some(o) if o.ret > 0.0 => Ok(o),
+        Some(o) => Err(format!(
+            "none would pay: the best, {} on {}, would return {} a year at last year's prices",
+            o.label.to_lowercase(),
+            square_at(st, o.cell),
+            fmt_pct(o.ret, 0)
+        )),
+        None if why.is_empty() => Err(format!("no works on this island makes {}", C.good_label[g].to_lowercase())),
+        None => Err(why.join("; ")),
+    }
 }
