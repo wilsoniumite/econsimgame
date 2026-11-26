@@ -97,12 +97,16 @@ pub struct Flow {
     /// GOOD>BOX (the good's name, and the start of the name of the box it
     /// goes to), in place of the mouse
     pub point: Option<String>,
+    /// the hand's menu open on a kind of works: its good, and whether it is a faint kind
+    menu: Option<(usize, bool)>,
+    /// the plan and menu the menu's card was last drawn for
+    menu_drawn: Option<(u64, Option<(usize, bool)>)>,
 }
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Flow>().add_systems(Startup, spawn_panel).add_systems(
         Update,
-        (card_chip, open_close, ask, draw, hover, painter).chain().after(game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
+        (card_chip, open_close, ask, draw, menus, draw_menu, hover, painter).chain().after(game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
     );
 }
 
@@ -535,9 +539,22 @@ pub fn paint(p: &Plan, lit: Option<Hit>) -> (usize, usize, Vec<u8>) {
     for (k, f) in p.faint.iter().enumerate() {
         if let Some(f) = f {
             let a = if lit == Some(Hit::Faint(k)) { 0.9 } else { 0.5 };
+            // (one whose idea is found nowhere yet is paler still)
+            let a = if m.faint[k].known { a } else { a * 0.6 };
             c.rect(f.x, f.y, f.x + f.w, f.y + f.h, [236.0, 229.0, 214.0], a);
             c.dashed(f, [120.0, 107.0, 92.0], a);
         }
+    }
+    // TOWN-FLOW-HAND: a box the hand has changed, ruled round in the hand's ink, with a dot at its corner
+    let ink = [HAND[0] * 255.0, HAND[1] * 255.0, HAND[2] * 255.0];
+    let marked_boxes = p.boxes.iter().enumerate().filter(|(i, _)| m.nodes[*i].kind == Kind::Works && m.nodes[*i].good.is_some_and(|g| marked(m, g)));
+    let marked_faint = p.faint.iter().enumerate().filter_map(|(k, f)| f.as_ref().filter(|_| marked(m, m.faint[k].good)).map(|f| (k, f)));
+    for b in marked_boxes.map(|x| x.1).chain(marked_faint.map(|x| x.1)) {
+        let r = 2.5;
+        for (x0, y0, x1, y1) in [(b.x - r, b.y - r, b.x + b.w + r, b.y - r + 1.5), (b.x - r, b.y + b.h + r - 1.5, b.x + b.w + r, b.y + b.h + r), (b.x - r, b.y - r, b.x - r + 1.5, b.y + b.h + r), (b.x + b.w + r - 1.5, b.y - r, b.x + b.w + r, b.y + b.h + r)] {
+            c.rect(x0, y0, x1, y1, ink, 0.95);
+        }
+        c.rect(b.x + b.w + r - 2.0, b.y - r - 4.0, b.x + b.w + r + 4.0, b.y - r + 2.0, ink, 1.0);
     }
     let mut out = Vec::with_capacity(w * h * 4);
     for v in &c.px {
@@ -845,11 +862,24 @@ fn labels(c: &mut ChildSpawnerCommands, f: &Handle<Font>, p: &Plan) {
             isostate_core::util::fmt_thousands_f0(x.through())
         };
         let words = format!("{}  {figure}", x.label);
-        put(b, fit(&words, room), INK, x.col == cols - 1);
+        // (TOWN-FLOW-HAND: in the hand's ink where the hand has changed it)
+        let ink = if x.kind == Kind::Works && x.good.is_some_and(|g| marked(&p.making, g)) { HAND_INK } else { INK };
+        put(b, fit(&words, room), ink, x.col == cols - 1);
     }
     for (k, fp) in p.faint.iter().enumerate() {
         if let Some(b) = fp {
-            put(b, fit(&format!("{} (none here)", p.making.faint[k].label), room), MUTED.with_alpha(0.75), false);
+            let fk = &p.making.faint[k];
+            // (a works of it may stand since the books closed: built by hand at the turn)
+            let since = p.making.hand_of(fk.good).map_or(0, |k| k.standing.len());
+            let words = if since > 0 {
+                format!("{} ({} standing since the books closed)", fk.label, since)
+            } else if fk.known {
+                format!("{} (none here)", fk.label)
+            } else {
+                format!("{} (found nowhere yet)", fk.label)
+            };
+            let ink = if marked(&p.making, fk.good) { HAND_INK } else { MUTED.with_alpha(if fk.known { 0.75 } else { 0.55 }) };
+            put(b, fit(&words, room), ink, false);
         }
     }
     // the words under the pointer, hidden until it rests on something
@@ -934,12 +964,24 @@ fn hover(
             commands.entity(c).despawn();
         }
     }
-    let lines: Vec<String> = match hit_now {
+    let mut lines: Vec<String> = match hit_now {
         Some(Hit::Box(i)) => pl.making.nodes[i].said.clone(),
         Some(Hit::Faint(k)) => std::iter::once(format!("{} (none here)", pl.making.faint[k].label)).chain(pl.making.faint[k].said.iter().cloned()).collect(),
         Some(Hit::Ribbon(k)) => pl.making.ribbons[k].said.clone(),
         None => Vec::new(),
     };
+    // TOWN-FLOW-HAND: what the hand did to a kind, and that a click offers what it may do
+    if let Some(g) = hit_now.and_then(|h| menu_key(&pl, h)).map(|k| k.0) {
+        if let Some(k) = pl.making.hand_of(g) {
+            lines.extend(k.by_hand.iter().cloned());
+            lines.extend(k.methods.iter().filter(|x| x.forbidden).map(|x| format!("{} is turned off here by hand.", x.label)));
+        }
+        lines.push("Click it for what the hand may do here.".to_string());
+    }
+    // (the words step aside while a menu is open)
+    if flow.menu.is_some() {
+        lines.clear();
+    }
     if let (Some(at), false) = (at, lines.is_empty()) {
         // beside the pointer, on the side with room
         let right = at.x < 0.55 * pl.w;
@@ -986,6 +1028,315 @@ fn painter(mut flow: ResMut<Flow>, mut images: ResMut<Assets<Image>>) {
     flow.painting = Some((flow.generation, lit, task, Instant::now()));
 }
 
+// ---------------------------------------------------------------- TOWN-FLOW-HAND: the hand on the panel
+//
+// Every view is also a handle (docs/designs/sandbox.md, "Built: the hand on a
+// town's making"). A click on a box of works opens a small card of what the
+// hand may do to that kind here: build another, close one, close all and
+// forbid the kind, and each way of making its good, with which is in use, to
+// turn off or on again or (an idea found nowhere yet) to find here. A click
+// on a faint kind offers to build one, or to find its idea. Each chip sends
+// one edit under the tray's own guards (`sandbox::send_as`: the hand works
+// only in the present, one thing at a time), and its answer goes up as the
+// tray's do. Building and closing one are the tray's very edits, judged by the
+// same function (`edits::best_build`, `edits::works_offered`); the rest are
+// `Edit::Forbid`, `Edit::Allow` and `Edit::CloseKind`. What the menu offers
+// comes with the making from the game's thread (`Making::hand`), so the view
+// never waits for it. A script opens a menu with `point:menu:NAME`.
+
+/// The hand's ink, as the tray's (`sandbox::HAND_INK`), for the painting.
+const HAND: [f32; 3] = [0.13, 0.24, 0.45];
+use crate::sandbox::{Tool, HAND_INK};
+use isostate_core::edits::Edit;
+
+/// Whether the hand has changed the kind that makes good g here: an edit of
+/// it in the town's news, or a way of making it turned off.
+fn marked(m: &Making, g: usize) -> bool {
+    m.hand_of(g).is_some_and(|k| !k.by_hand.is_empty() || k.methods.iter().any(|x| x.forbidden))
+}
+
+/// The kind a box or faint kind stands for, as the menu keys it: its good,
+/// and whether it is faint. None for a box of another sort (the land, the
+/// households, the smaller kinds together).
+fn menu_key(p: &Plan, h: Hit) -> Option<(usize, bool)> {
+    match h {
+        Hit::Box(i) => p.making.nodes[i].good.filter(|_| p.making.nodes[i].kind == Kind::Works).map(|g| (g, false)),
+        Hit::Faint(k) => Some((p.making.faint[k].good, true)),
+        Hit::Ribbon(_) => None,
+    }
+}
+
+/// Where a kind stands on the chart.
+fn menu_place(p: &Plan, key: (usize, bool)) -> Option<&Place> {
+    if key.1 {
+        p.making.faint.iter().position(|f| f.good == key.0).and_then(|k| p.faint[k].as_ref())
+    } else {
+        p.making.nodes.iter().position(|n| n.kind == Kind::Works && n.good == Some(key.0)).map(|i| &p.boxes[i])
+    }
+}
+
+/// A chip of the menu: its words, the edit it sends and the tool whose answer
+/// it is (or why it is refused, said when it is pressed), and the line beside it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Item {
+    pub label: String,
+    pub edit: Result<Edit, String>,
+    pub tool: Tool,
+    pub line: String,
+}
+
+/// The menu of a kind: its title, what the hand did to it here, the chips for
+/// the kind as a whole, and a row for each way of making its good (its words,
+/// and the chip that turns it off or on, or finds it here).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Menu {
+    pub title: String,
+    pub done: Vec<String>,
+    pub items: Vec<Item>,
+    pub head: String,
+    pub ways: Vec<(String, Option<Item>)>,
+}
+
+fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or_else(String::new, |first| first.to_uppercase().chain(c).collect())
+}
+
+fn sum(x: f64) -> String {
+    isostate_core::util::fmt_thousands_f0(x)
+}
+
+/// The menu for the kind that makes good g (faint or not) in making `m`, on
+/// an island `width` squares wide; None where the making has no hand for it.
+pub fn menu_for(m: &Making, g: usize, faint: bool, width: usize) -> Option<Menu> {
+    let k = m.hand_of(g)?;
+    let good = m.good_label.get(g).map_or(String::new(), |s| s.to_lowercase());
+    let title = if faint {
+        m.faint.iter().find(|f| f.good == g).map_or(cap(&good), |f| f.label.clone())
+    } else {
+        m.nodes.iter().find(|n| n.kind == Kind::Works && n.good == Some(g)).map_or(cap(&good), |n| n.label.clone())
+    };
+    let works = Tool::Works;
+    let mut items = Vec::new();
+    let known_faint = faint && m.faint.iter().find(|f| f.good == g).is_some_and(|f| f.known);
+    if !faint || known_faint {
+        let label = if faint { "Build one here" } else { "Build another here" };
+        items.push(match &k.build {
+            Ok(o) => Item {
+                label: label.into(),
+                edit: Ok(Edit::BuildWorks { method: o.method.clone(), cell: o.cell }),
+                tool: works,
+                line: format!(
+                    "{} on {}, {}: it costs {}, paid by hand, and should return {} a year. It is built at the year's turn.",
+                    o.label,
+                    o.cell % width.max(1),
+                    o.cell / width.max(1),
+                    sum(o.cost),
+                    isostate_core::util::fmt_pct(o.ret, 0)
+                ),
+            },
+            Err(why) => Item { label: label.into(), edit: Err(format!("{}: nothing was built.", cap(why))), tool: works, line: format!("None is offered: {why}.") },
+        });
+    }
+    if let Some(s) = k.standing.first() {
+        let n = k.standing.len();
+        items.push(Item {
+            label: "Close one".into(),
+            edit: Ok(Edit::CloseWorks { works: s.works }),
+            tool: works,
+            line: format!(
+                "Closes {} ({}, {}), the smallest of the {n}, at the year's turn.",
+                s.name,
+                s.label.to_lowercase(),
+                if s.plant < 0.05 {
+                    "with no plant yet".to_string()
+                } else {
+                    format!("up to {} {good} a month", if s.plant < 10.0 { format!("{:.1}", s.plant) } else { sum(s.plant) })
+                }
+            ),
+        });
+        items.push(Item {
+            label: "Close all and forbid this kind here".into(),
+            edit: Ok(Edit::CloseKind { town: m.town, good: k.good_name.clone() }),
+            tool: works,
+            line: format!("Closes all {n} at the year's turn, and turns off every way of making {good} in {}.", m.name),
+        });
+    }
+    if faint && !known_faint {
+        if let Some(x) = k.methods.iter().find(|x| x.discover.is_some()) {
+            items.push(Item {
+                label: "Discover it here".into(),
+                edit: Ok(crate::sandbox::discover_edit(x.discover.clone().unwrap_or_default(), m.town)),
+                tool: Tool::Idea,
+                line: format!("{} is found in {} at once, by hand: a quarter of the town knows it, and it spreads from there.", x.label, m.name),
+            });
+        }
+    }
+    let ways = k
+        .methods
+        .iter()
+        .map(|x| {
+            let off = Item { label: format!("Turn off {}", x.label), edit: Ok(Edit::Forbid { town: m.town, method: x.name.clone() }), tool: works, line: String::new() };
+            if x.forbidden {
+                let on = Item { label: format!("Turn on {}", x.label), edit: Ok(Edit::Allow { town: m.town, method: x.name.clone() }), tool: works, line: String::new() };
+                let left = if x.standing > 0 { format!("; {} of it still stand", x.standing) } else { String::new() };
+                (format!("{}: turned off here by hand{left}", x.label), Some(on))
+            } else if x.standing > 0 {
+                (format!("{}: in use, {} works here", x.label, x.standing), Some(off))
+            } else if x.known {
+                (format!("{}: known here, used by none", x.label), Some(off))
+            } else if let Some(idea) = &x.discover {
+                let find = Item { label: format!("Discover {} here", x.label), edit: Ok(crate::sandbox::discover_edit(idea.clone(), m.town)), tool: Tool::Idea, line: String::new() };
+                (format!("{}: found nowhere yet", x.label), Some(find))
+            } else if x.towns > 0 {
+                (format!("{}: known in {} town{}, not here yet; it comes along the trade", x.label, x.towns, if x.towns == 1 { "" } else { "s" }), None)
+            } else {
+                (format!("{}: found, and not known here yet", x.label), None)
+            }
+        })
+        .collect();
+    let head = format!("Ways of making {good}. A works keeps its way all its life: one turned off is built here no more, and those standing go on until they close.");
+    Some(Menu { title, done: k.by_hand.clone(), items, head, ways })
+}
+
+/// The menu's card.
+#[derive(Component)]
+struct FlowMenu;
+
+/// A chip of the menu.
+#[derive(Component, Clone)]
+struct HandChip(Item);
+
+/// Open a menu with a click on a box of works or a faint kind (or a script's
+/// `point:menu:NAME`), shut it with a click elsewhere on the chart; a chip
+/// pressed sends its edit under the tray's guards, or says why it is refused.
+#[allow(clippy::too_many_arguments)]
+fn menus(
+    mut flow: ResMut<Flow>,
+    chart: Query<&Interaction, (Changed<Interaction>, With<FlowChart>)>,
+    chips: Query<(&Interaction, &HandChip), Changed<Interaction>>,
+    mut sb: ResMut<Sandbox>,
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    live: Res<Live>,
+    mut game: ResMut<Game>,
+    mut toasts: ResMut<crate::Toasts>,
+    time: Res<Time>,
+) {
+    if flow.town.is_none() {
+        flow.menu = None;
+        return;
+    }
+    let Some(pl) = flow.plan.clone() else { return };
+    // a script's menu
+    if let Some(name) = flow.point.as_deref().and_then(|p| p.strip_prefix("menu:")).map(str::to_string) {
+        flow.point = None;
+        let shut = name.trim().eq_ignore_ascii_case("none");
+        flow.menu = if shut { None } else { find(&pl, &name).and_then(|h| menu_key(&pl, h)) };
+        match flow.menu {
+            Some((g, _)) => println!("making: the hand's menu of {}", pl.making.good_label.get(g).map_or("", |s| s.as_str())),
+            None if shut => println!("making: the hand's menu shut"),
+            None => println!("making: no menu for {name}"),
+        }
+        return;
+    }
+    if chart.iter().any(|i| *i == Interaction::Pressed) {
+        let key = flow.hit.and_then(|h| menu_key(&pl, h));
+        flow.menu = if key == flow.menu { None } else { key };
+    }
+    // a menu whose kind is gone from the chart is shut
+    if flow.menu.is_some_and(|k| menu_place(&pl, k).is_none()) {
+        flow.menu = None;
+    }
+    for (i, chip) in &chips {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let now = time.elapsed_secs();
+        match &chip.0.edit {
+            Err(why) => {
+                toasts.say("orders_refused", why, "By hand", now);
+                println!("making: refused: {why}");
+            }
+            Ok(edit) => match crate::sandbox::send_as(chip.0.tool, edit.clone(), &mut sb, &tl, &data, &live, &mut game) {
+                Ok(()) => println!("making: by hand from the panel: {}", serde_json::to_string(edit).unwrap_or_default()),
+                Err(why) => {
+                    toasts.say("orders_refused", why, "By hand", now);
+                    println!("making: refused: {why}");
+                }
+            },
+        }
+    }
+}
+
+/// The menu's card, drawn again when it opens or shuts or a new plan is drawn
+/// (each answer, so after each edit).
+fn draw_menu(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    data: Res<Data>,
+    mut flow: ResMut<Flow>,
+    chart: Query<Entity, With<FlowChart>>,
+    old: Query<Entity, With<FlowMenu>>,
+    mut tip: Query<&mut Visibility, With<FlowTip>>,
+) {
+    let now = (flow.generation, flow.menu);
+    if flow.menu_drawn == Some(now) {
+        return;
+    }
+    flow.menu_drawn = Some(now);
+    for e in &old {
+        commands.entity(e).despawn();
+    }
+    let (Some(pl), Some(key)) = (flow.plan.clone(), flow.menu) else { return };
+    let (Some(menu), Some(at), Ok(chart)) = (menu_for(&pl.making, key.0, key.1, data.r.w), menu_place(&pl, key), chart.single()) else { return };
+    if let Ok(mut v) = tip.single_mut() {
+        *v = Visibility::Hidden;
+    }
+    let f = font.0.clone();
+    let right = at.x < 0.55 * pl.w;
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        top: Val::Px((at.y - 12.0).clamp(0.0, (pl.h - 360.0).max(0.0))),
+        width: Val::Px(380.0),
+        padding: UiRect::axes(Val::Px(12.0), Val::Px(9.0)),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(4.0),
+        border: UiRect::all(Val::Px(1.5)),
+        border_radius: BorderRadius::all(Val::Px(10.0)),
+        ..default()
+    };
+    if right {
+        node.left = Val::Px(at.x + at.w + 14.0);
+    } else {
+        node.right = Val::Px(pl.w - at.x + 14.0);
+    }
+    println!("making: menu of {}: {}; {}", menu.title, menu.items.iter().map(|i| i.label.as_str()).collect::<Vec<_>>().join(", "), menu.ways.iter().map(|w| w.0.as_str()).collect::<Vec<_>>().join("; "));
+    commands.entity(chart).with_children(|c| {
+        c.spawn((node, BackgroundColor(Color::srgb(1.0, 0.99, 0.96)), BorderColor::all(HAND_INK.with_alpha(0.7)), Interaction::default(), FocusPolicy::Block, GlobalZIndex(14), FlowMenu)).with_children(|card| {
+            card.spawn(text(&f, &format!("By hand: {}", menu.title), 14.0, HAND_INK));
+            for l in menu.done.iter().rev().take(3).rev() {
+                card.spawn(text(&f, l, 11.0, HAND_INK.with_alpha(0.85)));
+            }
+            for item in &menu.items {
+                card.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), margin: UiRect::top(Val::Px(3.0)), ..default() }).with_children(|row| {
+                    row.spawn(Node::default()).with_children(|r| crate::family::chip_button(r, &f, &item.label, false, HAND_INK, HandChip(item.clone())));
+                    row.spawn(text(&f, &item.line, 11.0, if item.edit.is_ok() { INK } else { MUTED }));
+                });
+            }
+            card.spawn((Node { margin: UiRect::top(Val::Px(6.0)), ..default() }, text(&f, &menu.head, 11.0, MUTED)));
+            for (words, chip) in &menu.ways {
+                card.spawn(Node { column_gap: Val::Px(8.0), align_items: AlignItems::Center, flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|row| {
+                    row.spawn(text(&f, words, 11.5, INK));
+                    if let Some(item) = chip {
+                        crate::family::chip_button(row, &f, &item.label, false, HAND_INK, HandChip(item.clone()));
+                    }
+                });
+            }
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1029,12 +1380,13 @@ mod tests {
             cols: 4,
             nodes,
             ribbons,
-            faint: vec![isostate_core::making::Faint { good: 6, label: "Glassworks".into(), col: 2, said: vec!["glass".into()] }],
+            faint: vec![isostate_core::making::Faint { good: 6, label: "Glassworks".into(), col: 2, said: vec!["glass".into()], known: true }],
             goods: vec![GoodFlow::default()],
             good_label: ["Grain", "Coal", "Iron", "Wool", "Cloth", "Tools", "Glass"].iter().map(|s| s.to_string()).collect(),
             good_colour: ["#d6b85a", "#2e2b28", "#5b6670", "#e8e1cf", "#a8476b", "#6e5b45", "#9fd0c8"].iter().map(|s| s.to_string()).collect(),
             hands: 670.0,
             said: String::new(),
+            hand: Vec::new(),
         }
     }
 
@@ -1096,6 +1448,78 @@ mod tests {
         assert_eq!(find(&p, "glass"), Some(Hit::Faint(0)));
         assert_eq!(find(&p, "nothing of the kind"), None);
         assert_eq!(hit(&p, Vec2::new(p.w - 1.0, 1.0)), None);
+    }
+
+    /// TOWN-FLOW-HAND: the hand's figures for the small town's mill (cloth, good 4) and its faint glassworks.
+    fn with_hand() -> Making {
+        use isostate_core::edits::Offer;
+        use isostate_core::making::{KindHand, MethodHand, Standing};
+        let way = |m: usize, name: &str, standing: usize, known: bool, discover: Option<&str>| MethodHand {
+            method: m,
+            name: name.into(),
+            label: name.replace('_', " "),
+            standing,
+            known,
+            found: discover.is_none(),
+            towns: 1,
+            forbidden: false,
+            discover: discover.map(str::to_string),
+            recipe: String::new(),
+        };
+        let mut m = making();
+        m.nodes[3].good = Some(4);
+        m.hand = vec![
+            KindHand {
+                good: 4,
+                good_name: "cloth".into(),
+                standing: vec![Standing { works: 17, name: "Testham Mill".into(), label: "Powered mill".into(), plant: 40.0 }, Standing { works: 9, name: "Testham Mill No. 2".into(), label: "Powered mill".into(), plant: 80.0 }],
+                methods: vec![way(3, "handloom_weaving", 0, true, None), way(4, "powered_mill", 2, true, None), way(5, "power_loom_shed", 0, false, Some("power_loom_shed"))],
+                build: Ok(Offer { method: "powered_mill".into(), label: "Powered mill".into(), cell: 2 * 100 + 7, cost: 9000.0, ret: 0.21 }),
+                by_hand: Vec::new(),
+            },
+            KindHand { good: 6, good_name: "glass".into(), standing: Vec::new(), methods: vec![way(8, "glass_cone", 0, true, None)], build: Err("none would pay: the best, glass cone on 3, 4, would return -12% a year at last year's prices".into()), by_hand: Vec::new() },
+        ];
+        m
+    }
+
+    #[test]
+    fn a_boxs_menu_offers_the_trays_own_edits_and_each_way_of_making_its_good() {
+        let m = with_hand();
+        let menu = menu_for(&m, 4, false, 100).expect("the mill has a menu");
+        let labels: Vec<&str> = menu.items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(labels, ["Build another here", "Close one", "Close all and forbid this kind here"]);
+        // Build another here and Close one are the Works tool's very edits
+        let (build, close) = crate::sandbox::works_tool_edits(207, "powered_mill", 17);
+        assert_eq!(menu.items[0].edit, Ok(build));
+        assert_eq!(menu.items[1].edit, Ok(close), "the smallest is closed");
+        assert!(menu.items[0].line.starts_with("Powered mill on 7, 2: it costs 9,000"), "{}", menu.items[0].line);
+        assert_eq!(menu.items[2].edit, Ok(Edit::CloseKind { town: 0, good: "cloth".into() }));
+        // each way: in use or known, turned off; found nowhere, found here (the Idea tool's edit)
+        assert_eq!(menu.ways.len(), 3);
+        assert!(menu.ways[1].0.contains("in use, 2 works"), "{:?}", menu.ways[1]);
+        assert_eq!(menu.ways[1].1.as_ref().map(|i| i.edit.clone()), Some(Ok(Edit::Forbid { town: 0, method: "powered_mill".into() })));
+        let find = menu.ways[2].1.as_ref().unwrap();
+        assert_eq!((find.label.as_str(), find.tool), ("Discover power loom shed here", Tool::Idea));
+        assert_eq!(find.edit, Ok(crate::sandbox::discover_edit("power_loom_shed".into(), 0)));
+        // turned off by hand, the way offers to be turned on, and the box is marked
+        let mut off = with_hand();
+        off.hand[0].methods[1].forbidden = true;
+        let menu = menu_for(&off, 4, false, 100).unwrap();
+        assert_eq!(menu.ways[1].1.as_ref().map(|i| i.edit.clone()), Some(Ok(Edit::Allow { town: 0, method: "powered_mill".into() })));
+        assert!(marked(&off, 4) && !marked(&m, 4));
+        let p = plan(&off, 900.0, 500.0);
+        assert_ne!(paint(&p, None).2, paint(&plan(&m, 900.0, 500.0), None).2, "the mark is painted");
+        // a faint kind none would pay for: Build one here says why, in the core's words, when pressed
+        let faint = menu_for(&m, 6, true, 100).unwrap();
+        assert_eq!(faint.items.len(), 1);
+        assert_eq!(faint.items[0].label, "Build one here");
+        let why = faint.items[0].edit.clone().unwrap_err();
+        assert!(why.starts_with("None would pay: the best, glass cone") && why.ends_with("nothing was built."), "{why}");
+        // only a kind of works has a menu
+        let pl = plan(&m, 900.0, 500.0);
+        assert_eq!(menu_key(&pl, Hit::Box(3)), Some((4, false)));
+        assert_eq!(menu_key(&pl, Hit::Box(1)), None, "the land has none");
+        assert_eq!(menu_key(&pl, Hit::Faint(0)), Some((6, true)));
     }
 
     #[test]

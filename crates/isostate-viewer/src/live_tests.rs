@@ -1689,3 +1689,53 @@ fn a_towns_making_comes_from_the_thread_and_follows_the_year() {
     let m = a.ask(Thing::Making(towns[0])).unwrap().making.unwrap();
     assert_eq!(m.year, 1760);
 }
+
+// TOWN-FLOW-HAND (town_flow.rs): the hand on a town's making. On island 7 at
+// the turn into 1790, under the game's rules as they stand, six families,
+// nobody at the first: in the town whose making has most hands, the panel's
+// menu of a kind with works standing and one offered builds another, closes
+// one and turns a way of making it off; sent through the thread they are
+// carried out in the lines they write in the news, and a game given the Works
+// tool's own edits for the same (and the same way turned off, which no tool
+// of the tray makes) holds everything the same to the last digit a year on.
+// It looks for its kind rather than naming one.
+#[test]
+fn the_making_panels_edits_go_through_the_thread_and_give_the_trays_island() {
+    use isostate_core::inspect::Thing;
+    let open = || Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() });
+    let (mut a, mut b) = (open(), open());
+    assert_eq!(a.year(), 1790);
+    let k = a.r.filled - 1;
+    let towns: Vec<usize> = (0..a.r.n_towns).filter(|&t| a.r.town_active[k * a.r.n_towns + t] != 0).collect();
+    let makings: Vec<isostate_core::making::Making> = towns.iter().map(|&t| a.ask(Thing::Making(t)).unwrap().making.unwrap()).collect();
+    // the town with most hands that has a kind with works standing, one offered and a way in use
+    let mut by_hands: Vec<&isostate_core::making::Making> = makings.iter().collect();
+    by_hands.sort_by(|x, y| y.hands.total_cmp(&x.hands));
+    let (m, kind) = by_hands
+        .iter()
+        .find_map(|m| m.hand.iter().find(|k| k.build.is_ok() && !k.standing.is_empty()).map(|k| (*m, k)))
+        .expect("a kind with works standing and one offered");
+    eprintln!("{}: {} works making {}, one more offered", m.name, kind.standing.len(), m.good_label[kind.good]);
+    let menu = crate::town_flow::menu_for(m, kind.good, false, a.r.w).unwrap();
+    let edit = |label: &str| menu.items.iter().find(|i| i.label == label).unwrap().edit.clone().unwrap();
+    let (build, close) = (edit("Build another here"), edit("Close one"));
+    let off = menu.ways.iter().find(|w| w.0.contains("in use")).and_then(|w| w.1.clone()).unwrap().edit.unwrap();
+    let isostate_core::edits::Edit::BuildWorks { method, cell } = build.clone() else { panic!("{build:?}") };
+    let isostate_core::edits::Edit::CloseWorks { works } = close.clone() else { panic!("{close:?}") };
+    let (tray_build, tray_close) = crate::sandbox::works_tool_edits(cell, &method, works);
+    assert_eq!((&build, &close), (&tray_build, &tray_close), "the panel's are the Works tool's edits");
+    for (e, starts) in [(build, "built for"), (close, "closed"), (off.clone(), "turned off in")] {
+        assert!(a.order("by_hand", Cmd::ByHand(e)), "{}", a.said);
+        assert!(a.said.starts_with("By hand: ") && a.said.contains(starts), "{}", a.said);
+    }
+    for e in [tray_build, tray_close, off] {
+        assert!(b.order("by_hand", Cmd::ByHand(e)), "{}", b.said);
+    }
+    // the panel asked again has the hand's lines on the kind
+    let again = a.ask(Thing::Making(m.town)).unwrap().making.unwrap();
+    let hand = again.hand_of(kind.good).unwrap();
+    assert!(hand.by_hand.len() >= 3 && hand.methods.iter().any(|x| x.forbidden), "{:?}", hand.by_hand);
+    a.step();
+    b.step();
+    same(&a, &b, "a year after the panel's edits and the tray's");
+}

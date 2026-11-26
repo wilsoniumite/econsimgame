@@ -698,6 +698,20 @@ pub(crate) fn idea_tool_edit(name: &str, town: usize) -> Edit {
     sb.edit(Some(town), Some(Pick::Town(town))).expect("the Idea tool makes an edit with an idea chosen and a town clicked")
 }
 
+/// TOWN-FLOW-HAND: the edits the Works tool makes with `method` built on
+/// `cell` and with works `works` closed, for holding the Making panel's to
+/// them (town_flow.rs).
+#[cfg(test)]
+pub(crate) fn works_tool_edits(cell: usize, method: &str, works: usize) -> (Edit, Edit) {
+    let mut sb = Sandbox { tool: Tool::Works, ..default() };
+    sb.site = Some(cell);
+    sb.keep_offers(Ok(Offers { place: String::new(), list: vec![Offer { name: method.into(), label: method.into(), cost: 1.0, ret: 0.1 }], more: 0 }));
+    let build = sb.build().expect("Build it here makes an edit with a works chosen on the square taken");
+    sb.choice[Tool::Works.index()][0] = 1;
+    let close = sb.click(None, Some(Pick::Firm(works))).expect("Close a works makes an edit on a works").expect("an edit");
+    (build, close)
+}
+
 /// Send an edit made somewhere other than the map, under the tray's guards,
 /// as if the tool `tool` had made it: its answer goes up as that tool's does
 /// (`answers`). Or the guard's refusal, and nothing is sent.
