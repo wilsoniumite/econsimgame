@@ -392,6 +392,8 @@ pub fn plain(name: &str) -> Option<&'static str> {
         "state.pension_share" => Some("The pension, as a share of the town's wage: those it is paid to leave work"),
         "state.university_share" => Some("The share of each cohort the university takes after school, out of work while there"),
         "who_works.enabled" => Some("Who works follows age: school, the university and the pension take hands out of work"),
+        "haulage.handling" => Some("From 1901 a load pays a station's handling to be put on a train and again to be taken off"),
+        "haulage.wear" => Some("From 1901 a road is worn by what goes over it by road, not by the railway beside it"),
         _ => None,
     }
 }

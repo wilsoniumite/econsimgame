@@ -278,10 +278,14 @@
 # everyone's); 1750-1900 held
 # Taken: on the merge of main (pace) into night/g-lorry: 1901-2050 economy,
 # books, news and run.bin, the lorry and pace together; 1750-1900 held
+# Taken: haulage on under the game's rules (docs/rules/haulage.md): from 1901
+# the railway a layer of its own in the cost graph with the wharf's charge to
+# get on and off, and a road worn by its own traffic; 1901-2050 moved,
+# 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x115d1bac67fe985e
-1901-2050 books    0xa7817e00f2d2dd2c
-1901-2050 news     0xa735135428bbfb84
-1901-2050 run.bin  0x860084f227908b91
+1901-2050 economy  0x7b0d79a68ec2993d
+1901-2050 books    0x7219adb5b277f86c
+1901-2050 news     0xe88c8c4d8a7b2f8e
+1901-2050 run.bin  0xb9f4bf567bc16a0a

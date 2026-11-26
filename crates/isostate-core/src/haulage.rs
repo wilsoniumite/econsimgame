@@ -50,9 +50,9 @@ impl Default for HaulageParams {
 }
 
 impl HaulageParams {
-    /// The game's.
+    /// The game's: both on.
     pub fn game() -> HaulageParams {
-        HaulageParams { handling: false, wear: false }
+        HaulageParams { handling: true, wear: true }
     }
 }
 
