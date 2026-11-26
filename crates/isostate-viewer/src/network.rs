@@ -600,7 +600,8 @@ const APPROACH_PAST: f32 = 0.03;
 /// `route` does (`round_water`).
 pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool) -> Way {
     let straight = route_rivers(g, a, b, round);
-    if !straight.straight() {
+    // (a way that goes round a meander, a lake or the tide keeps the way it had)
+    if !straight.straight() || route(g, a, b, round).water != OnWater::None {
         return route(g, a, b, round);
     }
     let chord = (b - a).normalize_or(Vec2::X);
