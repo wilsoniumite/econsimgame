@@ -23,6 +23,14 @@ caps. A second switch, `tasks.tending_wide`, lets the robot and the line that ru
 the pits and the carts too; it narrows the towns' fall from eight points to four and lifts 2050 over 1970
 to 1.28, but the towns still fall, so both stand off.
 
+**Tried again with care** ([care.md](care.md), on since 26 November 2026; "Tried again with care", below):
+the slumps that doubled with tending were traced to the power stations, whose own machines ran on current
+bought a month late from a market they were starving. That is mended (`tasks.own_run`, on under the game's
+rules), and the extra slumps halve. But the mend shows that part of what tending seemed to give, a better
+wage and fuller towns, leaned on that shortage: with the stations' machines running, the line that runs
+itself takes the whole of tending after 2030, the wage of 2050 falls back to 1970's and the towns to 0.50 to
+0.52 against main's 0.556. So tending stays off, with its wider reach.
+
 **Tending** is feeding and minding a process, fitting and driving: the largest
 class of the works' hours, 0.37 of them in 1900 and 0.44 in 2050 on main
 (islands 1 to 8), and the one no machine took in the works before this rule.
@@ -367,7 +375,132 @@ town-months, 154 of them by more than 5 a head. (The one other was the first cit
 (21.5 years); the cure cuts it to 3.1, by the robots holding the carts' tending, which was not traced
 further. The mend belongs to the lorry's accounting, not here.
 
+## Tried again with care
+
+On 26 November 2026, after care ([care.md](care.md)) was switched on to hold the freed hands in the towns:
+islands 1 to 8 and 17 to 32 to 2050 under the game's rules with six families, care on, machines that tend
+off, on, and on with the wider reach:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.tending=false,true \
+    --set tasks.tending_wide=false,true --standing --out DIR
+```
+
+Every run passed with its money checked every month, and the standing check is 12 of 12 inside in every arm
+on both sets of islands, so nothing before 1908 moves. The hunger the morning saw is gone in every arm (under
+one year in a run, since the hauliers' till, [lorry.md](lorry.md)).
+
+### The slumps
+
+With machines that tend the news told twice the slumps (16.1 and 16.9 verdicts a run on islands 1 to 8,
+against 7.9 without them), and four times the depressions. The news's slump clock reads what is made, linked
+([measures.md](measures.md)), and replayed year by year with each fall split by good at the link's prices,
+every extra slump is after 1970, and the good that falls most is services, the offices' making, in four
+alarms of five.
+
+**What falls first is current.** Month by month on island 7 (`examples/slump_trace.rs`, below), the
+island's making swings up and down over two or three years, and with it the market's fill of electricity
+(what the stations made over what was asked): 0.99 at the top, 0.88 and 0.77 at the bottom. Coal, oil and
+paper are never short. A works' machines stand idle in the measure their current is short ("A machine short
+of its run good", [tasks.md](tasks.md)), so where machines hold the tending every works makes less, the
+offices most. The stations had a tenth of their capacity to spare all along, and their coal; what they
+lacked was their own current. Their machines (the line, the robot, office computing in their offices) ran on
+electricity bought from the market, which a station makes and sells and cannot keep: so in a month of short
+current the stations' machines stood idle too, the stations made less, and the next month was shorter
+still. Their hands were hired for last month's fill, so a short station also took more hands a unit, its
+margin fell and it ran less of its plant. The shortage fed itself for a year and then turned. Without
+tending the stations' machines held little of their work and the loop was too weak to swing the island.
+
+That is a fault of the rule's timing, not the economy's truth: a power station runs its machines on what it
+makes. **The mend, `tasks.own_run`** (on under the game's rules; nothing under the port's, where the tasks
+rule is off): a works whose machines run on the good it makes runs them on its own making, so the market's
+fill of that good does not idle them; of that good it buys from the market no more than the market's fill,
+and its machines take the rest from what it makes. Today only the stations make a run good. (What the
+stations' machines take from their own making is not taken from what they sell: their machines' current
+times the market's shortfall, not measured.) It acts from 1901, when the first machine runs on anything, and
+moves the game's golden hashes of 1901 to 2050.
+
+On island 7 with tending the swing is gone: from 2000 to 2023 what is made moves by 2.4 per cent a year at
+most, where it moved by 3 to 7 up and down, and the stations run 0.98 of their plant, where they ran 0.90.
+A shortage of current is left, steady from year to year though it flickers from one month to the next: the
+market's fill stays near 0.92 from 2000 to 2050 (0.82 at the lowest), with the stations at nearly all their
+plant, so their building does not keep up with what the machines ask. That was not traced.
+
+| islands 1 to 8 | tending off | on | on, wider reach |
+|---|---|---|---|
+| slumps (news verdicts), before the mend | 7.9 | 16.1 | 16.9 |
+| with it | 8.8 | 10.5 | 11.2 |
+| depressions (a fall of 8 per cent or more) after 1900, a run, before / with | 0.0 / 0.1 | 2.5 / 0.4 | 4.4 / 0.9 |
+| islands 17 to 32, slumps with the mend | 10.1 | 12.3 | 13.9 |
+
+With the mend tending adds two slumps a run on islands 1 to 8 and on 17 to 32 (12.3 against 10.1), the wider
+reach three to four. What is left is the offices' own: their tending, clerking and judging all held by
+machines, they make each month what the market will take with few hands to steady them, and services still
+lead the falls. That was not chased further.
+
+### What the mend showed
+
+With the stations' machines running, tending is a different island:
+
+| 24 islands (1 to 8 and 17 to 32), the mend on | main (care off, tending off) | care, tending off | care, tending on | care, on with the wider reach |
+|---|---|---|---|---|
+| townsfolk 2050 | 0.556 | 0.589 | 0.498 | 0.521 |
+| what a wage buys, 2050 over 1970 (linked) | 1.17 | 1.17 | 1.00 | 1.02 |
+| what is made a head, 2050 over 1970 | 1.15 | 1.10 | 1.23 | 1.36 |
+| slumps (verdicts) | 10.6 | 9.7 | 11.7 | 13.0 |
+| the growth asks | met | met | the wage's missed on islands 1 to 8 (0.94) | the wage's missed on islands 1 to 8 (0.96) |
+
+Before the mend the arms with tending had a better wage than without (1.23 and 1.28 on these islands) and the
+wider reach kept the towns above main's (0.567). Every year of short current idled the machines and hired
+the hands back. With the stations' machines running, the wage holds to 2030 and falls after it, when the line
+that runs itself reaches the whole of tending: on islands 1 to 8 with the wider reach the linked wage is 16.6
+in 2010, 16.5 in 2030 and 13.8 in 2050, work's share of income 0.46 and profits 0.29. A trial with the line's
+reach at nine tenths, the robot's (islands 1 to 8, not landed), lifts the wage of 2050 over 1970 to 0.99 and
+1.01 and the towns to 0.490 and 0.528: not enough.
+
+**Who gains and who loses** (the mend on, islands 1 to 8 and 17 to 32, means; tending off / on / on with the
+wider reach):
+
+| | tending off | on | wider reach |
+|---|---|---|---|
+| a tender's real pay, 2050 over 1970 | 1.29 / 1.31 | 0.97 / 1.11 | 0.85 / 1.00 |
+| a hauler's | 2.12 / 2.07 | 2.17 / 2.28 | 2.44 / 2.55 |
+| a clerk's; a judge's | 0.66; 0.76 / 0.66; 0.78 | 0.51; 0.62 / 0.54; 0.68 | 0.51; 0.66 / 0.57; 0.75 |
+| the mean, which care's hands are paid (one wage clears each town) | 1.16 / 1.18 | 0.94 / 1.03 | 0.96 / 1.05 |
+| the schooled over the plain, 2050 | 0.60 / 0.61 | 0.60 / 0.61 | 0.63 / 0.66 |
+| work's share of income, 2050 | 0.64 / 0.62 | 0.45 / 0.49 | 0.46 / 0.45 |
+| rents (the land's share), 2050 | 0.18 / 0.17 | 0.19 / 0.20 | 0.20 / 0.20 |
+| profits (the works' share), 2050 | 0.16 / 0.16 | 0.29 / 0.26 | 0.29 / 0.26 |
+| hands in care, 2050 | 0.165 / 0.169 | 0.177 / 0.180 | 0.188 / 0.196 |
+
+(Islands 1 to 8 / 17 to 32.) Everyone who works loses against the arm without the machines but the haulers,
+whose lorries the wider reach drives; the clerks and judges lose most, since office computing and models took
+their tasks already and now the tenders crowd in. What work loses, profits gain: the works' share of income
+nearly doubles. Care's hands grow (0.17 to 0.19 of all hands), at the one wage.
+
+**So it stays off.** The pass for switching it on was: the towns of 2050 no lower than main's less 0.02
+(0.536); what a wage buys in 2050 over 1970 no lower than with tending off (1.17); what is made a head
+clearly higher; the three growth asks and the twelve; slumps no more than two above tending off. With the
+mend, made a head (1.23, 1.36), the twelve and, for tending alone, the slumps (+2.0) are met; the towns (0.498,
+0.521), the wage (1.00, 1.02) and the wage's growth ask on islands 1 to 8 are missed.
+
+**What is still missing.** The gains of machines that tend go to profits (0.26 to 0.29 of income), and
+nothing on the island turns profits back into work in the towns: the owners' spending has no share on care
+and twice a household's on building, and the works invest what the machines need, which is plant and current.
+And the line that runs itself, at a reach of the whole class, leaves no tending to hands at all. The next
+tries, in order: owners who buy care as households do (care.md, "What worries me"); a reach for the line below
+the robot's, or a cap; then tending again.
+
 ## The probe
+
+`examples/slump_trace.rs` plays one island to 2050 under the game's rules with six families and any setting
+by name, and writes a row a month from a given year for each good named: its works' capacity, the share of it
+run, their fill and hands, the merchants' stock and sales, the price, the month's making and the market's
+fill; and for the island the wage and what is made, linked (the slump clock's series):
+
+```bash
+cargo run --profile work -p isostate-core --example slump_trace -- 7 2000 OUT.csv services,electricity,coal tasks.tending=true tasks.own_run=false
+```
 
 `examples/tending_trace.rs` plays one island to 2050 under the game's rules with six families and any
 setting by name, and writes a long table of its books from 1900, a year at a time: the island's income

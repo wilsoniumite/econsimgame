@@ -1088,3 +1088,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   takes, learning nothing and with no economies of size, not carried and not kept; households' want of it
   is a share of the Engel rule's richer set that grows with their town's old, the very old counted four
   times. [care.md](care.md), `care.enabled`.
+- **a works' machines on its own making** (acts only from 1901, when a machine first runs on anything): a
+  works whose machines run on the good it makes, the power stations' on electricity, runs them on its own
+  making, so the market's shortage of current no longer stands the stations' machines idle and makes the
+  shortage worse. Traced from the slumps when machines tend, which it halves. [tending.md](tending.md),
+  "The slumps", `tasks.own_run`.
