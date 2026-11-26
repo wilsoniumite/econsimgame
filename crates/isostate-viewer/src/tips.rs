@@ -246,6 +246,9 @@ struct Dotted;
 /// Lay a term's dotted line under each run of it, once its text is laid out:
 /// a row of short nodes in the box the text stands in, from the text's own
 /// layout. Each text is done once.
+/// How many dots have been laid, for a script's print: they are laid once for each text, never again.
+pub static DOTS_LAID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn dot_lines(mut commands: Commands, q: Query<(Entity, &Linked, &TextLayoutInfo, &ComputedNode, &ChildOf), Without<Dotted>>) {
     for (e, linked, layout, node, parent) in &q {
         let terms: Vec<(Rect, f32, Color)> = layout
@@ -266,6 +269,7 @@ fn dot_lines(mut commands: Commands, q: Query<(Entity, &Linked, &TextLayoutInfo,
             for (bounds, y, colour) in terms {
                 let mut x = bounds.min.x * inv;
                 while x + DOT <= bounds.max.x * inv + 0.5 {
+                    DOTS_LAID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     b.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(y * inv), width: Val::Px(DOT), height: Val::Px(1.0), ..default() }, BackgroundColor(colour.with_alpha(0.85))));
                     x += DOT_STEP;
                 }
@@ -356,7 +360,7 @@ impl Tips {
             s.sort_by(f32::total_cmp);
             format!("{:.0} us middle, {:.0} us longest over {} frames", s[s.len() / 2], s[s.len() - 1], s.len())
         };
-        format!("none open {}; one {}; two {}; three or more {}", one(&self.cost[0]), one(&self.cost[1]), one(&self.cost[2]), one(&self.cost[3]))
+        format!("none open {}; one {}; two {}; three or more {}; {} dots laid in all", one(&self.cost[0]), one(&self.cost[1]), one(&self.cost[2]), one(&self.cost[3]), DOTS_LAID.load(std::sync::atomic::Ordering::Relaxed))
     }
 
     fn close_from(&mut self, commands: &mut Commands, i: usize) {

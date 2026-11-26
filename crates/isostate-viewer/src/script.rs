@@ -645,9 +645,7 @@ fn print_state(world: &mut World, note: &str) {
         for line in tips.said(now) {
             println!("script:   tooltip {line}");
         }
-        if tips.aim.is_some() || tips.open() {
-            println!("script:   the tooltips' test under the pointer: {}", tips.cost_said());
-        }
+        println!("script:   the tooltips' test under the pointer: {}", tips.cost_said());
     }
     // what the pointer rests on, and what asking cost (cursor.rs)
     if let Some(p) = world.get_resource::<crate::cursor::ScriptPointer>().and_then(|p| p.0) {
