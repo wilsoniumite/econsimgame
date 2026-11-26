@@ -45,11 +45,11 @@ fn off_is_the_port_and_on_is_the_game() {
     assert!(!default_params().works.enabled, "the port has no life cycle");
     assert!(game_params().works.enabled, "the game has");
     // the numbers are the same either way, so --set works.enabled=true measures the game's
-    // life cycle; the two mends G and H and the ground by method (I) are switches
-    // of their own, on in the game alone
-    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, by_method: false, ..WorksParams::game() }, WorksParams::default());
-    assert!(game_params().works.spread_first && game_params().works.keep_order && game_params().works.by_method);
-    assert!(!default_params().works.spread_first && !default_params().works.keep_order && !default_params().works.by_method);
+    // life cycle; the two mends G and H, the ground by method (I) and the works in
+    // the blocks (J) are switches of their own, on in the game alone
+    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, by_method: false, in_blocks: false, ..WorksParams::game() }, WorksParams::default());
+    assert!(game_params().works.spread_first && game_params().works.keep_order && game_params().works.by_method && game_params().works.in_blocks);
+    assert!(!default_params().works.spread_first && !default_params().works.keep_order && !default_params().works.by_method && !default_params().works.in_blocks);
     // and a port run never fills the state's tables
     let r = sim::run_with(&port(3, 0, 1752), default_content(), false, true).expect("money is conserved");
     assert_eq!(r.state.works_added.rows, 0);
