@@ -23,10 +23,16 @@
 # Taken: the batch starts-a (two-starts on one-town and the squares): the
 # landfall start's hashes taken again on the merged tree, where the squares
 # (squares.enabled, on under the game's rules) keep their log in the record
-1750-1900 economy  0xc6436b97bd9f2045
-1750-1900 books    0x7270d31b6d38601f
-1750-1900 news     0x9e37de29e9388cf2
-1901-2050 economy  0x5c575ea027de14fe
-1901-2050 books    0x31fdf137ae077d0c
-1901-2050 news     0x9ecfa0441c4f6d9d
-1901-2050 run.bin  0x4d62492a47074cc2
+# Taken: The landfall start with carriage on prices from 1750, pits at the
+# size of their market (mines.glut), land that stays taken (frontier.claimed),
+# no settlers to a hungry port (immigration.shun_hungry) and ideas by sea
+# (abroad.ideas), taken on the merged tree of the batch landfall-b (carriage,
+# pits, land-taken, ideas-by-sea); all five are part of the landfall start
+# alone, so the settled island's seven do not move.
+1750-1900 economy  0x534ad2f7fd8080a0
+1750-1900 books    0xe79caea8871aea13
+1750-1900 news     0xc9b3fafbfebf779e
+1901-2050 economy  0x2fcb69c23872638b
+1901-2050 books    0xd22c6db188cbef90
+1901-2050 news     0x18d2fe193498c314
+1901-2050 run.bin  0xd7c59fd921e823bc
