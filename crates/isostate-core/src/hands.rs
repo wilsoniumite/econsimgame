@@ -29,19 +29,40 @@ use serde::{Deserialize, Serialize};
 use crate::params::Params;
 use crate::state::State;
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HandsParams {
     /// No employer holds a hand its town does not have: a town short of hands
     /// at the month's highest wage shares out the hands there are. Off (the
     /// port): everyone asked for is hired.
     pub ration: bool,
+    /// The most a short town's wage may rise in a month, as a multiple of last
+    /// month's (docs/rules/landfall.md, "The trap"). 2, the month's own bound,
+    /// leaves the rule as it was: a town short several months running then
+    /// doubles its wage each month. The landfall start sets 1.06, so that a
+    /// short town's wage at most doubles in a year, and the rationing alone
+    /// shares out the hands. Read only below 2, and not written out at 2, so
+    /// that the game's parameters read as they did.
+    #[serde(skip_serializing_if = "at_bound")]
+    pub short_rise: f64,
+}
+
+/// `short_rise` at the month's own bound: the rule as it was.
+fn at_bound(v: &f64) -> bool {
+    *v == 2.0
+}
+
+impl Default for HandsParams {
+    /// Off: what the port runs with.
+    fn default() -> HandsParams {
+        HandsParams { ration: false, short_rise: 2.0 }
+    }
 }
 
 impl HandsParams {
     /// The game's labour market, which rations.
     pub fn game() -> HandsParams {
-        HandsParams { ration: true }
+        HandsParams { ration: true, ..HandsParams::default() }
     }
 }
 
@@ -59,6 +80,11 @@ pub fn short_towns(st: &State, P: &Params, hi: &[f64], supply: &[f64], demand: &
         if st.town_active[t] && demand(t, hi[t]) > supply[t] {
             short[t] = true;
             w[t] = hi[t].exp();
+            // landfall (docs/rules/landfall.md, "The trap"): a short town's wage rises
+            // at most `short_rise` a month; at 2 nothing is read, and the month is as it was
+            if P.hands.short_rise < 2.0 && st.wage[t] > 0.0 {
+                w[t] = w[t].min(st.wage[t] * P.hands.short_rise);
+            }
         }
     }
     short

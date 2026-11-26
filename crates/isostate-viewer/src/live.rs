@@ -518,6 +518,10 @@ pub struct Opening {
     /// "The switch"). It is kept where any new game would be: its save says
     /// its land, and is played on it again
     pub old_land: bool,
+    /// a new game begun at landfall, one town in a corner (`--landfall`,
+    /// docs/rules/landfall.md). Kept where any new game would be: its save says
+    /// its start, and is played from it again
+    pub landfall: bool,
     /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
     /// family in, changed by hand. It never goes on with the island's autosave
     /// nor writes it: it has a session of its own (`saves::session`), which a
@@ -554,7 +558,7 @@ impl Opening {
     /// the switches that ask for a game of a certain shape or kept in a certain
     /// place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.old_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.old_land && !self.landfall && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -1150,10 +1154,17 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         None => {
             let rules = iso::params::Rules::Game;
             let to = o.to.unwrap_or_else(|| iso::save::content_last_year(rules));
-            eprintln!("making island {} with {}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.old_land { ", on the old island" } else { "" });
+            eprintln!("making island {} with {}{}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.old_land { ", on the old island" } else { "" }, if o.landfall { ", from landfall" } else { "" });
             // the game's rules take the new land (docs/rules/land.md, "The switch"); `--old-land`
             // starts a game on the port's island all the same
-            let mut game = if o.old_land { Game::on_old_land_to(rules, o.seed, o.families, saves::now(), to)? } else { Game::under_to(rules, o.seed, o.families, saves::now(), to)? };
+            let mut game = if o.landfall {
+                // landfall (docs/rules/landfall.md): one town in a corner, on whichever land was asked for
+                Game::landfall_to(rules, o.seed, o.families, saves::now(), to, !o.old_land)?
+            } else if o.old_land {
+                Game::on_old_land_to(rules, o.seed, o.families, saves::now(), to)?
+            } else {
+                Game::under_to(rules, o.seed, o.families, saves::now(), to)?
+            };
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.
@@ -1997,6 +2008,10 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
     }
     if !y.pairs.is_empty() {
         r.traffic.take_pairs(ny, k, y.pairs.clone());
+    }
+    // squares (the core's docs/rules/squares.md): what the year's end changed of them, as a recording's log keeps it
+    if let Some(sq) = &y.squares {
+        r.builds.squares.take_year(ny, k, sq.whole, &sq.changes);
     }
 
     // towns: the slots are fixed for the run, so the arrays are made on the first year

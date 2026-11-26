@@ -145,10 +145,19 @@ pub struct StartKind {
     pub arg: Option<&'static str>,
 }
 
-/// The starts there are. Today the settled island alone; landfall, one town in
-/// a corner, joins it when it lands on main (`isostate_core::landfall::STARTS`).
+/// The starts there are, as the simulation lists them
+/// (`isostate_core::landfall::STARTS`): the settled island, and landfall, one
+/// town in a corner (docs/rules/landfall.md, new on 26 November 2026). A start
+/// the page has no words or argument for is not offered (a test says so).
 pub fn starts() -> Vec<StartKind> {
-    vec![StartKind { word: "settled", name: "Settled island", line: "Towns, farms and families already there in 1750.", arg: None }]
+    isostate_core::landfall::STARTS
+        .iter()
+        .filter_map(|w| match *w {
+            "settled" => Some(StartKind { word: "settled", name: "Settled island", line: "Towns, farms and families already there in 1750.", arg: None }),
+            "landfall" => Some(StartKind { word: "landfall", name: "Landfall", line: "One town of 5,000 at a harbour near a corner. New.", arg: Some("--landfall") }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The last years a new game can be played to, on the page.
@@ -237,7 +246,7 @@ impl Field {
     pub fn says(self) -> &'static str {
         match self {
             Field::Kind => "A sandbox is the island to watch and to change with tools. The family game is one family among the great families. Both are saved as you play.",
-            Field::Start => "How the island begins in 1750. The settled island has its towns, farms and great families from the first year.",
+            Field::Start => "How the island begins in 1750. The settled island has its towns, farms and great families from the first year. Landfall is one town of 5,000 at a harbour, with settlers coming by ship.",
             Field::Seed => "The number that makes the island, its land and its first towns. The same number makes the same island every time.",
             Field::Families => "The great families hold land and firms across the island. In the family game you play one of them.",
             Field::To => "The game ends after this year. A game saved goes on to the last year it began with.",
@@ -816,6 +825,9 @@ fn save_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, i: usize, s: &Listed
         Place::Trial => format!("The {} family, a trial", s.family),
     };
     let mut details = vec![save_date(s), format!("{} families", s.families), format!("to {}", s.to)];
+    if s.landfall {
+        details.push("landfall".into());
+    }
     if s.old_land {
         details.push("old island".into());
     }
@@ -1451,6 +1463,8 @@ mod tests {
             ("Season: Winter", Box::new(|c| c.set(Field::Season, 4)), "--sandbox --new --season 0", |a| a.season == Some(0.0)),
             ("Window: 1920 x 1080", Box::new(|c| { c.step(Field::Size, 1); }), "--sandbox --new --size 1920x1080", |a| a.size == (1920, 1080)),
             ("Map view: Rent", Box::new(|c| c.step(Field::View, 1)), "--sandbox --new --overlay rent", |a| a.overlay.as_deref() == Some("rent")),
+            ("Start: Landfall", Box::new(|c| c.set(Field::Start, 1)), "--sandbox --new --landfall", |a| a.landfall && a.sandbox && a.fresh),
+            ("Start: Landfall, family", Box::new(|c| { c.set(Field::Kind, 1); c.set(Field::Start, 1); }), "--family --new --landfall", |a| a.landfall && !a.sandbox),
         ];
         for (name, choose, want, check) in rows {
             let mut c = Choices::default();
@@ -1463,7 +1477,8 @@ mod tests {
             let o = crate::opening(&parsed);
             assert!(!o.plain() && !o.unattended, "{name}");
         }
-        // every start offered has a row above or its own argument, and the core's list names it
+        // every start the simulation offers is on the page, with an argument the command line knows
+        assert_eq!(starts().iter().map(|s| s.word).collect::<Vec<_>>(), isostate_core::landfall::STARTS);
         for s in starts() {
             assert!(s.arg.is_none() || crate::USAGE.contains(s.arg.unwrap()), "{}", s.word);
         }
@@ -1472,7 +1487,7 @@ mod tests {
     #[test]
     fn a_saved_game_is_gone_on_with_by_name_and_kept_where_it_was() {
         let dir = saves::test_dir("start-page-saves");
-        let listed = |place: Place, path: &str| Listed { path: PathBuf::from(path), place, seed: 11, families: 4, year: 1800, month: 3, to: 2050, family: "Fairfax".into(), old_land: false, when: 0 };
+        let listed = |place: Place, path: &str| Listed { path: PathBuf::from(path), place, seed: 11, families: 4, year: 1800, month: 3, to: 2050, family: "Fairfax".into(), old_land: false, landfall: false, when: 0 };
         let fam = crate::parse(&listed(Place::Family, "s/island-11-families-4.json").args()).unwrap();
         assert!(!fam.sandbox && fam.family && fam.load.as_deref() == Some("s/island-11-families-4.json"));
         assert_eq!(crate::opening(&fam).keeping(), crate::live::Keeping::Autosave);
@@ -1531,7 +1546,7 @@ mod tests {
     /// all of them and round, and Left or Right changes every field.
     #[test]
     fn every_choice_is_reached_without_the_mouse() {
-        let listed = Listed { path: PathBuf::from("x.json"), place: Place::Sandbox, seed: 7, families: 6, year: 1790, month: 0, to: 2050, family: String::new(), old_land: false, when: 0 };
+        let listed = Listed { path: PathBuf::from("x.json"), place: Place::Sandbox, seed: 7, families: 6, year: 1790, month: 0, to: 2050, family: String::new(), old_land: false, landfall: false, when: 0 };
         let mut page = Page { choices: Choices::default(), saves: vec![listed.clone(), listed], focus: Focus::Save(0), more: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
         for more in [false, true] {
             page.more = more;

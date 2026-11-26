@@ -60,7 +60,7 @@ use crate::sim;
 use crate::util::{fmt_g6, fmt_thousands_f0};
 
 pub const USAGE: &str = "usage: isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
-                           [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json] [--content content.toml]
+                           [--start settled|landfall] [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json] [--content content.toml]
                            [--jobs N] [--compare OTHER_DIR] [--standing [--growth]] [--quiet]";
 
 /// What the command line asked for.
@@ -71,6 +71,9 @@ pub struct Options {
     pub rules: Rules,
     pub families: Option<usize>,
     pub end_year: Option<i64>,
+    /// The start, by its word (`landfall::set_start`): laid over the rules
+    /// before the parameters file and every `--set`.
+    pub start: Option<String>,
     /// Each `--set`: the key and its values as typed.
     pub sets: Vec<(String, Vec<String>)>,
     pub params_file: Option<PathBuf>,
@@ -200,6 +203,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         rules: Rules::Port,
         families: None,
         end_year: None,
+        start: None,
         sets: Vec::new(),
         params_file: None,
         content_file: None,
@@ -220,6 +224,11 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             "--rules" => o.rules = parse_rules(&value("--rules")?)?,
             "--families" => o.families = Some(value("--families")?.parse().map_err(|e| format!("--families: {e}"))?),
             "--end-year" => o.end_year = Some(value("--end-year")?.parse().map_err(|e| format!("--end-year: {e}"))?),
+            "--start" => {
+                let w = value("--start")?;
+                crate::landfall::set_start(&mut crate::params::default_params(), &w)?;
+                o.start = Some(w);
+            }
             "--set" => {
                 let v = value("--set")?;
                 let (key, values) = v.split_once('=').ok_or_else(|| format!("--set {v:?}: write it as key=value or key=v1,v2"))?;
@@ -356,9 +365,13 @@ pub fn set_field<T: Serialize + DeserializeOwned>(base: &T, key: &str, value: &V
 /// The base parameters, then one `Setting` per combination of the `--set` values
 /// (the first key varies slowest).
 pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
+    let mut rules = o.rules.params();
+    if let Some(w) = &o.start {
+        crate::landfall::set_start(&mut rules, w)?;
+    }
     let mut base = match &o.params_file {
-        Some(p) => o.rules.params().load_over(p)?,
-        None => o.rules.params(),
+        Some(p) => rules.load_over(p)?,
+        None => rules,
     };
     if let Some(n) = o.families {
         base.n_families = n;

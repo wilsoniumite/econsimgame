@@ -54,6 +54,7 @@ use isostate_core::mines::Working;
 use isostate_core::observer::{ObserverState, Series, SeriesMeta};
 use isostate_core::peopling::Founding;
 use isostate_core::record::{ProjectSnap, Record, TownBytes};
+use isostate_core::squares::Change;
 use isostate_core::rng::{self, Rng, Rngs};
 use isostate_core::save::{self, Game};
 use isostate_core::state::{MonthStats, Project, RailOpened, Reason};
@@ -126,7 +127,7 @@ macro_rules! bin_num {
         }
     )*};
 }
-bin_num!(f64, f32, i64, i32, u64, u32, u8);
+bin_num!(f64, f32, i64, i32, i16, u64, u32, u8);
 
 impl Bin for usize {
     fn put(&self, w: &mut Vec<u8>) {
@@ -314,7 +315,8 @@ bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode, squares, squares_first });
+bin_struct!(Change { at, tenant, year, face });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
@@ -516,8 +518,13 @@ macro_rules! state_parts {
                 hl: Default::default(),
                 // highways (docs/rules/highways.md): carried across as the roads are
                 hw: Default::default(),
+                // frontier and immigration (docs/rules/frontier.md, immigration.md): carried across as the roads are
+                frontier: Default::default(),
+                immigration: Default::default(),
                 // care (docs/rules/care.md): carried across as the roads are
                 care: Default::default(),
+                // squares (docs/rules/squares.md): carried across as the roads are
+                sq: Default::default(),
             }
         }
 
@@ -652,7 +659,10 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.who_works = carry.who_works.clone();
     st.hl = carry.hl.clone();
     st.hw = carry.hw.clone();
+    st.frontier = carry.frontier.clone();
+    st.immigration = carry.immigration.clone();
     st.care = carry.care.clone();
+    st.sq = carry.sq.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);
