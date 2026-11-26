@@ -1110,3 +1110,7 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
 - **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
   wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
   "The trap", `hands.short_rise`.
+- **ideas by sea**: every port has one more neighbour in the spreading of ideas, abroad, across a sea
+  of cost 105, which knows each idea from the year `data/abroad.toml` gives (history's year where the
+  content has one, else the settled island's); the tasks' uses come five years after abroad. Off, the
+  island is alone: the isolated state. [abroad.md](abroad.md), `abroad.ideas`.
