@@ -511,3 +511,49 @@ fn the_viewer_is_given_the_workings() {
     let dug = a.iter().filter(|&&d| (5..=8).contains(&d)).count();
     assert!(dug < 5, "{dug} cells drawn as mostly diggings");
 }
+
+/// G. At the size of the market (`mines.glut`): the merchants take a working's
+/// make only as far as the town asks for the good and their shelves have room,
+/// a town with empty shelves still takes a small first working's make, and none
+/// sinks a working into a glut. Read on a state made by hand: one town, one
+/// colliery and one farm, each able to make so much a month at full time.
+#[test]
+fn a_working_is_taken_at_the_size_of_its_market() {
+    let C = game_content();
+    let mut P = game_params();
+    assert!(!P.mines.glut, "off on the settled start");
+    let s_coal = C.sector_name.iter().position(|n| n == "coalmine").unwrap();
+    let s_farm = C.sector_name.iter().position(|n| n == "farm").unwrap();
+    let coal = C.gi("coal");
+    let mut st = State { T_max: 1, town_active: vec![true], ..State::default() };
+    st.mine_sectors = (0..C.NS).filter(|&s| mines::is_extractive(&C.sector_name[s])).collect();
+    (st.inv, st.outflow, st.requests) = (mat::Mat::zeros(1, C.G), mat::Mat::zeros(1, C.G), mat::Mat::zeros(1, C.G));
+    let (et, sec, make) = ([0, 0], [s_coal, s_farm], [1000.0, 500.0]);
+    let take = |st: &State, P: &Params| mines::merchants_take(st, &C, P, &et, &sec, &make);
+    assert!(take(&st, &P).is_none(), "nothing is read while the rule is off");
+    assert!(!mines::glutted(&st, &P, 0, coal));
+    P.mines.glut = true;
+    // nobody asks for coal: nothing is raised, and the farm is not the rule's
+    assert_eq!(take(&st, &P).unwrap(), vec![0.0, 1.0]);
+    // the town asks 100 a month and its shelves are empty: a month's asking and
+    // four months' to fill them, half of what the colliery could make
+    st.requests[(0, coal)] = 100.0;
+    assert!((take(&st, &P).unwrap()[0] - 0.5).abs() < 1e-12);
+    // smoothed sales count where they are more than last month's asking
+    st.outflow[(0, coal)] = 200.0;
+    assert!((take(&st, &P).unwrap()[0] - 1.0).abs() < 1e-12, "a thousand wanted, all of it taken");
+    st.outflow[(0, coal)] = 0.0;
+    // four months on the shelves: the month's asking alone
+    st.inv[(0, coal)] = 400.0;
+    assert!((take(&st, &P).unwrap()[0] - 0.1).abs() < 1e-12);
+    assert!(!mines::glutted(&st, &P, 0, coal));
+    // six months: half of the month's asking (the works' brake); eight and more: nothing
+    st.inv[(0, coal)] = 600.0;
+    assert!((take(&st, &P).unwrap()[0] - 0.05).abs() < 1e-12);
+    assert!(mines::glutted(&st, &P, 0, coal), "no working is sunk into a glut");
+    st.inv[(0, coal)] = 900.0;
+    assert_eq!(take(&st, &P).unwrap()[0], 0.0);
+    // and with the merchants' prices off there is no brake to read
+    P.prices.enabled = false;
+    assert!(take(&st, &P).is_none() && !mines::glutted(&st, &P, 0, coal));
+}

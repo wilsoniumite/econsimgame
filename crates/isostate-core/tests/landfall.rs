@@ -135,6 +135,41 @@ fn landfall_carts_at_prices_from_1750() {
 }
 
 #[test]
+fn landfall_pits_work_at_the_size_of_their_market() {
+    // the switch comes with the start, and only with it; the sweep's word puts it back
+    let mut P = landfall_params(7, 1754);
+    assert!(P.mines.glut && !game_params().mines.glut && !default_params().mines.glut);
+    assert!(!sweep::set_field(&P, "mines.glut", &sweep::parse_value("false")).unwrap().mines.glut);
+    // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
+    // hands.short_rise 1.06, longrun.freight_from 1750, mines.enabled, prices.enabled), once
+    // with the pits at the size of their market and once without. Without, island 7's
+    // new iron-ore pit of 1751 and colliery of 1753 raise far more than the colony asks,
+    // the merchants buy it all, and in some December they owe more than twice the money;
+    // with it they owe at most what the warm-up left them owing, and the colony still digs
+    assert!(P.mines.enabled && P.prices.enabled && P.frontier.enabled && P.immigration.enabled);
+    let coal = game_content().gi("coal");
+    let mut seen = Vec::new();
+    for glut in [true, false] {
+        P.mines.glut = glut;
+        let mut sim = sim::start(&P, game_content());
+        let (mut owe_max, mut coal_1754) = (0.0f64, 0.0);
+        while sim.year <= sim.end_year {
+            sim::run_year(&mut sim).expect("the money check holds");
+            let st = &sim.st;
+            let owe: f64 = st.merch_cash.iter().map(|&c| (-c).max(0.0)).sum();
+            owe_max = owe_max.max(owe / st.money_now);
+            let r = st.mine_sectors.iter().position(|&s| sim.content.sector_good[s] == coal).unwrap();
+            coal_1754 = st.mine_out.row(r).iter().sum();
+        }
+        seen.push((owe_max, coal_1754));
+    }
+    let ((owe_on, coal_on), (owe_off, _)) = (seen[0], seen[1]);
+    assert!(owe_off > 2.0, "without the rule the merchants owe at most {owe_off} of the money in a December");
+    assert!(owe_on < 0.6, "with it they owe {owe_on} of the money in a December");
+    assert!(coal_on > 10_000.0, "the colony raised {coal_on} of coal in 1754");
+}
+
+#[test]
 fn with_immigration_off_nobody_comes() {
     // landfall with immigration.enabled off: the same start, nobody arrives
     let mut P = landfall_params(7, 1754);

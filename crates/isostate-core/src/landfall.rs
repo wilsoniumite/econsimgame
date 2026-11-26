@@ -86,6 +86,9 @@ pub fn landfall(P: &mut Params) {
     // carriage that follows prices from 1750, a stopgap (docs/rules/landfall.md,
     // "Carriage that follows prices"); `--set longrun.freight_from=1900` puts it back
     P.longrun.freight_from = FREIGHT_FROM;
+    // pits and quarries that work at the size of their market (docs/rules/mines.md,
+    // "G. At the size of the market"); `--set mines.glut=false` puts it back
+    P.mines.glut = true;
 }
 
 /// The people the start shares among its towns.

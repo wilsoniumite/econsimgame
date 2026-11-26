@@ -31,7 +31,9 @@ colony: births that answer to free land and hamlets (`frontier.enabled`,
 `frontier.hamlets`), settlers from abroad (`immigration.enabled`), and the
 guard on a short town's wage (`hands.short_rise` 1.06), and with carriage
 that follows prices from 1750 (`longrun.freight_from` 1750, below,
-"Carriage that follows prices"). Each can be set off
+"Carriage that follows prices"), and with pits and quarries that work at
+the size of their market (`mines.glut`, below, "Pits at the size of their
+market"). Each can be set off
 again after it: `--start landfall --set immigration.enabled=false` is the
 colony with nobody coming. `--set start.landfall=true` alone is the one town
 under today's rules of people. A saved game says its start

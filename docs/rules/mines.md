@@ -132,6 +132,30 @@ shares afterwards, so a cell's shares sum to what the works have left of it
 exactly as before, and everything that reads the shares (the areas in the
 sweep, the map's mix, the tests) goes on reading the truth.
 
+**G. At the size of the market** (`mines.glut`; on at landfall, off on the
+settled start for now). Without it a working has one size, what its deposit
+raises at the hands that suit the year's prices, and the merchants buy all of
+it, whether or not anybody asks for it. With it the merchants take a working's
+make as they take a works' (`prices.md`, "Merchants stop buying into a
+glut"), and the working hires the hands for what they take. Each month, for
+each town and good, they will take what the town's buyers ask for in a month,
+less as their shelves pass `prices.glut_months` (4) of that and nothing at
+`prices.glut_stop_months` (8), and on top whatever fills their shelves to four
+months. What is asked is the larger of last month's asking, got or not, and
+the smoothed sales and shipments, so a good nobody could buy for want of a pit
+is still asked for, and a town that ships its coal counts what it ships. The
+town's workings of that good share it in proportion to what each would make
+at full time at last month's wage. A working given the share s of its make
+wants s^(1/(1 - alpha)) of its hands, so that what it raises is s of its make
+(the land's hands still move only part of the way each month). And no town
+sinks a working, its first of the year included, while its shelves hold more
+than four months of what is asked: "one may always open" holds only where
+the market is short. So a first pit still opens into a small market, and
+works small. The code is `mines::merchants_take` and `mines::glutted`, read
+in `econ::step_month` and `review`. It is a marked difference between the two
+starts, waiting for the stage that lays the first century anew; see "At the
+size of the market", below, for why and what it does.
+
 ## What I tried first, and why not
 
 Three designs went before this one. They are worth a paragraph because each
