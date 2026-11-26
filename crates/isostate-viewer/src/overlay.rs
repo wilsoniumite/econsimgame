@@ -456,7 +456,22 @@ impl MapOverlay {
     pub fn said(&self, r: &Replay, months: &Months, k: usize, c: usize) -> Option<String> {
         let month = self.painted.and_then(|p| p.4).map(|t| Month::of(r, months, t));
         let kind = self.kind?;
-        said(r, k, c, kind, self.which(kind), month.as_ref())
+        let now = said(r, k, c, kind, self.which(kind), month.as_ref());
+        // under a trend, what became of the square, or of its town, over the span
+        match (now, self.trend_shown().and_then(|s| trend::trend_map(r, k, kind, self.which(kind), s))) {
+            (Some(now), Some(m)) if c < r.n => {
+                let y0 = r.y0 + m.from as i32;
+                let whose = if m.by_town { market(r, k, c).map_or(String::new(), |t| format!(", {}'s", town_name(r, t))) } else { String::new() };
+                let change = match m.cells[c] {
+                    trend::Change::Rate(v) => format!(" Since {y0}{whose}: {} a year.", trend::rate_words(v)),
+                    trend::Change::New => format!(" Since {y0}{whose}: new, with nothing there in {y0}."),
+                    trend::Change::Gone => format!(" Since {y0}{whose}: gone, with something there in {y0} and nothing now."),
+                    trend::Change::Nothing => String::new(),
+                };
+                Some(now + &change)
+            }
+            (now, _) => now,
+        }
     }
 
     /// For a script's `map` step: the view's range and its ends as painted, in
@@ -1678,13 +1693,15 @@ fn input(
             ov.trend = t.0;
         }
     }
-    // a town among the movers takes the camera there and opens its note, as a town's row in the panels does
+    // a town among the movers takes the camera there and opens its note, as a town's row in the
+    // panels does; from a little higher than they take it (22 squares, not 9), so that the town's
+    // ground and its market's tints read round the houses
     for (i, row, mut bg) in &mut movers {
         bg.0 = if *i == Interaction::None { Color::NONE } else { ui::PAPER_2 };
         if *i == Interaction::Pressed {
             if let Some(&(x, z)) = data.r.header.towns.get(row.0).and_then(|t| data.cen.get(t.node)) {
                 o.target = Vec3::new(x, crate::world::height_at(&data.g, x, z).max(0.0), z);
-                o.dist = o.dist.min(9.0);
+                o.dist = o.dist.min(22.0);
                 picked.what = Some(crate::Pick::Town(row.0));
             }
         }
