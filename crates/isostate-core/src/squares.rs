@@ -58,19 +58,23 @@ pub const METRES: f64 = 125.0;
 pub struct SquaresParams {
     /// The simulation keeps squares of 125 m where something is built.
     pub enabled: bool,
+    /// With the ground by method (`works.by_method`): a works keeps the squares
+    /// it holds while its ground in the books is at this share of them or more
+    /// (`keep_squares`): its buildings stand while some of its hands leave.
+    pub keep: f64,
 }
 
 impl Default for SquaresParams {
     /// Off: what the port runs with.
     fn default() -> SquaresParams {
-        SquaresParams { enabled: false }
+        SquaresParams { enabled: false, keep: 0.7 }
     }
 }
 
 impl SquaresParams {
     /// The game's squares.
     pub fn game() -> SquaresParams {
-        SquaresParams { enabled: true }
+        SquaresParams { enabled: true, ..SquaresParams::default() }
     }
 }
 
@@ -690,7 +694,7 @@ pub fn works_targets(st: &State, C: &Content, P: &Params) -> Vec<usize> {
         let held: Vec<usize> = fs.iter().map(|&f| st.sq.works.get(f).map_or(0, |h| h.squares.len())).collect();
         let mut n = share_out(&x, &held, total);
         if P.works.enabled && P.works.by_method {
-            keep_squares(&x, &held, &mut n, P.works.keep);
+            keep_squares(&x, &held, &mut n, P.squares.keep);
         }
         for (j, n) in n.into_iter().enumerate() {
             want[fs[j]] = n;
@@ -1417,8 +1421,8 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         let x = crate::works::land_held(st, C, P, f) * PER_CELL as f64;
         let n = h.squares.len() as f64;
         // (a cell over-full is scaled down), or keeps more while its ground in the
-        // books is at `works.keep` of what it holds (works.by_method)
-        let kept = P.works.enabled && P.works.by_method && n > x && x >= P.works.keep * n - 1e-9;
+        // books is at `squares.keep` of what it holds (works.by_method)
+        let kept = P.works.enabled && P.works.by_method && n > x && x >= P.squares.keep * n - 1e-9;
         if (n - x).abs() >= 1.0 + 1e-9 && !kept && ks[h.cell] <= 1.0 && b.short == 0 {
             return Err(format!("{year}: works {f} holds {n} squares for {x:.2} of ground"));
         }

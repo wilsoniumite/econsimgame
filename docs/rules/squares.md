@@ -14,7 +14,7 @@ In every cell with something built, a table of sixteen by sixteen squares, each 
 
 | tenant | what it is | how many squares |
 |---|---|---|
-| a works (which one) | its yard and buildings | its ground in the books, `works::land_held` (the capacity it has and has on order, by its hands at `hands_per_cell`), times 256 |
+| a works (which one) | its yard and buildings | its ground in the books, `works::land_held` (the capacity it has and has on order, by its hands at its method's square metres a hand: [works.md](works.md), part I), times 256; with the ground by method it keeps what it holds while that ground stays at `squares.keep` (0.7) of it or more |
 | a pit (which working) | the surface of a working | `mine_surface`, times 256 |
 | house blocks (of a town) | houses, with their shops | the record's `fill` (`ground::built_share`) of the cell's dry town ground |
 | a park (of a town) | | `ground::park_of` of the dry town ground (cells filled whole after 1900) |
@@ -23,7 +23,7 @@ In every cell with something built, a table of sixteen by sixteen squares, each 
 
 A way takes no square: it is a line over them. A cell with nothing built keeps no table. Beside each square the table keeps whether it lies under the sea or a lake (from the land's nodes, 500 m apart, taken between them), and which side the way lies on (below).
 
-The squares of a cell come to its shares in the books within one square: the works' squares to `cell_K_share`, each works' to its own ground (its whole squares, and the cell's squares left over to the largest remainders); the pits' to the cell's surface; on a town cell, the town's ground to the cell less its works and pits, whole, as the books take it (`land.rs`, "taken"). A works under half a square's ground (a smithy of a few men) may hold no square of its own: it stands in a house block.
+The squares of a cell come to its shares in the books within one square: the works' squares to `cell_K_share`, each works' to its own ground (its whole squares, and the cell's squares left over to the largest remainders); the pits' to the cell's surface; on a town cell, the town's ground to the cell less its works and pits, whole, as the books take it (`land.rs`, "taken"). A works under half a square's ground (a smithy of a few men) may hold no square of its own: it stands in a house block. With the ground by method (`works.by_method`, [works.md](works.md) part I) a works keeps the squares it holds while its ground in the books stays at seven tenths of them or more, as a building stands while some of its hands are laid off; below that it gives back down to its ground, and where its cell has no room for what is kept, the works keeping most over its ground gives way first (`squares::keep_squares`). The check then allows a works more squares than its ground, as far as that.
 
 **The houses and the park are reckoned on the dry ground.** The books count every land cell as 4 km² of land, whatever the sea or a lake takes of it, and a town takes its cell whole. The town's squares are the cell's less its works and pits, as the books say, but its house blocks and park are the `fill` and the park's share of those squares that are dry, so that a town on the shore does not build in the sea. Its open ground takes the rest, the water among it.
 

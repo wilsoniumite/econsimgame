@@ -131,7 +131,7 @@ impl Default for WorksParams {
             spread_first: false,
             keep_order: false,
             by_method: false,
-            keep: 0.75,
+            keep: 0.8,
         }
     }
 }
@@ -244,7 +244,7 @@ pub fn hands_kept(st: &State, P: &Params, f: usize) -> f64 {
 /// I. Once a year, before the review, each works settles the ground it holds
 /// with what its hands at work need now. Buildings do not vanish in a month: a
 /// works whose hands leave keeps its sheds and pays for them, and only one
-/// that has lost a quarter of its hands lets the ground go, back down to what
+/// that has lost a fifth of its hands lets the ground go, back down to what
 /// they need, its rent falling with it. One whose hands need more takes it at
 /// the cell's rent (`lease_more`).
 ///
@@ -253,7 +253,7 @@ pub fn hands_kept(st: &State, P: &Params, f: usize) -> f64 {
 /// tasks (`ground_need`), and settles its lease with that. A works of a method
 /// that keeps today's books holds 2,000 square metres a hand of its plant, as
 /// before, less the hands machines took: its share of hands kept
-/// (`State::works_hands`) follows the machines' cut a quarter at a time. No
+/// (`State::works_hands`) follows the machines' cut a fifth at a time. No
 /// machine for a task stands before 1901, so in the years to 1900 the share is
 /// 1 and such a works holds what it held before this rule.
 pub fn settle_ground(st: &mut State, C: &Content, P: &Params) {

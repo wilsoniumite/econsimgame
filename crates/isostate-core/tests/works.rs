@@ -311,7 +311,7 @@ fn the_ground_a_works_takes_is_by_its_method() {
     // and a works whose plant needs a little less keeps its ground and its rent:
     // buildings do not vanish in a month
     let (lease, rent) = (st.works_lease[f], st.f_rent[f]);
-    st.f_prod[f] = 1.6 / 0.8;
+    st.f_prod[f] = 1.9;
     works::settle_ground(&mut st, &C, &on);
     assert_eq!((st.works_lease[f], st.f_rent[f]), (lease, rent));
     assert_eq!(works::land_held(&st, &C, &on, f), lease, "it holds what it leases");
