@@ -853,3 +853,67 @@ The outline of the pass is agreed with that, and its first piece was started the
 > 5. yep, I really like that.
 
 Filed under "Agreed in the same talk", the fourth with what Claude decided. Nothing is started.
+
+**26 November 2026, morning, on scale.**
+
+> Ah, one big question that could change things a lot: is there an economies of scale multiplier? That a larger work is just a bit more efficient? Should we have that?
+>
+> My guess is that it would encourage cities to specialise, and might push works out of city centers as they need more space to get big and lose out to works on the outside where land is cheaper.
+
+Answered by a study the same day. There is a scale term already, from the port (`econ.rs`, `firm_coefficients`). No multiplier is added. What holds works small and moves them out is the room rule (2,000 hands to a cell), not the curve and not the price of ground. Stages proposed: a lease reviewed every 21 years, offices on a tenth of the ground, and after that works large enough to make one-employer towns. They wait for a second measure on the mended island and for the decision on the ground's squares (the four notes on the grid, below).
+
+**26 November 2026, on one-employer towns, and on trends.** The words in brackets about herself are left out, as marked:
+
+> well, small towns with a single employer is historical, as is those towns suffering when that employer closes. I think your ideas are worth investigating yes. also, if we don't have them already (…) ways of viewing trends. Like, many of the map views might show current population, but if I could press a trend button that recolors based on some years of change/trend, that would be really cool I think.
+
+Towns with one employer are wanted and not to be damped; the study found that none arises on the island today. A Trend switch on the map views and a "What's new" card in the game landed together the same day, in the batch `night/g-batch-care-a`.
+
+**26 November 2026, on leaving the grid.**
+
+> I have a possible big ask of you. I realise, a lot of the visuals are based on a grid. I know that underneath, we talked about how the game should be smooth and continuous (I hope this is still the case), but do you think we could move away from a grid entirely (at least the coarse one), including for the visual layer? That means not being able to click squares on the map, but I'd be OK with that, and then map views and clicking on works themselves, or town names/buildings, or town land would be how you select things. I hope that might actually improve the look a lot, especially for the current grid of roads
+
+**26 November 2026, a little later, on smaller squares.**
+
+> hmm, ok, but then perhaps also decreasing the size of the squares? I know that might cause a performance hit, but I feel like it's still a little too coarse for the economy to be as smooth as I'd like it to be. that would allow roads to look a bit more natural (most square connections may not have a visible roads)
+
+**26 November 2026, on inverting the logic.**
+
+> perhaps it means inverting the logic for a lot of things. Right now, we have a grid square that contains some portion works, houses, land, etc etc etc. Switching it up so that grid squares are small enough that a single works might cover multiple squares, but that a single square can't be split between works and houses, for example. That's a big change I know, but inverting it might mean we can still make sure the sim is fast by imposing new simplifications on grid squares? Is that better, or just meaningless? How much does it break, how much might improve?
+
+**26 November 2026, on placing what is built.**
+
+> Alright, yes, I realise this changes a lot but I have a vague feeling it's a step in the right direction. It also may mean we need to change a lot how we procedurally place assets. We can fudge it with the assets we have now for now (best fit sort of thing), later down the line, industries might prefer to be mostly rectangular (insofar as they buy squares), and some procedural rules to then fill allotted squares (naïve largest rectangle packing perhaps, but rebuilding and therefore recomputing has a real build cost, which should stop industries from jumping around in how they look, idk, there's lots of opportunity there for both fun and realistic algorithms)
+
+For the four notes on the grid together: the direction is agreed. Nothing seen or touched is to be a square, and the simulation's ground is to move from cells of two kilometres that hold shares to small squares of one use, with works, blocks and fields as things that span them. Measured the same day: the island runs on cells of one kilometre with three numbers changed, taking 3.1 times as long, and a works on one cell would be held to 400 hands there, which is the case for the inversion. Three designs and a judge are deciding the stages; the look of a town's ground, the car's suburbs and a works that gives up its ground wait for that verdict.
+
+**26 November 2026, on finding deposits, charting, and an island settled from one town.**
+
+> Another thought/question I had: deposit discovery and prospecting, charting. I'm guessing the game doesn't really have a mechanism for this? I'd love a new island which starts with a single town in one corner, which only has mapped it's surrounding area, and watching people spread over the years. Perhaps it could become the main map if it works well.
+
+The game has neither (every deposit is known from 1750, and the island starts with six towns and 135,000 people). A trial of one town in a corner on today's rules was started the same day, with maps every 25 years. Proposed: a second start beside today's, with land that is charted or not, deposits unknown until found, and land beyond the settled country granted or sold; "charted" and "held by" to be facts of the ground's small squares from their first stage.
+
+**26 November 2026, on two starts as equals, on deposits not yet known, and on people.**
+
+> I love the images of the one corner town growing. I think it makes sense from a sim stability standpoint to have the fully settled and new land sims as equals in terms of our testing and simulation. During the real historical period, parts of the world were new like this in 1750, whilst others already were known and dotted with towns (although perhaps certain deposits weren't known yet!). Thoughts?
+>
+> Perhaps also we want a setting to turn immigration on or off, just so we can test other growth rates and population pyramid changes beyond births (by the way, do we have fertility changing endogenously?)
+
+A second start (one town in a corner) and the two starts as equals in the tests are being built as the chain of pieces `settle-a`, with arrivals from outside as a switch. Deposits unknown until found are to be a rule of the game for both starts, after charting. On fertility: a town's births less deaths answer to income and, after 1900, to how well townsfolk live, but births are not played by age (the ages are reckoned beneath the totals); playing them by age is proposed as a piece of its own. She also gave leave for the towns of 1750 to 1900 to be laid out anew once ("you can re lay out the towns yes of course").
+
+**26 November 2026, on the two islands side by side.**
+
+> In some version, maybe we can take the two islands and physically put them side by side (but perhaps with variable sea cost between to model different distances), where emigration pressure from one could influence immigration to the other. If that's cheap, maybe worth doing already?
+
+Two cheap trials were started the same day: two runs stepped together that exchange only people, with the sea between as a fare; and both islands on one map with a strait, so that goods cross as well. The answer on what is cheap follows from them.
+
+**26 November 2026, on marked versions to download.**
+
+> Do you think you could every now and then start marking versions you like (0.x.0) and push the exe somewhere? Downloadable from hal, or github releases, so I can try it without being home? Not too frequently, so as not to add too much overhead to either of us, but every week maybe?
+
+A release kit was started the same day (a version shown by the game, a zip that runs from any folder, one command that builds and tries it). Versions are to be marked about weekly as pre-releases on the repository's releases page.
+
+**26 November 2026, on a start page.**
+
+> Also, maybe you already thought of this but it needs a start page, to go alongside what you usually use command like arguments for. Your work should skip that menu and continue using command line args, but largely I'd like if most the different command line things were available from the menu (I leave the details up to you) .
+
+A brief was written the same day (a page of choices where every choice is an argument: go on with a saved game, a new island with its start, its number, its families and its last year, and the rest folded away; any argument that names a run skips it). It is built once the pieces then at work in the game's start-up have landed, and goes into the first marked version.

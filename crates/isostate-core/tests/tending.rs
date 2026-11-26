@@ -179,6 +179,57 @@ fn island_7_to_1935() {
     assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with the four uses taken out");
 }
 
+/// A works whose machines run on its own good (`tasks.own_run`,
+/// docs/rules/tending.md, "The slumps"): on under the game's rules, off under
+/// the port's and out of its file. Island 7 to 1935 with the machines that
+/// tend on, the switch off and on, side by side: the same island to the end of
+/// 1900 (no machine runs on anything before 1901); with it on, money is
+/// conserved every month, every station whose machines hold some of its work
+/// runs them on its own current, so its run goods are never short (`f_run_fill`
+/// is 1), and the market's current is never overdrawn. Played with `tending`,
+/// `office_machines`, `land` and `enabled` set by name and the lorry off, as the
+/// other cases here are; that some station holds machines by 1935 is island
+/// 7's history, which the test says if a later rule changes it.
+#[test]
+fn own_run_feeds_no_shortage_of_its_own_good() {
+    let (port, game) = (default_params(), game_params());
+    assert!(!port.tasks.own_run && game.tasks.own_run, "off under the port's rules, on under the game's");
+    assert!(!serde_json::to_string(&port).unwrap().contains("own_run"), "a run with the switch off writes the file it wrote before the switch");
+    let played = |own: bool| {
+        std::thread::spawn(move || {
+            let mut P = params(true);
+            P.tasks.own_run = own;
+            let mut s = sim::start(&P, content(&P));
+            let (mut at1900, mut held) = (String::new(), 0usize);
+            while s.year <= s.end_year {
+                let year = s.year;
+                sim::run_year(&mut s).expect("money is conserved every month");
+                if year == 1900 {
+                    at1900 = save::check(&s);
+                }
+                let (st, C) = (&s.st, &s.content);
+                let Some(e) = C.good_name.iter().position(|g| g == "electricity") else { continue };
+                for t in 0..st.T_max {
+                    assert!(st.inv[(t, e)] >= 0.0, "{year}: town {t}'s current overdrawn");
+                }
+                for f in 0..st.F_count.min(st.tasks.f_run_fill.len()) {
+                    let holds = st.tasks.f_held[f].iter().any(|&h| h > 0.0);
+                    if own && st.f_alive[f] && C.method_out[st.f_method[f]] == e && holds {
+                        held += 1;
+                        assert_eq!(st.tasks.f_run_fill[f], 1.0, "{year}: station {f} short of its own current");
+                    }
+                }
+            }
+            (at1900, held)
+        })
+    };
+    let (off, on) = (played(false), played(true));
+    let (off, on) = (off.join().unwrap(), on.join().unwrap());
+    assert_eq!(off.0, on.0, "the switch moved the run before 1901");
+    eprintln!("station-years with machines by {TO}: {}", on.1);
+    assert!(on.1 > 0, "no station held machines by {TO} on island 7 (if a later rule changes that, this test must be set again)");
+}
+
 /// The later machines that tend reaching the land, the pits and the carts
 /// (`tasks.tending_wide`, docs/rules/tending.md, "Where the hands go"): off
 /// under both sets of rules and left out of their files while off; the robot

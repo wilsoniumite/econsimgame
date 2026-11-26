@@ -63,6 +63,8 @@ mod town_flow;
 mod traffic;
 mod trains;
 mod ui;
+// what's new, read from docs/DEVLOG.md (H, then What's new)
+mod whats_new;
 mod work_charts;
 mod world;
 mod year;
@@ -1121,6 +1123,7 @@ fn main() {
         .add_plugins(carts::plugin)
         .add_plugins(note::plugin)
         .add_plugins(backlog_seen::plugin)
+        .add_plugins(whats_new::plugin)
         .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);
@@ -2511,10 +2514,10 @@ fn inspect_panel(
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
     mut body: Query<&mut bevy::ui::ScrollPosition, With<InspectBody>>,
-    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>, Option<overlay::trend::Span>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, ov.kind, ov.kind.map_or(0, |kind| ov.which(kind)), ov.month());
+    let key = (picked.what, k, ov.kind, ov.kind.map_or(0, |kind| ov.which(kind)), ov.month(), ov.trend_shown());
     if *last == Some(key) {
         return;
     }

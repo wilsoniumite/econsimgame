@@ -463,7 +463,20 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
 /// replaces the content's (the names may only grow), a row of props adds to or
 /// changes the needs it names, and then the same for each later change.
 fn lay_needs(s: &mut RawServices, o: &OverServices, stage: u32, known: &dyn Fn(&str, &str) -> Result<bool, String>) -> Result<(), String> {
-    if stage_of(o.stage) <= stage {
+    // a content laid already has the needs a later change added (care's, docs/rules/care.md):
+    // laid again, the lists written for fewer needs are passed over, and the change lays its own
+    let fewer = o.names.as_ref().is_some_and(|n| n.len() < s.names.len() && n[..] == s.names[..n.len()]);
+    if stage_of(o.stage) <= stage && fewer {
+        for (g, row) in &o.props {
+            if !known("a row of [services.props]", g)? {
+                continue;
+            }
+            let have = s.props.entry(g.clone()).or_default();
+            for (need, v) in row {
+                have.insert(need.clone(), *v);
+            }
+        }
+    } else if stage_of(o.stage) <= stage {
         if let Some(names) = &o.names {
             if names.len() < s.names.len() || names[..s.names.len()] != s.names[..] {
                 return Err("tree: the overlay's needs must begin with the content's own, in their order".to_string());
