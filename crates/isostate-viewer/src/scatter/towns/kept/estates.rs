@@ -669,13 +669,15 @@ const NEIGHBOURS: f32 = 0.15;
 /// its buildings stand by its streets, and what its streets are made of
 /// (the brief of `streets-surface`, the outcome). `heights` is every
 /// building drawn, its middle, its storeys and whether it fronts a main
-/// street (a road through or a market place); `surfaced` each street drawn
+/// street (a road through or a market place), those on its lots first (to
+/// `lots_end`), then the offices and the closes built over by themselves;
+/// `surfaced` each street drawn
 /// after 1900 and its surface. Of the buildings of `TALL` storeys or more
 /// (and of five or more): how many front a main street, how many stand in
 /// the middle, and how many have no neighbour of four storeys or more within
 /// `NEIGHBOURS` (only low neighbours, or none). Of the streets: the
 /// kilometres made of each surface, and with footways.
-pub(super) fn tell_heights(r: &Replay, k: usize, heights: &[(Vec2, u8, bool)], surfaced: &[(&[Vec2], Surface)], estates: &HashMap<u32, Estate>) {
+pub(super) fn tell_heights(r: &Replay, k: usize, heights: &[(Vec2, u8, bool)], lots_end: usize, surfaced: &[(&[Vec2], Surface)], estates: &HashMap<u32, Estate>) {
     let Ok(name) = std::env::var("ISOSTATE_LOTS") else { return };
     let Some(t) = r.header.towns.iter().position(|t| t.name == name) else { return };
     let year = r.y0 + k as i32;
@@ -707,12 +709,18 @@ pub(super) fn tell_heights(r: &Replay, k: usize, heights: &[(Vec2, u8, bool)], s
         let lonely: Vec<usize> = tall.iter().copied().filter(|&i| highest_near(i) < 4).collect();
         let on_estates = tall.iter().filter(|&&i| estates.contains_key(&cell_of(heights[i].0))).count();
         let where_: Vec<String> = lonely.iter().take(6).map(|&i| format!("{:.2},{:.2} ({})", heights[i].0.x, heights[i].0.y, heights[i].1)).collect();
+        let on_lots: Vec<usize> = tall.iter().copied().filter(|&i| i < lots_end).collect();
+        let lonely_lots = on_lots.iter().filter(|&&i| highest_near(i) < 4).count();
         eprintln!(
-            "heights {year}: {name}: {} buildings of {least} storeys or more: {main} front a main street ({:.0} per cent), {middle} stand in the middle, {on_estates} on estates; {} with only low neighbours (no building of four storeys or more within {NEIGHBOURS}): {:.0} per cent; such as {}",
+            "heights {year}: {name}: {} buildings of {least} storeys or more: {main} front a main street ({:.0} per cent), {middle} stand in the middle, {on_estates} on estates; {} with only low neighbours (no building of four storeys or more within {NEIGHBOURS}): {:.0} per cent; on its lots {lonely_lots} of {} ({:.0} per cent), offices and closes built over by themselves {} of {}; such as {}",
             tall.len(),
             100.0 * main as f32 / tall.len().max(1) as f32,
             lonely.len(),
             100.0 * lonely.len() as f32 / tall.len().max(1) as f32,
+            on_lots.len(),
+            100.0 * lonely_lots as f32 / on_lots.len().max(1) as f32,
+            lonely.len() - lonely_lots,
+            tall.len() - on_lots.len(),
             where_.join("; ")
         );
     }
@@ -951,5 +959,58 @@ pub(super) fn tell(r: &Replay, g: &Ground, k: usize, land: &world::YearLand, est
         ("squares worth three times their town's of 1900 this year", front(&dear)),
     ] {
         eprintln!("streets {year}: {name}: street front built on its {what} ({squares} squares): {:.0} per cent of {:.1} km of street side", 100.0 * built as f32 / sides.max(1) as f32, sides as f32 * 0.01 * 2.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A street is made up by its age and rank: nothing changes to 1900;
+    /// then earth lanes, setts in a town's middle and on the by-law estates,
+    /// macadam elsewhere, until each rank is tarred, with footways from then
+    /// and a white line down a main street from 1930.
+    #[test]
+    fn a_street_is_made_up_by_its_age_and_rank() {
+        let s = |rank, laid, pattern, middle, road, now| surface(rank, laid, 0.014, pattern, middle, road, now);
+        for rank in [Rank::Main, Rank::Street, Rank::Lane, Rank::Close] {
+            assert_eq!(s(rank, 1820, None, true, false, 1900), None, "{rank:?}");
+        }
+        assert_eq!(s(Rank::Lane, 1820, None, false, false, 1910).map(|s| (s.made, s.edge, s.width)), Some((Made::Earth, Edge::None, 0.014)));
+        assert_eq!(s(Rank::Street, 1820, None, true, false, 1910).map(|s| s.made), Some(Made::Setts));
+        assert_eq!(s(Rank::Street, 1820, None, false, false, 1910).map(|s| s.made), Some(Made::Macadam));
+        // the roads through are drawn by the ways until they are tarred
+        assert_eq!(s(Rank::Main, 1820, None, true, true, 1915), None);
+        let main = s(Rank::Main, 1820, None, false, true, 1925).unwrap();
+        assert_eq!((main.made, main.edge, main.line), (Made::Tarmac, Edge::Footway, false));
+        assert!(s(Rank::Main, 1820, None, false, true, 1930).unwrap().line);
+        // the order of tarring: main streets, streets, lanes
+        assert_eq!(s(Rank::Street, 1820, None, false, false, 1922).map(|s| s.made), Some(Made::Macadam));
+        assert_eq!(s(Rank::Lane, 1820, None, false, false, 1927).map(|s| s.made), Some(Made::Earth));
+        let lane = s(Rank::Lane, 1820, None, false, false, 1935).unwrap();
+        assert_eq!((lane.made, lane.edge), (Made::Tarmac, Edge::Footway));
+        assert!(lane.width <= 0.012 && lane.width + 2.0 * lane.edge_width <= 0.014 + 2.0 * 0.004);
+        // the estates: setts on the by-law streets to 1935, the garden suburb's verges
+        assert_eq!(s(Rank::Street, 1910, Some(Pattern::ByLaw), false, false, 1925).map(|s| s.made), Some(Made::Setts));
+        assert_eq!(s(Rank::Street, 1910, Some(Pattern::ByLaw), false, false, 1950).map(|s| s.made), Some(Made::Tarmac));
+        let garden = s(Rank::Street, 1925, Some(Pattern::Garden), false, false, 1940).unwrap();
+        assert_eq!((garden.made, garden.edge), (Made::Worn, Edge::Verge));
+        // a street laid after its rank is tarred is tarmac from the start
+        assert_eq!(s(Rank::Close, 1975, Some(Pattern::Closes), false, false, 1975).map(|s| s.made), Some(Made::Tarmac));
+    }
+
+    /// The ranks: the ways between squares and the station roads are main
+    /// streets, the back lane a street, the lanes and cross streets behind
+    /// lanes, and a cul-de-sac a close.
+    #[test]
+    fn each_street_has_its_rank() {
+        assert_eq!(Rank::of(0, 0.016, false, false), Rank::Main);
+        assert_eq!(Rank::of(5, 0.02, false, false), Rank::Main);
+        assert_eq!(Rank::of(1, 0.014, false, false), Rank::Street);
+        assert_eq!(Rank::of(3, 0.014, false, false), Rank::Lane);
+        assert_eq!(Rank::of(4, 0.012, false, false), Rank::Lane);
+        assert_eq!(Rank::of(6, 0.022, true, false), Rank::Main);
+        assert_eq!(Rank::of(6, 0.016, true, false), Rank::Street);
+        assert_eq!(Rank::of(7, 0.014, true, true), Rank::Close);
     }
 }

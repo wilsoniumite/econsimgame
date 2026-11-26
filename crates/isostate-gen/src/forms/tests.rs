@@ -41,6 +41,29 @@ fn every_question_gets_an_answer_and_always_the_same() {
     assert_eq!(asked, 301 * 40 * 4 * 3 * 3);
 }
 
+/// `choose_within` keeps to the storeys it is given wherever some form
+/// stands that low (after 1900 every year has one, for dwellings and for
+/// offices), and with no bound it is `choose`.
+#[test]
+fn a_bound_on_the_storeys_is_kept() {
+    for year in (1750..=2050).step_by(5) {
+        for storeys in 1..=40u8 {
+            for lot in Lot::ALL {
+                for use_ in [Use::Dwellings, Use::Offices] {
+                    let a = ask(year, storeys, lot, use_, 0.37);
+                    assert_eq!(choose_within(&a, u8::MAX), choose(&a), "{a:?}");
+                    let x = choose_within(&a, 6);
+                    let s = spec(x.shape);
+                    assert!(x.storeys >= s.storeys.0 && x.storeys <= s.storeys.1, "{a:?}: {x:?}");
+                    if year > 1900 {
+                        assert!(x.storeys <= 6, "{a:?}: {x:?}");
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Every form answers some question exactly: none is dead weight.
 #[test]
 fn every_form_is_the_answer_to_some_question() {

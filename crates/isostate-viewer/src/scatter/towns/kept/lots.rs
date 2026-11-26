@@ -47,6 +47,18 @@
 //!    group later is taken into the form it was built as). A row of one plot
 //!    asks for a form on a house lot, any other group for one on lots thrown
 //!    together.
+//! 7. **Height follows the street** (26 November 2026). Towers go to the
+//!    main streets and the town's middle, and a street's front rises
+//!    together: a main street's frontage (a road through or a market place)
+//!    asks storeys as if its ground were half as dear again as its square's
+//!    (`MAIN_STREET`), and a lot elsewhere, outside its town's middle
+//!    (`in_middle`), no more than six (`MIDDLE_STOREYS`: terraces and mansion
+//!    blocks), with no form chosen that stands higher (`forms::choose_within`);
+//!    the offices and the closes built over by themselves likewise. When a
+//!    group is rebuilt, the rest of its front (the same street, side and
+//!    stretch of `STRETCH` plots) goes up with it in the same form to the
+//!    same height, wherever what stands would come down for it. So a street
+//!    has a wall, and no tower stands among the cottages of its own street.
 //!
 //! The same record always draws the same town: all of it is worked out from
 //! the record's years up to the one drawn, whichever year is drawn and
@@ -157,10 +169,28 @@ pub(crate) const STRETCH: i32 = 8;
 /// middle, where towers may stand off the main streets (rule 7).
 pub(crate) const MIDDLE_REACH: f32 = 1.5;
 
-/// The storeys a group asks for (rules 2 and 7).
-fn asked(value: f32, knows: Knows, tall: bool) -> u8 {
-    let s = storeys_for(value, knows);
-    if tall || super::estates::bare() { s } else { s.min(MIDDLE_STOREYS) }
+/// How much dearer a main street's frontage is than its square's ground on
+/// the mean (rule 7): half as dear again. The record keeps one land value a
+/// square; the frontage of a road through or a market place, where the trade
+/// passes, lets for more than the back lanes behind it, and builds higher.
+pub(crate) const MAIN_STREET: f32 = 1.5;
+
+/// The storeys a group asks for (rules 2 and 7): on a main street's
+/// frontage as its ground is worth `MAIN_STREET` times its square's;
+/// elsewhere, outside its town's middle, no more than `MIDDLE_STOREYS`.
+fn asked(value: f32, knows: Knows, tall: bool, main: bool) -> u8 {
+    if super::estates::bare() {
+        return storeys_for(value, knows);
+    }
+    storeys_for(if main { value * MAIN_STREET } else { value }, knows).min(most(tall))
+}
+
+/// The most storeys a building may be built to (rule 7): as many as asked
+/// on a main street or in the town's middle, `MIDDLE_STOREYS` elsewhere; a
+/// form that stands no lower than that is not chosen there
+/// (`forms::choose_within`).
+fn most(tall: bool) -> u8 {
+    if tall || super::estates::bare() { u8::MAX } else { MIDDLE_STOREYS }
 }
 
 /// One year of a square's history: the year, how densely the square is
@@ -215,7 +245,7 @@ pub(crate) fn walk_with(groups: &[Group], partners: &[Vec<usize>], years: &[Year
     let mut since: Vec<i32> = groups.iter().map(|g| g.built).collect();
     let ask = |g: &Group, y: &Year, block: bool| {
         let lot = if block || g.block { FormLot::Block } else if g.joined { FormLot::Joined } else { FormLot::House };
-        forms::choose(&forms::Ask { knows: y.knows, year: y.year, storeys: asked(y.value, y.knows, g.tall), lot, use_: Use::Dwellings, pick: g.pick })
+        forms::choose_within(&forms::Ask { knows: y.knows, year: y.year, storeys: asked(y.value, y.knows, g.tall, g.front), lot, use_: Use::Dwellings, pick: g.pick }, most(g.tall))
     };
     let together = !super::estates::bare();
     for y in years {
@@ -615,10 +645,13 @@ pub(crate) fn office(r: &Replay, f: usize, k: usize) -> Option<Built> {
         let sq = square_year(r, y, firm.cell);
         let floors = hands / HANDS_A_STOREY * sq.value.max(1.0).sqrt();
         let asked = (floors.round().min(40.0) as u8).max(2).min(most_storeys(sq.knows));
+        // (outside its town's middle no higher than a mansion block, rule 7)
+        let cap = most(in_middle(r, y, firm.cell));
+        let asked = asked.min(cap);
         if built.is_some_and(|b| (asked as f32) <= b.storeys as f32 * 1.5) {
             continue;
         }
-        let a = forms::choose(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked, lot: FormLot::Joined, use_: Use::Offices, pick });
+        let a = forms::choose_within(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked, lot: FormLot::Joined, use_: Use::Offices, pick }, cap);
         if built.is_none_or(|b| a.storeys > b.storeys) {
             built = Some(Built { shape: a.shape, storeys: a.storeys, year: sq.year });
         }
@@ -807,7 +840,7 @@ pub(super) fn infill(r: &Replay, g: &Ground, k: usize, town: &world::TownGround,
             let side = Vec2::new(front.y, -front.x);
             let pick = world::hash2(c as i32, n as i32, 45);
             // (no close fronts a main street: tall only in its town's middle, rule 7)
-            let a = forms::choose(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked(sq.value, sq.knows, middle), lot: FormLot::Joined, use_: Use::Dwellings, pick });
+            let a = forms::choose_within(&forms::Ask { knows: sq.knows, year: sq.year, storeys: asked(sq.value, sq.knows, middle, false), lot: FormLot::Joined, use_: Use::Dwellings, pick }, most(middle));
             let spec = forms::spec(a.shape);
             let ground = (spec.ground.0.min(0.09), spec.ground.1.min(0.07));
             // all of it on dry ground clear of what keeps a house out
@@ -973,6 +1006,43 @@ mod tests {
         // and the same record draws the same block, whichever year the walk stops at
         let to_1960 = walk_with(&g, &partners, &years(1901, 1960, dens, |_| BLOCK_VALUE * 1.5));
         assert_eq!((to_1960.form[0], &to_1960.by[..2]), (Some(b), &dear.by[..2]));
+    }
+
+    /// Height follows the street (rule 7): on ground dear enough for towers,
+    /// the main street's frontage rises tall and the back streets no higher
+    /// than a mansion block; and a front goes up together, every group of it
+    /// to the same form and height, so that no tall building stands alone
+    /// among the houses of its own street.
+    #[test]
+    fn towers_keep_to_the_main_street_and_a_front_rises_together() {
+        // a main street's frontage of three fronts of three pairs, and a back street of three
+        // fronts of three rows, all houses of the 1890s
+        let mut g: Vec<Group> = Vec::new();
+        for f in 0..3u32 {
+            for i in 0..3 {
+                g.push(Group { plots: 2, built: 1890, front: true, pick: (f * 3 + i) as f32 / 9.0, joined: true, block: false, wall: f, tall: true });
+                g.push(Group { plots: 4, built: 1891, front: false, pick: (f * 3 + i) as f32 / 9.0, joined: true, block: false, wall: 10 + f, tall: false });
+            }
+        }
+        // ground worth five times its town's of 1900 from 1990, and a square that must hold
+        // three times its room of 1900
+        let built = walk(&g, &years(1901, 2050, |y| if y < 1990 { 1.0 } else { 3.0 }, |y| if y < 1990 { 1.0 } else { 5.0 }));
+        assert!(built.iter().any(|b| b.is_some()), "{built:?}");
+        for (gr, b) in g.iter().zip(&built) {
+            if let (false, Some(b)) = (gr.tall, b) {
+                assert!(b.storeys <= MIDDLE_STOREYS, "a back street rose to {b:?}");
+            }
+        }
+        // the main street's fronts rose tall, as its ground is dearer than the square's mean
+        let tallest = g.iter().zip(&built).filter(|(gr, _)| gr.front).filter_map(|(_, b)| *b).map(|b| b.storeys).max().unwrap_or(0);
+        assert!(tallest > MIDDLE_STOREYS, "the main street rose only to {tallest}");
+        // every front that was rebuilt was rebuilt whole, to one form and height
+        for w in [0, 1, 2, 10, 11, 12] {
+            let mine: Vec<Option<Built>> = g.iter().zip(&built).filter(|(gr, _)| gr.wall == w).map(|(_, b)| *b).collect();
+            if mine.iter().any(|b| b.is_some()) {
+                assert!(mine.iter().all(|b| *b == mine[0]), "front {w}: {mine:?}");
+            }
+        }
     }
 
     /// Land value sets the storeys and technology caps them: the same dear

@@ -1514,11 +1514,11 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         let of = LaneOf { source: s.source(), year: r.y0 + s.since as i32, estate: s.estate.map(|e| (e.pattern, e.year)), circle: false, rank, middle };
         if s.road {
             // a road through is drawn by the ways between squares (`network`); on a town's
-            // built-up ground, from the year main streets are tarred, it is drawn again over that
+            // ground, from the year main streets are tarred, it is drawn again over that
             // as a town's main street, where it runs straight
             if estates::surface(rank, of.year, s.width, None, middle, true, now).is_some() && crate::network::route(g, s.a, s.b, r.round()).straight() {
                 let mut got = Vec::new();
-                lay.lengths(i, 0.0, 1.0, true, &mut got);
+                lay.lengths(i, 0.0, 1.0, false, &mut got);
                 roads.extend(got.into_iter().map(|(line, w)| (line, w, of)));
             }
             continue;
@@ -1963,9 +1963,10 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     }
     if telling {
         // (the offices and the closes built over by themselves, noted as they were drawn)
+        let lots_end = heights.len();
         heights.extend(others.iter().map(|o| (o.0, o.2, false)));
         estates::tell(r, g, k, land, &estates, &laid, &lanes, &lane_of, &standing, &drawn, &rects, &infill, near_plot);
-        estates::tell_heights(r, k, &heights, &surfaced, &estates);
+        estates::tell_heights(r, k, &heights, lots_end, &surfaced, &estates);
     }
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("timing kept towns: streets {:.0} ms, plots {:.0} ms, turns {:.0} ms, houses {:.0} ms", laying[0], laying[1], laying[2], t3.elapsed().as_secs_f64() * 1000.0);
