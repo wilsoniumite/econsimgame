@@ -49,6 +49,30 @@ pub struct Good {
     pub weight: Option<f32>,
     #[serde(default)]
     pub price: Option<f32>,
+    /// When it begins, for a good the run does not have from the start
+    /// (docs/rules/goods.md); None for the others, and in every record made
+    /// before 26 November 2026. A good is listed from then (`begun`).
+    #[serde(default)]
+    pub begins: Option<Begins>,
+}
+
+/// When a later good begins: a year, or the name of the idea it comes with.
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[serde(untagged)]
+pub enum Begins {
+    Year(i32),
+    Idea(String),
+}
+
+impl Begins {
+    /// As a live game's content says it.
+    pub fn of(c: &isostate_core::content::Content, g: usize) -> Option<Begins> {
+        match c.good_begins.get(g).copied().unwrap_or_default() {
+            isostate_core::content::Begins::Start => None,
+            isostate_core::content::Begins::Year(y) => Some(Begins::Year(y as i32)),
+            isostate_core::content::Begins::Idea(t) => Some(Begins::Idea(c.tech_name[t].clone())),
+        }
+    }
 }
 
 /// The three kinds the Markets panel lists the goods under, so that a list
@@ -1244,6 +1268,18 @@ fn newest_filled(series: &[f32], len: usize, t: usize) -> usize {
 /// nothing was sold at. A run that does not hold what is made says yes.
 pub fn made_by(r: &Replay, good: &str, t: usize) -> bool {
     first_made(r, good).is_some_and(|m| m <= t)
+}
+
+/// Whether good `g` has begun by month `t` of the run (docs/rules/goods.md): a
+/// good of the start always has; one of a year from its January; one that comes
+/// with an idea once any of it is made, which is the first the record can tell
+/// of it (the header keeps the ideas' names, not the years they were found).
+pub fn begun(r: &Replay, g: usize, t: usize) -> bool {
+    match r.header.goods.get(g).and_then(|good| good.begins.as_ref()) {
+        None => true,
+        Some(Begins::Year(y)) => r.y0 + (t / 12) as i32 >= *y,
+        Some(Begins::Idea(_)) => made_by(r, &r.header.goods[g].name, t),
+    }
 }
 
 /// The first month of the run (0 is the first January) in which any of a good

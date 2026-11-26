@@ -171,12 +171,19 @@ fn nothing(cell: &str) -> bool {
 }
 
 /// The series without the columns that are nothing in every row: those of
-/// methods and goods that nothing makes in these months. The year and the
-/// month are always kept, and every other column in the file's own order.
-fn blind_series(csv: &str) -> String {
+/// methods and goods that nothing makes in these months; and without the price
+/// of a good that has not begun by the run's last year (a good of a later year
+/// or idea, docs/rules/goods.md), which is its anchor or its ceiling, a price
+/// nothing is sold at. The year and the month are always kept, and every other
+/// column in the file's own order.
+fn blind_series(csv: &str, r: &RunResult) -> String {
     let rows: Vec<Vec<&str>> = csv.split_terminator("\r\n").map(|r| r.split(',').collect()).collect();
     let n = rows.first().expect("the series have a header").len();
-    let keep: Vec<usize> = (0..n).filter(|&k| k < 2 || rows[1..].iter().any(|r| !nothing(r[k]))).collect();
+    let last = r.content.start_year + r.rec.n_years as i64 - 1;
+    let unbegun: Vec<String> =
+        (0..r.content.G).filter(|&g| !r.content.good_begun(g, last, &r.state.tech_year)).map(|g| format!("price_{}", r.content.good_name[g])).collect();
+    let keep: Vec<usize> =
+        (0..n).filter(|&k| k < 2 || (!unbegun.iter().any(|c| c == rows[0][k]) && rows[1..].iter().any(|r| !nothing(r[k])))).collect();
     let mut out = String::new();
     for r in &rows {
         assert_eq!(r.len(), n, "every row of the series has a cell for every column");
@@ -315,7 +322,7 @@ fn first_era(dump_to: Option<&std::path::Path>) -> ([u64; FIRST], [u64; 3]) {
     if let Some(dir) = dump_to {
         dump(dir, &csv, &events_json(&r), &run_bin(&r));
     }
-    let (economy, books) = split_series(&blind_series(&csv));
+    let (economy, books) = split_series(&blind_series(&csv, &r));
     let blind = [fnv1a(economy.as_bytes()), fnv1a(books.as_bytes()), fnv1a(blind_news(&r).as_bytes())];
     let (economy, books) = split_series(&csv);
     (blind, [fnv1a(economy.as_bytes()), fnv1a(books.as_bytes()), news_unmarked(&r)])

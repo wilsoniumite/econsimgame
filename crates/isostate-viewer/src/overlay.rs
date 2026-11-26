@@ -1477,6 +1477,7 @@ fn input(
     steps: Query<(&Interaction, &GoodStep), Changed<Interaction>>,
     ranges: Query<(&Interaction, &RangeChip), Changed<Interaction>>,
     cards: Res<crate::game::CardOpen>,
+    tl: Res<Timeline>,
 ) {
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     // while a card wants an answer the keys are the card's, as with the panels' keys
@@ -1513,8 +1514,13 @@ fn input(
             ov.deposit = (ov.deposit as i32 + turn).rem_euclid(KINDS.len() as i32) as usize;
         } else {
             let n = data.r.header.goods.len() as i32;
-            if n > 0 {
+            // a good that has not begun by the year on the clock is stepped over (docs/rules/goods.md)
+            let month = (tl.t.max(0.0).floor() as usize).min(data.r.ny.saturating_sub(1)) * 12 + 11;
+            for _ in 0..n {
                 ov.good = (ov.good as i32 + turn).rem_euclid(n) as usize;
+                if replay::begun(&data.r, ov.good, month) {
+                    break;
+                }
             }
         }
     }

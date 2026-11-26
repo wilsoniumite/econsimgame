@@ -161,7 +161,7 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
         return;
     }
     let way = way(st, C, P);
-    ways::progress(st, &way, year_float, events);
+    ways::progress(st, C, &way, year_float, events);
 }
 
 /// The line that carries a town's coal away, as the chronicle's coalfield

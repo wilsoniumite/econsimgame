@@ -215,7 +215,7 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     let emp = pairwise_sum(&ms.employment).max(1e-9);
     let ag = pairwise_sum(&ms.ex_labor_by_sector[..3]);
     s.set("ag_share", t, ag / emp);
-    s.set("ind_share", t, pairwise_sum(&ms.firm_labor_by_method) / emp);
+    s.set("ind_share", t, C.sum_methods_of(&ms.firm_labor_by_method) / emp);
     let gdp = ms.hh_spend + ms.lord_spend + ms.urban_rent + st.m_invest;
     // state (docs/rules/state.md): and what the treasury bought, its teachers
     let bought = crate::purse::month_buying(st);
@@ -223,8 +223,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     s.set("gdp_nom", t, gdp);
     let basket = &st.cpi_basket;
     let G = C.G;
-    let cpi = crate::util::pairwise_sum_by(G, |g| basket[g] * P_nat[g])
-        / crate::util::pairwise_sum_by(G, |g| basket[g] * st.cpi_base_prices[g]).max(1e-9);
+    let cpi = C.sum_goods(|g| basket[g] * P_nat[g])
+        / C.sum_goods(|g| basket[g] * st.cpi_base_prices[g]).max(1e-9);
     s.set("cpi", t, cpi);
     let gdp_real = gdp / cpi.max(1e-9);
     s.set("gdp_real", t, gdp_real);

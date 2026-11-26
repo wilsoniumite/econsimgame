@@ -479,8 +479,8 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
             // roads (docs/probes/dx-roads.md): nor is a road works
             .filter(|pr| pr.way != crate::ways::CANAL && pr.way != crate::ways::ROAD)
             .map(|pr| {
-                let order: f64 = crate::util::pairwise_sum(&pr.order);
-                let need: f64 = crate::util::pairwise_sum(&pr.need);
+                let order: f64 = C.sum_goods_of(&pr.order);
+                let need: f64 = C.sum_goods_of(&pr.need);
                 ProjectSnap { a: pr.a, b: pr.b, done: 1.0 - order / need.max(1e-9) }
             })
             .collect(),
@@ -731,7 +731,18 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         })
         .collect();
     let goods: Vec<Value> = (0..C.G)
-        .map(|g| json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g], "price": C.base_price[g]}))
+        .map(|g| {
+            let mut v = json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g], "price": C.base_price[g]});
+            // goods (docs/rules/goods.md): when a later good begins, a year or an
+            // idea's name, so that the viewer lists it from then; nothing is
+            // written for the goods of the start, so a record of them is as it was
+            match C.good_begins.get(g).copied().unwrap_or_default() {
+                crate::content::Begins::Start => {}
+                crate::content::Begins::Year(y) => v["begins"] = json!(y),
+                crate::content::Begins::Idea(t) => v["begins"] = json!(C.tech_name[t]),
+            }
+            v
+        })
         .collect();
     let methods: Vec<Value> = (0..C.M)
         .map(|m| {

@@ -554,7 +554,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let pout: Vec<f64> =
         (0..NFI).map(|i| p[(ft[i], out[i])] - freight * C.weight[out[i]] * st.dcatch[fc[i]]).collect();
     let nonlabor: Vec<f64> =
-        (0..NFI).map(|i| pairwise_sum_by(G, |g| a[(i, g)] * pin[(i, g)]) + h[i] * hunit[i]).collect();
+        (0..NFI).map(|i| C.sum_goods(|g| a[(i, g)] * pin[(i, g)]) + h[i] * hunit[i]).collect();
     let phi_prev: Vec<f64> = fi.iter().map(|&i| st.f_fill[i]).collect();
 
     // ---------------- labour market: one wage per town clears supply and demand
@@ -1152,9 +1152,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // firms
     let p = &st.price;
-    let pay_in: Vec<f64> = (0..NFI).map(|i| pairwise_sum_by(G, |g| use_f[(i, g)] * pin[(i, g)])).collect();
+    let pay_in: Vec<f64> = (0..NFI).map(|i| C.sum_goods(|g| use_f[(i, g)] * pin[(i, g)])).collect();
     let cart_in: Vec<f64> =
-        (0..NFI).map(|i| pairwise_sum_by(G, |g| use_f[(i, g)] * (pin[(i, g)] - p[(ft[i], g)]).max(0.0))).collect();
+        (0..NFI).map(|i| C.sum_goods(|g| use_f[(i, g)] * (pin[(i, g)] - p[(ft[i], g)]).max(0.0))).collect();
     let spread = P.merchant_spread;
     let rev: Vec<f64> = (0..NFI).map(|i| q[i] * (pout[i] - spread * p[(ft[i], out[i])])).collect();
     let cart_out: Vec<f64> = (0..NFI).map(|i| q[i] * (p[(ft[i], out[i])] - pout[i])).collect();
@@ -1207,7 +1207,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // tasks: each unit pays for its sector's machines' goods by its part of the
     // work; the return on their plant stays in the rent
     if let (Some(b), Some((got, _))) = (&lbuy, &land_got) {
-        let paid: Vec<f64> = (0..T * NS).map(|r| pairwise_sum_by(G, |g| got[(r, g)] * p[(r / NS, g)])).collect();
+        let paid: Vec<f64> = (0..T * NS).map(|r| C.sum_goods(|g| got[(r, g)] * p[(r / NS, g)])).collect();
         for u in 0..NE {
             let r = et[u] * NS + sec[u];
             if b.work[r] > 0.0 && paid[r] != 0.0 {
@@ -1242,8 +1242,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // households and landlords buy goods; households pay urban rent
     let p = &st.price;
-    let hh_spend: Vec<f64> = (0..T).map(|t| pairwise_sum_by(G, |g| hh_got[(t, g)] * p[(t, g)])).collect();
-    let lord_spend: Vec<f64> = (0..T).map(|t| pairwise_sum_by(G, |g| lord_got[(t, g)] * p[(t, g)])).collect();
+    let hh_spend: Vec<f64> = (0..T).map(|t| C.sum_goods(|g| hh_got[(t, g)] * p[(t, g)])).collect();
+    let lord_spend: Vec<f64> = (0..T).map(|t| C.sum_goods(|g| lord_got[(t, g)] * p[(t, g)])).collect();
     for t in 0..T {
         st.hh_cash[t] -= hh_spend[t] + urban_pay[t];
         st.lord_cash[t] -= lord_spend[t];
@@ -1254,7 +1254,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // their oil and plant: under the hauliers' till out of the till their carting
     // is paid into (`lorry.till`), and without it out of the households' purse
     let cart_pay: Vec<f64> = match &cart_got {
-        Some((got, _, _)) => (0..T).map(|t| pairwise_sum_by(G, |g| got[(t, g)] * p[(t, g)])).collect(),
+        Some((got, _, _)) => (0..T).map(|t| C.sum_goods(|g| got[(t, g)] * p[(t, g)])).collect(),
         None => Vec::new(),
     };
     for (t, &v) in cart_pay.iter().enumerate() {
@@ -1276,9 +1276,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // investment deliveries: firms pay for capital goods, capacity arrives pro rata
     if !oi.is_empty() {
         let p = &st.price;
-        let inv_pay: Vec<f64> = (0..oi.len()).map(|r| pairwise_sum_by(G, |g| inv_got[(r, g)] * p[(ot[r], g)])).collect();
+        let inv_pay: Vec<f64> = (0..oi.len()).map(|r| C.sum_goods(|g| inv_got[(r, g)] * p[(ot[r], g)])).collect();
         let remaining_value: Vec<f64> =
-            oi.iter().zip(&ot).map(|(&i, &t)| pairwise_sum_by(G, |g| st.f_order[(i, g)] * p[(t, g)])).collect();
+            oi.iter().zip(&ot).map(|(&i, &t)| C.sum_goods(|g| st.f_order[(i, g)] * p[(t, g)])).collect();
         for (r, &i) in oi.iter().enumerate() {
             let frac = if remaining_value[r] > 1e-12 { inv_pay[r] / remaining_value[r].max(1e-12) } else { 1.0 };
             let addK = st.f_order_K[i] * frac.clamp(0.0, 1.0);
@@ -1287,7 +1287,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             for g in 0..G {
                 st.f_order[(i, g)] = (st.f_order[(i, g)] - inv_got[(r, g)]).max(0.0);
             }
-            let done = pairwise_sum(st.f_order.row(i)) < 1e-6 || st.f_order_K[i] < 1e-9;
+            let done = C.sum_goods_of(st.f_order.row(i)) < 1e-6 || st.f_order_K[i] < 1e-9;
             if done {
                 st.f_order_K[i] = 0.0;
                 st.f_order.row_mut(i).iter_mut().for_each(|v| *v = 0.0);
@@ -1320,7 +1320,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     let mut proj_spend = 0.0;
     for (pr, got) in st.projects.iter_mut().zip(&proj_got) {
-        let pay = pairwise_sum_by(G, |g| got[g] * st.price[(pr.town, g)]);
+        let pay = C.sum_goods(|g| got[g] * st.price[(pr.town, g)]);
         // canals (docs/rules/canals.md): a way says what its navvies are paid on each
         // shilling of materials; the port's and the railways' three tenths otherwise
         let wages = crate::ways::navvy_share(pr) * pay;
@@ -1444,9 +1444,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         for (i, &ti) in A_idx.iter().enumerate() {
             for (j, &tj) in A_idx.iter().enumerate() {
                 let base = (i * na + j) * G;
-                pay[(i, j)] = pairwise_sum_by(G, |g| qt[base + g] * p[(ti, g)]);
-                tcost[(i, j)] = pairwise_sum_by(G, |g| qt[base + g] * tau[base + g]);
-                let wflow = pairwise_sum_by(G, |g| qt[base + g] * C.weight[g]);
+                pay[(i, j)] = C.sum_goods(|g| qt[base + g] * p[(ti, g)]);
+                tcost[(i, j)] = C.sum_goods(|g| qt[base + g] * tau[base + g]);
+                let wflow = C.sum_goods(|g| qt[base + g] * C.weight[g]);
                 st.trade_F[(ti, tj)] += wflow;
             }
         }
@@ -1697,7 +1697,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         flow[ex[u]] += Y[u] * C.weight[g_s[u]];
     }
     for i in 0..NFI {
-        flow[fc[i]] += pairwise_sum_by(G, |g| use_f[(i, g)] * C.weight[g]) + q[i] * C.weight[out[i]];
+        flow[fc[i]] += C.sum_goods(|g| use_f[(i, g)] * C.weight[g]) + q[i] * C.weight[out[i]];
     }
     for c in 0..st.N {
         st.cell_flow[c] += flow[c];

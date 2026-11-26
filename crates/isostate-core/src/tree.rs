@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::{Content, RawContent, RawGood, RawMeta, RawMethod, RawSector, RawServices, Threshold, content_from_raw};
+use crate::content::{Content, Begins, RawBegins, RawContent, RawGood, RawMeta, RawMethod, RawSector, RawServices, Threshold, content_from_raw};
 use crate::mat::Mat;
 use crate::params::Params;
 
@@ -112,6 +112,8 @@ struct OverGood {
     traded: Option<bool>,
     stock_months: Option<f64>,
     opens_dear: Option<bool>,
+    /// When it begins (`Content::good_begins`, docs/rules/goods.md).
+    begins: Option<RawBegins>,
     stage: Option<u32>,
 }
 
@@ -235,6 +237,11 @@ fn raw_of(C: &Content) -> RawContent {
                     traded: C.traded.get(g).copied().filter(|&t| !t),
                     stock_months: C.stock_months.get(g).copied().flatten(),
                     opens_dear: C.opens_dear.get(g).copied().filter(|&d| d),
+                    begins: match C.good_begins.get(g).copied().unwrap_or_default() {
+                        Begins::Start => None,
+                        Begins::Year(y) => Some(RawBegins::Year(y)),
+                        Begins::Idea(t) => Some(RawBegins::Idea(C.tech_name[t].clone())),
+                    },
                 })
                 .collect(),
         },
@@ -298,6 +305,7 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
                 r.traded = g.traded.or(r.traded);
                 r.stock_months = g.stock_months.or(r.stock_months);
                 r.opens_dear = g.opens_dear.or(r.opens_dear);
+                r.begins = g.begins.clone().or(r.begins.take());
             }
             None => raw.meta.goods.push(RawGood {
                 name: g.name.clone(),
@@ -310,6 +318,7 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
                 traded: g.traded,
                 stock_months: g.stock_months,
                 opens_dear: g.opens_dear,
+                begins: g.begins.clone(),
             }),
         }
     }

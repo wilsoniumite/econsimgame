@@ -52,6 +52,27 @@ pub fn pairwise_sum_by(n: usize, f: impl Fn(usize) -> f64) -> f64 {
     }
 }
 
+/// The sum of `f(i)` for i in 0..n with the first `base` terms in numpy's pairwise
+/// order (`pairwise_sum_by(base, f)`) and every later term added after them, one at
+/// a time, in order. With `base` at `n` or above it is `pairwise_sum_by(n, f)` to
+/// the last bit.
+///
+/// Why (docs/rules/goods.md): the pairwise sum keeps eight partial sums while
+/// it has whole rows of eight terms and adds the rest one by one, so the place of
+/// a term decides which others it is rounded with. With one more term the rows
+/// can change (29 goods are three rows and five more, 32 are four rows), and
+/// then the same nonzero terms are added in other groups and the sum moves in
+/// its last digit, though the term added is nothing. Added after the old sum, a
+/// term that is nothing leaves it as it was.
+pub fn pairwise_sum_from(base: usize, n: usize, f: impl Fn(usize) -> f64) -> f64 {
+    let base = base.min(n);
+    let mut s = pairwise_sum_by(base, &f);
+    for i in base..n {
+        s += f(i);
+    }
+    s
+}
+
 /// `np.bincount(idx, weights=w, minlength=n)`: sums in index order.
 pub fn bincount(idx: &[usize], w: &[f64], n: usize) -> Vec<f64> {
     let mut out = vec![0.0; n];

@@ -25,7 +25,9 @@
 #             stock_months (the months of sales merchants mean to hold; absent is the island's
 #             price_target_months, 2; 0 is a good that does not keep: what is not sold in a month is lost
 #             at its end, and its price moves on the month's asking against its making), opens_dear (true:
-#             the good opens at its ceiling price in every town, for a good nobody has until it is found)
+#             the good opens at its ceiling price in every town, for a good nobody has until it is found),
+#             begins (a year, or the name of the method or invention it comes with: a good added after
+#             26 November 2026 says it, so that it moves nothing before then; docs/rules/goods.md)
 #   services: theta (the logit's width within each need; the port has 0.25 for all)
 #   method:   group (the family trade, one of iron, textiles, coal, engineering, building, estates:
 #             without it no family can own the works), seed (opened in 1750 where its good is wanted),

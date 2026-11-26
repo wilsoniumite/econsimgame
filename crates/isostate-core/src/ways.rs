@@ -44,7 +44,7 @@ use crate::ndimage::{self, Mode};
 use crate::params::Params;
 use crate::state::{Event, Project, RailOpened, State};
 use crate::transport as tr;
-use crate::util::{argsort, fmt_pct, pairwise_sum, pairwise_sum_by};
+use crate::util::{argsort, fmt_pct, pairwise_sum};
 use crate::world::{HILLS, LOWLAND, MOUNTAINS, World};
 
 /// `Project::way` of the port's own railway projects (`rail.rs`).
@@ -632,7 +632,7 @@ fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t
         markup += backlog / made.max(1.0);
     }
     let price = |g: usize| reckoned_price(st, pbar, g, t, need[g], way.build_months);
-    pairwise_sum_by(C.G, |g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * (1.0 + way.wages)
+    C.sum_goods(|g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * (1.0 + way.wages)
 }
 
 /// The cheaper of two towns to buy `need` in, by the promoters' own reckoning,
@@ -1074,7 +1074,7 @@ pub fn within_means(pr: &Project, rq: &mut [f64], price: &[f64]) {
 /// The monthly step for one way: lines short of cash for the month's materials
 /// call on their subscribers, and finished lines open. Projects of other ways
 /// are left as they are.
-pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Event>) {
+pub fn progress(st: &mut State, C: &Content, way: &Way, year_float: f64, events: &mut Vec<Event>) {
     if !st.projects.iter().any(|pr| pr.way == way.id) {
         return;
     }
@@ -1114,7 +1114,7 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
                 short -= call;
             }
         }
-        if pairwise_sum(&pr.order) > 0.01 * pairwise_sum(&pr.need) {
+        if C.sum_goods_of(&pr.order) > 0.01 * C.sum_goods_of(&pr.need) {
             keep.push(pr);
             continue;
         }
@@ -1312,7 +1312,7 @@ mod tests {
             st.hh_cash[t] = 1e9;
         }
         let before = crate::econ::money_total(&st);
-        progress(&mut st, &way, 1800.5, &mut Vec::new());
+        progress(&mut st, &default_content(), &way, 1800.5, &mut Vec::new());
         let pr = &st.projects[0];
         // the month's bill, all of it from the first town's households
         let rq: Vec<f64> = pr.need.iter().map(|n| n / way.build_months).collect();
@@ -1327,7 +1327,7 @@ mod tests {
         for t in [a, b] {
             st.lord_cash[t] = 10.0;
         }
-        progress(&mut st, &way, 1800.6, &mut Vec::new());
+        progress(&mut st, &default_content(), &way, 1800.6, &mut Vec::new());
         assert!((st.projects[0].cash - 2.0).abs() < 1e-12 && st.lord_cash[a] == 9.0 && st.lord_cash[b] == 9.0);
         assert_eq!(st.hh_cash[b], 1e9);
     }

@@ -18,7 +18,7 @@ use crate::ndimage::{self, Mode};
 use crate::params::Params;
 use crate::rng::{Rng, choice_without_replacement};
 use crate::state::{Reason, State};
-use crate::util::{argmax, argsort, pairwise_sum, pairwise_sum_by, round_dp};
+use crate::util::{argmax, argsort, pairwise_sum, round_dp};
 use crate::works;
 
 pub fn learning(C: &Content, P: &Params, Q: &[f64]) -> Vec<f64> {
@@ -141,13 +141,13 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     if spread != 0.0 {
         pout.iter_mut().for_each(|p| *p -= spread);
     }
-    let in_cost: Vec<f64> = (0..n).map(|j| pairwise_sum_by(G, |g| a[(j, g)] * pin[(j, g)])).collect();
+    let in_cost: Vec<f64> = (0..n).map(|j| C.sum_goods(|g| a[(j, g)] * pin[(j, g)])).collect();
     let heat_cost: Vec<f64> = (0..n).map(|j| h[j] * hunit[j]).collect();
     let labor_cost: Vec<f64> = (0..n).map(|j| l[j] * wbar[i]).collect();
     let margin: Vec<f64> = (0..n).map(|j| pout[j] - in_cost[j] - heat_cost[j] - labor_cost[j]).collect();
     let foot = works::land_take(C, P, m, K);
     let rent_bid: Vec<f64> = cells.iter().map(|&c| 0.01f64.max(1.25 * st.land_rent_only[c] * foot)).collect();
-    let mut cap_cost = K * pairwise_sum_by(G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
+    let mut cap_cost = K * C.sum_goods(|g| C.m_cap[(m, g)] * pbar[(i, g)]);
     if machines > 0.0 {
         cap_cost += K * machines;
     }
@@ -418,7 +418,7 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
         if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 || !works::cell_fits(st, C, P, cell, m, K) {
             continue;
         }
-        let mut cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+        let mut cost = K * C.sum_goods(|g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
         if ev.machines > 0.0 {
             cost += K * ev.machines * 1.15; // tasks: and its machines' plant
         }
@@ -454,7 +454,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
     for &fid in &alive {
         let (i, m) = (st.f_town[fid], st.f_method[fid]);
         let K = st.f_K[fid];
-        let unit_cap = pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
+        let unit_cap = C.sum_goods(|g| C.m_cap[(m, g)] * pbar[(i, g)]);
         // tasks (docs/rules/tasks.md): and the plant of the machines a unit
         // of capacity takes at the town's target
         let machines = machines_a_unit(st, C, P, fid, pbar);
@@ -570,7 +570,7 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
     if ev.roi[j] < P.hurdle {
         return None;
     }
-    let mut cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+    let mut cost = K * C.sum_goods(|g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
     if ev.machines > 0.0 {
         cost += K * ev.machines * 1.15; // tasks: and its machines' plant
     }
