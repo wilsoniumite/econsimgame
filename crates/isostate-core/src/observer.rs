@@ -215,7 +215,7 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     let emp = pairwise_sum(&ms.employment).max(1e-9);
     let ag = pairwise_sum(&ms.ex_labor_by_sector[..3]);
     s.set("ag_share", t, ag / emp);
-    s.set("ind_share", t, pairwise_sum(&ms.firm_labor_by_method) / emp);
+    s.set("ind_share", t, C.sum_methods_of(&ms.firm_labor_by_method) / emp);
     let gdp = ms.hh_spend + ms.lord_spend + ms.urban_rent + st.m_invest;
     // state (docs/rules/state.md): and what the treasury bought, its teachers
     let bought = crate::purse::month_buying(st);

@@ -63,6 +63,11 @@ pub struct Content {
     pub sector_field: Vec<String>,
     pub sector_mine: Vec<bool>,
     pub M: usize,
+    /// The methods that make goods of the start (`G_base`), which come first:
+    /// those of a later good go after them, as their goods do. A sum over the
+    /// methods adds these in numpy's order and the rest after
+    /// (`sum_methods_of`, docs/rules/goods.md). Every method of today's content.
+    pub M_base: usize,
     pub method_name: Vec<String>,
     pub method_label: Vec<String>,
     pub method_out: Vec<usize>,
@@ -164,6 +169,12 @@ impl Content {
     /// `sum_goods` of a slice with a value for each good.
     pub fn sum_goods_of(&self, v: &[f64]) -> f64 {
         crate::util::pairwise_sum_from(self.G_base, v.len(), |g| v[g])
+    }
+
+    /// The same for a slice with a value for each method: the methods of the
+    /// goods of the start in numpy's order, the methods of later goods after.
+    pub fn sum_methods_of(&self, v: &[f64]) -> f64 {
+        crate::util::pairwise_sum_from(self.M_base, v.len(), |m| v[m])
     }
 
     /// Whether good `g` has begun by `year` (with the ideas found so far in
@@ -363,7 +374,11 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
     let fuel_goods: Vec<usize> = (0..G).filter(|&g| heat[g] > 0.0).collect();
 
     let sectors = &raw.sector;
-    let methods = &raw.method;
+    // goods (docs/rules/goods.md): the methods that make a good of a later year
+    // or idea go after the others, as their goods do, and keep their order
+    let later = |d: &RawMethod| d.output.as_deref().is_some_and(|o| goods.iter().any(|g| g.name == o && g.begins.is_some()));
+    let methods: Vec<&RawMethod> = raw.method.iter().filter(|d| !later(d)).chain(raw.method.iter().filter(|d| later(d))).collect();
+    let M_base = raw.method.iter().filter(|d| !later(d)).count();
     let M = methods.len();
     let mut m_in = Mat::zeros(M, G);
     let mut m_cap = Mat::zeros(M, G);
@@ -382,7 +397,7 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
 
     // Knowledge items: every firm method, then the extra techs.
     let tech_list: Vec<(&RawMethod, &str)> =
-        methods.iter().map(|d| (d, "method")).chain(raw.tech.iter().map(|d| (d, "tech"))).collect();
+        methods.iter().map(|d| (*d, "method")).chain(raw.tech.iter().map(|d| (d, "tech"))).collect();
     let NT = tech_list.len();
     let mut t_disc = Mat::zeros(NT, G);
     for (t, (d, _)) in tech_list.iter().enumerate() {
@@ -442,6 +457,7 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         sector_field: sectors.iter().map(|s| s.field.clone()).collect(),
         sector_mine: sectors.iter().map(|s| s.mine).collect(),
         M,
+        M_base,
         method_name: methods.iter().map(|d| d.name.clone()).collect(),
         method_label: methods.iter().map(|d| d.label.clone()).collect(),
         method_out,

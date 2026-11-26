@@ -865,7 +865,7 @@ fn main() {
         let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
         // (with the production tree laid as the rules lay it: town gas and beer are the tree's goods)
         let c = isostate_core::tree::content(&rules.params(), rules.content()).unwrap_or_else(|_| rules.content());
-        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), kind: None, weight: None, price: None }).collect();
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), kind: None, weight: None, price: None, begins: None }).collect();
         refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
     }
     let t0 = std::time::Instant::now();

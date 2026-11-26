@@ -221,6 +221,11 @@ QUICK_SKIPS = [
     'twice_the_money_at_the_start_is_twice_the_money_in_every_month',
     'what_the_player_does_moves_money_between_purses_and_makes_none',
 
+    # new_good
+    'a_good_of_1950_leaves_island_7_as_it_was_to_1949',
+    'idle_goods_leave_island_2_as_it_was_to_2050_under_the_game',
+    'idle_goods_leave_island_7_as_it_was_under_the_port',
+
     # owners
     'island_7_to_1850_holds_its_works_by_shares_that_add_up',
     'off_is_the_game_without_it',

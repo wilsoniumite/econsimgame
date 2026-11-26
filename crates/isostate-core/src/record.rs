@@ -731,7 +731,18 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         })
         .collect();
     let goods: Vec<Value> = (0..C.G)
-        .map(|g| json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g], "price": C.base_price[g]}))
+        .map(|g| {
+            let mut v = json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g], "price": C.base_price[g]});
+            // goods (docs/rules/goods.md): when a later good begins, a year or an
+            // idea's name, so that the viewer lists it from then; nothing is
+            // written for the goods of the start, so a record of them is as it was
+            match C.good_begins.get(g).copied().unwrap_or_default() {
+                crate::content::Begins::Start => {}
+                crate::content::Begins::Year(y) => v["begins"] = json!(y),
+                crate::content::Begins::Idea(t) => v["begins"] = json!(C.tech_name[t]),
+            }
+            v
+        })
         .collect();
     let methods: Vec<Value> = (0..C.M)
         .map(|m| {
