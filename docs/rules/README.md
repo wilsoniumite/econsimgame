@@ -1063,3 +1063,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   short hauls (`haulage.handling`); and a road is worn by what goes over it by road, not by the
   railway beside it (`haulage.wear`). The road's share of freight rises to 0.60 by 2000 and passes the
   railway's about 1972. [haulage.md](haulage.md), `haulage.handling`, `haulage.wear`.
+- **the state's ways** (acts only from the end of 1909): the treasury buys road-making, road works of the
+  towns' stone and men paid out of the rate on pay; from 1909 it betters the cheapest ways between the large
+  towns into trunk roads, with their fords bridged, where what they save by motor pays (`highways.trunk`); from
+  1920 it bypasses a town on one, or widens its high street, where the through traffic pays
+  (`highways.bypass`). About 300 km of trunk road an island by 1970. [highways.md](highways.md),
+  `highways.trunk`, `highways.bypass`.
