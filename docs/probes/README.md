@@ -274,3 +274,10 @@ island, and not against one baseline.
   "open" a works decades before the first one, twin works closing twice, a death told twice in
   the player's own family), each with the line that writes it and a suggested wording, and 45
   items checked against the record (41 right).
+
+## A count (26 November 2026)
+
+- `words.md`: the text a player can meet, counted before a language and interface pass: about
+  3,300 strings and 15,000 words. The commonest words, the words with several meanings, the
+  things with several words, the habits of phrasing with a count and an example each, and a
+  reading of what is wrong. No code was changed.
