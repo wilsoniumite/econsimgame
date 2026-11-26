@@ -422,6 +422,11 @@ fn main() {
                 line(&C.method_name[m], &by_method[m]);
             }
         }
+        let each: Vec<String> = runs
+            .iter()
+            .filter_map(|isl| isl.years.get(j).map(|(_, y)| format!("{} {}/{} {:.2}", isl.seed, y.works_sq, y.houses, y.works_sq as f64 / (y.houses as f64).max(1.0))))
+            .collect();
+        println!("-- by island, works' squares / houses' squares: {}", each.join("; "));
         big.sort_by(|a, b| b.hands.total_cmp(&a.hands));
         println!("-- the largest works by hands at work (of all islands)");
         for b in big.iter().take(o.top) {
