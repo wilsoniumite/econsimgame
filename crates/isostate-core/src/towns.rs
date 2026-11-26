@@ -304,7 +304,8 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             !st.world.land[c] || u == USE_SEA || (u >= USE_SECTOR0 + 5 && u <= USE_SECTOR0 + 6) || crate::mines::blocks_town(st, P, c)
         })
         .collect();
-    let ks = st.cell_K_share.clone();
+    // works (part J): the floor let in a cell's blocks takes room from its houses as a yard does
+    let ks: Vec<f64> = if st.cell_floor.len() == N { (0..N).map(|c| st.cell_K_share[c] + st.cell_floor[c]).collect() } else { st.cell_K_share.clone() };
     let plough = plough_uses(C);
 
     // a cell whose market town changed goes with its new town and keeps its

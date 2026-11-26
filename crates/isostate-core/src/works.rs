@@ -43,6 +43,15 @@
 //!   ground it holds while its hands leave until it needs under `keep` of it
 //!   (`ground_need`, `settle_ground`). The methods of 1750 to 1900 keep
 //!   today's 2,000 square metres a hand, history's number written beside it.
+//! - J. the works of a street live in the blocks of houses (`in_blocks`): a
+//!   method whose site is floor (history's ground a hand at most `block_m2`)
+//!   and whose good is sold where it is made, to the households round it (a
+//!   good they buy for a need, carted at `block_weight` or more or not at all),
+//!   takes no ground of its own on a town's cells: its ground is floor let in
+//!   the blocks (`State::cell_floor`, `floor_in_books`), and on the squares it
+//!   holds none (`squares::Table::floor`). Shops, offices, care and the
+//!   builders. A works of a method by history's number (part I) is held by
+//!   the ground it can get and pay for, not by `cell_limit`.
 //!
 //! Nothing here pays or charges anyone outside the purses `econ::money_total`
 //! counts: an order is paid from the works' cash, its backers' or its family's,
@@ -110,6 +119,19 @@ pub struct WorksParams {
     /// I. A works gives ground back once what its plant needs falls under this
     /// share of what it holds, and then gives back down to what it needs.
     pub keep: f64,
+    /// J. The works of a street live in the blocks of houses: on a town's
+    /// cells a works of such a method takes no ground of its own but floor let
+    /// in the blocks (`in_blocks`), and a works of a method by history's number
+    /// has no `cell_limit`. Off: every works has a yard of its own, as part I
+    /// leaves it.
+    pub in_blocks: bool,
+    /// J. The most ground a hand (history's number, `Content::m_ground` or
+    /// `m_ground_history`) a method of the blocks may take: the content's 65
+    /// for shops, offices and warehouses together.
+    pub block_m2: f64,
+    /// J. A good is sold where it is made when it is not carted between towns
+    /// or is carted at this weight or more (services, at 4).
+    pub block_weight: f64,
 }
 
 impl Default for WorksParams {
@@ -132,6 +154,9 @@ impl Default for WorksParams {
             keep_order: false,
             by_method: false,
             keep: 0.8,
+            in_blocks: false,
+            block_m2: 65.0,
+            block_weight: 4.0,
         }
     }
 }
@@ -140,7 +165,7 @@ impl WorksParams {
     /// The game's life cycle, with the two mends of the pass over the rules and
     /// the ground by method.
     pub fn game() -> WorksParams {
-        WorksParams { enabled: true, spread_first: true, keep_order: true, by_method: true, ..WorksParams::default() }
+        WorksParams { enabled: true, spread_first: true, keep_order: true, by_method: true, in_blocks: true, ..WorksParams::default() }
     }
 }
 
@@ -160,6 +185,10 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
     st.works_lease = (0..st.f_alive.len()).map(|f| if st.f_alive[f] { land_held(st, C, P, f) } else { 0.0 }).collect();
     if P.works.by_method && st.works_hands.len() != st.f_alive.len() {
         st.works_hands.resize(st.f_alive.len(), 1.0);
+    }
+    if P.works.by_method && P.works.in_blocks {
+        st.works_floor.resize(st.f_alive.len(), false);
+        st.cell_floor.resize(st.N, 0.0);
     }
 }
 
@@ -188,6 +217,60 @@ pub fn by_method(C: &Content, P: &Params, m: usize) -> bool {
         && P.works.by_method
         && C.m_ground.get(m).is_some_and(|&g| g > 0.0)
         && C.m_ground_history.get(m).is_none_or(|&h| h <= 0.0)
+}
+
+/// J. Whether method m is one of the works of a street, which live in the
+/// blocks of houses: its site is floor (history's ground a hand, the
+/// content's `ground` or, where the books keep today's, `ground_history`, at
+/// most `block_m2`) and its good is sold where it is made, to the households
+/// round it (they buy it for a need, and it is not carted between towns or is
+/// carted at `block_weight` or more). By the content of today: the shops and
+/// trades, the emporium, the offices, care, and the builders (the masons,
+/// carpenters, bricklayers, contractors and steel-frame builders, whose work
+/// is on others' ground). Not a handloom (cloth is light to cart), a smithy
+/// (tools), a brewhouse (beer) or a mill. The squares put every such works on
+/// a town's cells into the blocks (`squares::Table::floor`); the books only
+/// those whose ground is by history's number (`floor_in_books`).
+pub fn in_blocks(C: &Content, P: &Params, m: usize) -> bool {
+    let w = &P.works;
+    if !(w.enabled && w.by_method && w.in_blocks) {
+        return false;
+    }
+    let history = match C.m_ground_history.get(m) {
+        Some(&h) if h > 0.0 => h,
+        _ => C.m_ground.get(m).copied().unwrap_or(0.0),
+    };
+    let g = C.method_out[m];
+    let for_a_need = (0..C.S).any(|s| C.props[(g, s)] > 0.0);
+    let sold_here = !C.traded.get(g).copied().unwrap_or(true) || C.weight[g] >= w.block_weight;
+    history > 0.0 && history <= w.block_m2 && for_a_need && sold_here
+}
+
+/// J. Whether the books let works of method m floor in the blocks on a town's
+/// cells: a method of the blocks (`in_blocks`) whose ground is by history's
+/// number (`by_method`): the offices, care and the steel-frame builders, none
+/// found before 1901. The shops and trades, the emporium and the old builders
+/// keep their yards in the books, at today's 2,000 square metres a hand, with
+/// the rest of the methods of 1750 to 1900, until the old towns are laid out
+/// anew; the squares put them in the blocks already.
+pub fn floor_in_books(C: &Content, P: &Params, m: usize) -> bool {
+    by_method(C, P, m) && in_blocks(C, P, m)
+}
+
+/// J. The share of its cell that works f's ground counts in: the floor let in
+/// the cell's blocks where it is such a works on a town's cell (`State::works_floor`),
+/// the works' yards (`cell_K_share`) otherwise.
+pub fn ground_mut(st: &mut State, f: usize) -> &mut f64 {
+    let c = st.f_cell[f];
+    if st.works_floor.get(f).copied().unwrap_or(false) { &mut st.cell_floor[c] } else { &mut st.cell_K_share[c] }
+}
+
+/// J. Where a works opened on `cell` keeps its ground: floor in the blocks
+/// where its method lets floor in the books and the cell is a town's.
+pub fn opened_on_floor(st: &mut State, C: &Content, P: &Params, f: usize) {
+    if f < st.works_floor.len() {
+        st.works_floor[f] = floor_in_books(C, P, st.f_method[f]) && st.urban.get(st.f_cell[f]).copied().unwrap_or(false);
+    }
 }
 
 /// The hands of method m's plant that fill a cell: `hands_per_cell`, or with
@@ -271,13 +354,27 @@ pub fn settle_ground(st: &mut State, C: &Content, P: &Params) {
         let c = st.f_cell[f];
         let lease = st.works_lease[f];
         if by_method(C, P, m) {
+            // J. a works of the blocks whose cell joined its town or left it
+            // since last year moves its ground between the floor let in the
+            // blocks and the yards
+            if f < st.works_floor.len() {
+                let now = floor_in_books(C, P, m) && st.urban[c];
+                if now != st.works_floor[f] {
+                    let held = land_held(st, C, P, f);
+                    let from = ground_mut(st, f);
+                    *from = (*from - held).max(0.0);
+                    st.works_floor[f] = now;
+                    *ground_mut(st, f) += held;
+                }
+            }
             let need = ground_need(st, C, P, f);
             if lease > 0.0 && need < P.works.keep * lease {
                 st.f_rent[f] *= need / lease;
                 st.works_lease[f] = need;
-                st.cell_K_share[c] = (st.cell_K_share[c] - (lease - need)).max(0.0);
+                let g = ground_mut(st, f);
+                *g = (*g - (lease - need)).max(0.0);
             } else if need > lease {
-                st.cell_K_share[c] += need - lease;
+                *ground_mut(st, f) += need - lease;
                 lease_more(st, f, need);
             }
             continue;
@@ -302,7 +399,11 @@ pub fn settle_ground(st: &mut State, C: &Content, P: &Params) {
 /// sister works on another cell.
 pub fn max_K(C: &Content, P: &Params, m: usize) -> f64 {
     let w = &P.works;
-    if w.enabled && w.hands_per_cell > 0.0 {
+    if w.in_blocks && by_method(C, P, m) {
+        // J. held by the ground it can get and pay for (`cell_fits`, the rent of
+        // `ordered`), not by a share of its cell
+        f64::INFINITY
+    } else if w.enabled && w.hands_per_cell > 0.0 {
         let per_unit = land_take(C, P, m, 1.0);
         if per_unit > 0.0 { w.cell_limit / per_unit } else { f64::INFINITY }
     } else {
@@ -313,7 +414,9 @@ pub fn max_K(C: &Content, P: &Params, m: usize) -> f64 {
 /// Whether `cell` has room for K more capacity of method m. The port never
 /// asks (it looks only at how full the cell is already).
 pub fn cell_fits(st: &State, C: &Content, P: &Params, cell: usize, m: usize, K: f64) -> bool {
-    !P.works.enabled || st.cell_K_share[cell] + land_take(C, P, m, K) <= 1.0
+    // J. the floor let in the cell's blocks is ground taken too
+    let floor = st.cell_floor.get(cell).copied().unwrap_or(0.0);
+    !P.works.enabled || st.cell_K_share[cell] + floor + land_take(C, P, m, K) <= 1.0
 }
 
 /// `cell_fits` for someone who will be told why not (the family's site list).
@@ -602,7 +705,7 @@ pub fn ordered(st: &mut State, C: &Content, P: &Params, f: usize, dK: f64) {
     if by_method(C, P, m) && f < st.works_lease.len() {
         let after = ground_need(st, C, P, f);
         let before = (land_take(C, P, m, st.f_K[f] + st.f_order_K[f] - dK) * machines_factor(st, f) / st.f_prod[f].max(1.0)).max(st.works_lease[f]);
-        st.cell_K_share[c] += (after - before).max(0.0);
+        *ground_mut(st, f) += (after - before).max(0.0);
     } else {
         st.cell_K_share[c] += land_take(C, P, m, dK) * hands_kept(st, P, f);
     }

@@ -1593,9 +1593,9 @@ mod tests {
         let works = Tenant::Works(9).code();
         let houses = Tenant::Houses(2).code();
         let mut sq = Squares::default();
-        sq.take_year(4, 0, false, &[Change { at: at(5, 17), tenant: works, year: 1750, face: 4 }, Change { at: at(5, 16), tenant: works, year: 1749, face: 4 }]);
-        sq.take_year(4, 1, false, &[Change { at: at(5, 17), tenant: 0, year: 0, face: 0 }, Change { at: at(5, 3), tenant: houses, year: 1751, face: 70 }]);
-        sq.take_year(4, 2, true, &[Change { at: at(6, 0), tenant: houses, year: 1752, face: 1 }]);
+        sq.take_year(4, 0, false, &[Change { at: at(5, 17), tenant: works, year: 1750, face: 4, floor: 0 }, Change { at: at(5, 16), tenant: works, year: 1749, face: 4, floor: 0 }]);
+        sq.take_year(4, 1, false, &[Change { at: at(5, 17), tenant: 0, year: 0, face: 0, floor: 0 }, Change { at: at(5, 3), tenant: houses, year: 1751, face: 70, floor: 0 }]);
+        sq.take_year(4, 2, true, &[Change { at: at(6, 0), tenant: houses, year: 1752, face: 1, floor: 0 }]);
         assert!(sq.kept() && sq.changes(3).is_none());
         let c0 = sq.cell(0, 5).unwrap();
         assert_eq!((c0[16], c0[17], c0[3]), (Square { tenant: Tenant::Works(9), year: 1749, face: 4 }, Square { tenant: Tenant::Works(9), year: 1750, face: 4 }, Square::NONE));
