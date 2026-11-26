@@ -341,8 +341,11 @@ pub struct WhatsNew {
     pub looked: bool,
     /// where the newest entry shown is kept; None where nothing may be kept
     seen_at: Option<PathBuf>,
-    /// how many entries have rows on the card so far
+    /// how many entries have rows on the card so far, and how many are to
+    /// have: the new ones and at least `FIRST_ROWS`, and `MORE_ROWS` more for
+    /// each Show older
     laid: usize,
+    page: usize,
     /// raised when the card is to be shown or hidden
     version: u64,
 }
@@ -372,9 +375,19 @@ struct StartCount;
 
 /// Rows laid on the card a frame while it fills.
 const ROWS_A_FRAME: usize = 8;
+/// Entries the card lists at first (or all that are new, if more), and how
+/// many more each Show older adds: the card is for what is new, and every row
+/// listed costs the frames something while it is open.
+const FIRST_ROWS: usize = 30;
+const MORE_ROWS: usize = 40;
+/// The foot of the list, while there are older entries to show.
+#[derive(Component)]
+struct OlderRow;
+#[derive(Component)]
+struct ShowOlder;
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<WhatsNew>().add_systems(Startup, begin).add_systems(PostStartup, spawn_card).add_systems(Update, (arrive, clicks, open_entries, lay_rows, draw).chain());
+    app.init_resource::<WhatsNew>().add_systems(Startup, begin).add_systems(PostStartup, spawn_card).add_systems(Update, (arrive, clicks, older, open_entries, lay_rows, draw).chain());
 }
 
 /// Start reading the devlog on a thread of its own.
@@ -489,8 +502,19 @@ fn arrive(reading: Option<Res<Reading>>, mut wn: ResMut<WhatsNew>, mut head: Que
             *v = Visibility::Inherited;
         }
     }
+    wn.page = ready.new.max(FIRST_ROWS).min(ready.entries.len());
     wn.entries = ready.entries;
     wn.from = Some(ready.from);
+}
+
+/// Show older lists the next entries, laid a few a frame as the first were.
+fn older(mut commands: Commands, mut wn: ResMut<WhatsNew>, press: Query<&Interaction, (Changed<Interaction>, With<ShowOlder>)>, foot: Query<Entity, With<OlderRow>>) {
+    if press.iter().any(|i| *i == Interaction::Pressed) {
+        wn.page = (wn.page + MORE_ROWS).min(wn.entries.len());
+        for e in &foot {
+            commands.entity(e).despawn();
+        }
+    }
 }
 
 fn clicks(mut wn: ResMut<WhatsNew>, open: Query<&Interaction, (Changed<Interaction>, With<OpenWhatsNew>)>, close: Query<&Interaction, (Changed<Interaction>, With<CloseCard>)>, mut help: Query<&mut Visibility, With<ui::HelpCard>>, mut chip: Query<&mut Visibility, (With<StartChip>, Without<ui::HelpCard>)>, keys: Res<ButtonInput<KeyCode>>) {
@@ -549,12 +573,13 @@ fn open_entries(mut commands: Commands, wn: Res<WhatsNew>, font: Res<UiFont>, mu
 
 /// Lay the card's rows a few a frame, while it is shut or open alike.
 fn lay_rows(mut commands: Commands, mut wn: ResMut<WhatsNew>, font: Res<UiFont>, body: Query<Entity, With<CardBody>>) {
-    if !wn.ready || wn.laid >= wn.entries.len() {
+    if !wn.ready || wn.laid >= wn.page {
         return;
     }
     let Ok(body) = body.single() else { return };
     let f = &font.0;
-    let (from, to) = (wn.laid, (wn.laid + ROWS_A_FRAME).min(wn.entries.len()));
+    let (from, to) = (wn.laid, (wn.laid + ROWS_A_FRAME).min(wn.page));
+    let (all, more) = (wn.entries.len(), MORE_ROWS.min(wn.entries.len() - to));
     let new = wn.new;
     let entries = &wn.entries;
     commands.entity(body).with_children(|p| {
@@ -589,10 +614,17 @@ fn lay_rows(mut commands: Commands, mut wn: ResMut<WhatsNew>, font: Res<UiFont>,
                 });
             });
         }
+        // the foot, once the page is laid and there is more
+        if to == wn.page && to < all {
+            p.spawn((Node { margin: UiRect::top(Val::Px(8.0)), column_gap: Val::Px(10.0), align_items: AlignItems::Center, ..default() }, OlderRow)).with_children(|row| {
+                ui::small_button(row, f, &format!("Show {more} older"), ShowOlder);
+                row.spawn(ui::text(f, &format!("{} of {all} listed", to), 13.0, MUTED));
+            });
+        }
     });
     wn.laid = to;
-    if to == wn.entries.len() {
-        println!("what's new: the card's {to} rows are laid, {ROWS_A_FRAME} a frame, before it is opened");
+    if to == wn.page {
+        println!("what's new: the card's {to} rows of {all} are laid, {ROWS_A_FRAME} a frame");
     }
 }
 
