@@ -54,6 +54,10 @@
 //!     takeback        press the tray's Take back the last edit (take_back.rs),
 //!                     or say why there is none; settle waits for the answer
 //!                     and for the island to be forgotten. `back` is the same
+//!     type:TEXT       type TEXT as the keyboard would, letter by letter, into
+//!                     the note's line (key:N opens it, key:Enter keeps the
+//!                     note, key:Escape drops it, key:Backspace takes a letter
+//!                     back: note.rs); settle waits for the note's picture
 //!     point:NAME      in a sandbox's Making panel (town_flow.rs), rest the
 //!                     pointer on the box whose name starts so, or on the
 //!                     ribbon GOOD>BOX (point:coal>households); point:none
@@ -154,6 +158,8 @@ enum Step {
     Ideas(String),
     /// GROUND-BRUSH: the brush drawn through these spots on the map (ground.rs)
     Stroke(Vec<(f32, f32)>),
+    /// letters typed as the keyboard gives them, into the note's line (note.rs)
+    Type(String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -244,6 +250,9 @@ fn key_code(name: &str) -> Option<KeyCode> {
         "g" => KeyCode::KeyG,
         "h" => KeyCode::KeyH,
         "m" => KeyCode::KeyM,
+        "n" => KeyCode::KeyN,
+        "enter" | "return" => KeyCode::Enter,
+        "backspace" => KeyCode::Backspace,
         "q" => KeyCode::KeyQ,
         "r" => KeyCode::KeyR,
         "s" => KeyCode::KeyS,
@@ -322,6 +331,8 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "point" if !arg.is_empty() => Step::Point(arg.to_string()),
             // IDEAS-PLATE: the panel of the island's ideas (ideas_plate.rs)
             "ideas" if !arg.is_empty() => Step::Ideas(arg.to_string()),
+            // (the text as written, spaces at either end and all, but for the step's own trimming)
+            "type" if !arg.is_empty() => Step::Type(arg.to_string()),
             "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
                 Some((name, word)) if !name.is_empty() && !word.is_empty() => Step::Rule(name.to_string(), word.to_string()),
                 _ => return Err(format!("{part}: rule takes a name and a chip's word, as rule:money.growth=None")),
@@ -358,7 +369,7 @@ pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> 
             }
         })
         // after the interface has read the (absent) pointer and keyboard, so a press made here lasts the frame
-        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems));
+        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems).before(crate::note::keys));
     // (what the frames cost is the frame recorder's to say, which a scripted run keeps on
     // as a meter: frames.rs, `last_work`)
     Ok(())
@@ -483,6 +494,9 @@ fn print_state(world: &mut World, note: &str) {
     let ph = season(world);
     println!("script: {}{}; {}; date \"{}\"; season {:.3}", if note.is_empty() { String::new() } else { format!("[{note}] ") }, clock, sim, date, ph);
     println!("script:   {cards}; {fam}");
+    if let Some(line) = world.get_resource::<crate::note::NoteLine>() {
+        println!("script:   the note's line: {}{}", line.said(), line.last.as_ref().map(|p| format!("; the last note kept: {}", p.display())).unwrap_or_default());
+    }
     // what waits for the year's end, as the Family panel lists it
     if let Some(l) = live {
         let rep = world.get_resource::<FamilyView>().and_then(|f| f.player()).map(|p| &p.rep);
@@ -890,6 +904,10 @@ fn step(world: &mut World, sc: &mut Script) {
         return;
     }
     if let Some(left) = sc.closing {
+        // (a note's picture is written off the main thread: the run waits for it)
+        if crate::note::writing() {
+            return;
+        }
         if left == 0 {
             world.write_message(AppExit::Success);
         }
@@ -962,7 +980,8 @@ fn step(world: &mut World, sc: &mut Script) {
                 let asking = world.get_resource::<crate::rulebook::Known>().is_some_and(|k| k.out());
                 // (and a take back pressed, until its answer has come and been taken in)
                 let undoing = world.get_resource::<crate::take_back::Undo>().is_some_and(|u| u.out());
-                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && !undoing && game.marks_built() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                // (and a note's picture written)
+                let quiet = !crate::note::writing() && !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && !undoing && game.marks_built() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }
@@ -1141,6 +1160,10 @@ fn step(world: &mut World, sc: &mut Script) {
                     println!("script:   trees: {shown} of {all} meshes showing");
                 }
             }
+            Step::Type(text) => {
+                crate::note::type_text(world, &text);
+                frame = true;
+            }
             // MAKING: the Making panel's pointer (town_flow.rs)
             Step::Point(words) => {
                 if let Some(mut flow) = world.get_resource_mut::<crate::town_flow::Flow>() {
@@ -1267,6 +1290,15 @@ mod tests {
     fn takeback_is_a_step_and_back_its_other_name() {
         assert_eq!(parse("takeback;settle;back").unwrap(), [Step::Back, Step::Settle, Step::Back]);
         assert!(check("wait:6;takeback;settle;print").is_ok());
+    }
+
+    #[test]
+    fn a_note_is_opened_typed_and_kept_the_keys_own_way() {
+        assert_eq!(
+            parse("key:N;type:Dunheath: too flat, café;key:Backspace;key:Enter;key:Return").unwrap(),
+            [Step::Key(KeyCode::KeyN, false), Step::Type("Dunheath: too flat, café".into()), Step::Key(KeyCode::Backspace, false), Step::Key(KeyCode::Enter, false), Step::Key(KeyCode::Enter, false)]
+        );
+        assert_eq!(parse("type").err().unwrap(), "type: not a step (see the top of script.rs)");
     }
 
     #[test]

@@ -307,6 +307,17 @@ pub struct Preview {
 }
 
 impl MapOverlay {
+    /// The view shown, as `--overlay` takes it ("rent", "price:coal",
+    /// "deposits:clay"), or None for the plain map (for a note: note.rs).
+    pub fn word(&self, r: &Replay) -> Option<String> {
+        let kind = self.kind?;
+        Some(match kind {
+            Overlay::Price | Overlay::Made => format!("{}:{}", kind.word(), r.header.goods.get(self.good).map_or("", |g| g.name.as_str())),
+            Overlay::Deposits => format!("deposits:{}", KINDS.get(self.deposit).map_or("coal", |k| k.word)),
+            _ => kind.word().to_string(),
+        })
+    }
+
     /// An edit taken back (back.rs): the ends reckoned for the years from
     /// `filled` on are forgotten, a reckoning on its way (of the run that is
     /// gone) is let go, and the map is painted again.
