@@ -1100,10 +1100,13 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
 
 - **frontier**: a town's births less deaths rise by up to 1.8 points a year where the land within 40 km
   of it is free and its hands work the land, and a district whose land is half free may be made a town
-  at 500 people. [frontier.md](frontier.md), `frontier.enabled`, `frontier.hamlets`.
+  at 500 people; land once taken stays taken, so a farm the machines empty is not free again, and only
+  land gone back to the wild is forgotten, in a generation. [frontier.md](frontier.md),
+  `frontier.enabled`, `frontier.hamlets`, `frontier.claimed`.
 - **immigration**: settlers come by ship to the ports as far as the living there stands above that
-  abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money.
-  [immigration.md](immigration.md), `immigration.enabled`.
+  abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money, and
+  no ship brings them to a port that went hungry that year or the four before.
+  [immigration.md](immigration.md), `immigration.enabled`, `immigration.shun_hungry`.
 - **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
   wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
   "The trap", `hands.short_rise`.

@@ -159,7 +159,7 @@ fn main() {
         let mut row = serde_json::json!({
             "year": year, "pop": pop, "towns": act.len(),
             "far_town_cells": far_t, "real_wage": s("real_wage"), "wage": s("wage"), "cpi": s("cpi"),
-            "gdp_pc": s("gdp_pc"), "urban_share": s("urban_share"),
+            "gdp_pc": s("gdp_pc"), "urban_share": s("urban_share"), "linked": s("real_wage_linked"),
             "works": works, "rail_km": rail, "road_km": s("road_km"), "hunger_items": hunger, "sailing_items": sailed,
             "wage_in_grain": s("wage") / observer::national_prices(st)[sim.content.gi("grain")].max(1e-12),
             "hands5": h5 as f64 / n_land as f64, "far_hands5_cells": far_h5, "r90_cells": r90, "hands_on_cells": tot,

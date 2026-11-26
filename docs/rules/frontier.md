@@ -1,11 +1,12 @@
 # Births that answer to free land, and hamlets
 
-Not in the Python. Two switches, both off under the port's rules and under
-the game's, and both on with the landfall start ([landfall.md](landfall.md)):
-`frontier.enabled`, births that answer to free land, and `frontier.hamlets`,
-towns founded at a hamlet's size where the land is free. The code is
-`frontier.rs`, with one call in `peopling::growth` and the founding's tests
-in `peopling::found_towns` and `peopling::candidates`.
+Not in the Python. Three switches, all off under the port's rules and under
+the game's, and all on with the landfall start ([landfall.md](landfall.md)):
+`frontier.enabled`, births that answer to free land, `frontier.hamlets`,
+towns founded at a hamlet's size where the land is free, and
+`frontier.claimed`, land once taken stays taken. The code is `frontier.rs`,
+with one call in `peopling::growth` and the founding's tests in
+`peopling::found_towns` and `peopling::candidates`.
 
 ## Why
 
@@ -72,6 +73,39 @@ some fifty or sixty families, and a market town of the colonies was a few
 hundred to a thousand or two (from memory). With one town and the game's own
 numbers the second town waits until the first has 15,000 people: 1838 on
 island 7 in the trial.
+
+**Land that stays taken** (`frontier.claimed`). Without it a cell's free
+share reads the hands at work on it this year, so land counts as free again
+when its hands leave. They do leave, after 1950, when the machines empty the
+farms: on islands 1 to 8 from landfall the colony's free share falls to 0.16
+in 1900, then climbs to 0.32 in 1950 and 0.65 in 2050, and the frontier's
+extra births come back a century after the frontier closed. That is a fault
+of the measure, not a history: a farm worked by one man and a machine is not
+land a son can clear.
+
+With the switch on, each cell remembers the most hands its land has had at
+any year's reckoning (`FrontierState::claimed`, one number a cell, made
+before the year's shares are reckoned), and its free share reads that and
+not this year's hands, for births and for a hamlet's district alike. Built
+over by a street or a works, worked by machines, or grazed by a few men, the
+land stays taken.
+
+What becomes of land truly left: while a cell's land has gone back to the
+wild (the map's use is `wild`: no farm, pasture, wood, pit, works or street
+on it), the hands it is remembered to have had halve every
+`left_half_life` years, 30, a generation. So land left wild for three
+generations remembers an eighth of its hands: a cell that was full (ten
+hands) is seven eighths free again. That is the old field gone back to
+scrub, whose owners' heirs have moved away, as New England's hill farms did
+after 1850 (from memory). I read "left" from the land's use and not from
+its hands because the hands mislead: on island 7, of the 5,121 cells that
+ever had five hands or more (the probe's maps every 25 years), 2,055 have
+under half a hand in 2050, and of these 1,140 are streets and works, 792 are
+farms and pastures worked by machines and only 123 have gone wild.
+
+The save holds no state of its own (a saved game is its seed, its rules and
+its orders, played again: `save.rs`), so the remembered hands are made again
+when a game is loaded, year by year as they were made the first time.
 
 Off, nothing here runs: `frontier::founding_needs` hands back the people's
 own numbers and the income term is as it was, so the settled island is the

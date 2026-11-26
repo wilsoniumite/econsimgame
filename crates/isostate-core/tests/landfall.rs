@@ -116,6 +116,80 @@ fn with_immigration_off_nobody_comes() {
 }
 
 #[test]
+fn land_once_taken_stays_taken_until_it_goes_wild() {
+    // the landfall start's frontier with land taken kept (frontier.enabled, frontier.claimed),
+    // on the island as it stands in 1750: the first town's land is given hands by hand
+    let P = landfall_params(7, 1750);
+    assert!(P.frontier.enabled && P.frontier.claimed);
+    let mut sim = sim::start(&P, game_content());
+    let st = &mut sim.st;
+    let t0 = (0..st.T_max).find(|&t| st.town_active[t]).unwrap();
+    let land: Vec<usize> = (0..st.N).filter(|&c| st.catch[c] == t0 as i64).collect();
+    let free_of = |st: &mut State, P: &Params| {
+        frontier::year(st, P).unwrap();
+        st.frontier.free[t0]
+    };
+    // every cell of its market area farmed by ten hands: none of its land is free
+    for &c in &land {
+        st.cell_labor[c] = P.frontier.full;
+        st.land_use[c] = land::USE_SECTOR0;
+    }
+    assert_eq!(free_of(st, &P), 0.0);
+    // the machines take the hands away: the land stays taken, where without the switch it is free again
+    for &c in &land {
+        st.cell_labor[c] = 0.0;
+    }
+    assert_eq!(free_of(st, &P), 0.0);
+    let mut off = P.clone();
+    off.frontier.claimed = false;
+    assert_eq!(frontier::free_shares(st, &off)[t0], 1.0);
+    // and the same land counts as taken for a hamlet's district
+    assert_eq!(frontier::district_free(st, &P, land.iter().copied()), 0.0);
+    // only land gone back to the wild is forgotten, its hands halving in a generation
+    for &c in &land {
+        st.land_use[c] = land::USE_WILD;
+    }
+    for _ in 0..P.frontier.left_half_life as usize {
+        free_of(st, &P);
+    }
+    let half = frontier::free_shares(st, &P)[t0];
+    assert!((half - 0.5).abs() < 1e-9, "after {} years wild the land is half free: {half}", P.frontier.left_half_life);
+}
+
+#[test]
+fn no_settlers_to_a_hungry_port() {
+    // the landfall start's settlers (immigration.enabled, immigration.shun_hungry) to its one
+    // port, given a living twice abroad's, in years set by hand
+    let P = landfall_params(7, 1750);
+    assert!(P.immigration.enabled && P.immigration.shun_hungry);
+    let mut sim = sim::start(&P, game_content());
+    let st = &mut sim.st;
+    let T = st.T_max;
+    let port = (0..T).find(|&t| st.town_active[t]).unwrap();
+    let y = vec![2.0 * immigration::abroad(&P, 1760); T];
+    let came = |st: &mut State, P: &Params, year: i64, food: f64| {
+        st.food_min_acc[port] = food;
+        let mut g = vec![0.0; T];
+        immigration::year(st, P, &y, year, &mut g, &mut Vec::new());
+        st.immigration.came[port]
+    };
+    // fed, settlers come; hungry (under the famine line), nobody, that year and the four after
+    assert!(came(st, &P, 1760, 1.0) > 0.0);
+    assert_eq!(came(st, &P, 1761, 0.5), 0.0);
+    for year in 1762..=1765 {
+        assert_eq!(came(st, &P, year, 1.0), 0.0, "{year}");
+    }
+    assert!(came(st, &P, 1766, 1.0) > 0.0);
+    assert_eq!(st.immigration.shunned, vec![(1760, 0), (1761, 1), (1762, 1), (1763, 1), (1764, 1), (1765, 1), (1766, 0)]);
+    // short of food but above the famine line is not hungry
+    assert!(came(st, &P, 1767, 0.9) > 0.0);
+    // with the switch off a hungry port still draws them
+    let mut off = P.clone();
+    off.immigration.shun_hungry = false;
+    assert!(came(st, &off, 1768, 0.5) > 0.0);
+}
+
+#[test]
 fn the_living_abroad_stands_still_and_then_grows() {
     let mut P = game_params();
     P.immigration = immigration::ImmigrationParams::game();
