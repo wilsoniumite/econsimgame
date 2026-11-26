@@ -418,6 +418,11 @@ pub struct Params {
     /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub highways: crate::highways::HighwayParams,
+    /// Care: a need for work of presence in the towns, which richer and older
+    /// households buy more of and no machine takes (not in the Python; see
+    /// docs/rules/care.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub care: crate::care::CareParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -647,6 +652,7 @@ pub fn default_params() -> Params {
         pace: crate::pace::PaceParams::default(),
         haulage: crate::haulage::HaulageParams::default(),
         highways: crate::highways::HighwayParams::default(),
+        care: crate::care::CareParams::default(),
     }
 }
 
@@ -738,6 +744,10 @@ pub fn game_params() -> Params {
     // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
     // street, where what they save pays
     P.highways = crate::highways::HighwayParams::game();
+    // care (docs/rules/care.md): from the island's find of it, a need for work of
+    // presence in the towns, which richer and older households buy more of and no
+    // machine takes
+    P.care = crate::care::CareParams::game();
     P
 }
 
