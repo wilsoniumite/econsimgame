@@ -1058,3 +1058,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   year on the mean, which takes three tenths off timber's swing and nearly half off bricks'
   after 1900, and half off building's ([tr-timber.md](../probes/tr-timber.md)).
   [pace.md](pace.md), `pace.enabled`.
+- **haulage** (acts only from 1901): the railway is a layer of its own in the cost graph, and a load
+  pays the canal's wharf charge to be put on a train and again to be taken off, so the road takes the
+  short hauls (`haulage.handling`); and a road is worn by what goes over it by road, not by the
+  railway beside it (`haulage.wear`). The road's share of freight rises to 0.60 by 2000 and passes the
+  railway's about 1972. [haulage.md](haulage.md), `haulage.handling`, `haulage.wear`.
