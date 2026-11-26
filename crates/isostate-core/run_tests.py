@@ -150,8 +150,9 @@ QUICK_SKIPS = [
     'seed_7_under_the_port_is_unchanged',
     'seed_7_with_six_families_is_unchanged',
 
-    # golden_game
+    # golden_game: the settled island, and landfall (one town in a corner)
     'seed_7_under_the_games_rules_is_unchanged',
+    'landfall_seed_7_under_the_games_rules_is_unchanged',
 
     # ground
     'after_1900_no_cell_joins_beyond_reach_and_a_belt_of_one_holds',

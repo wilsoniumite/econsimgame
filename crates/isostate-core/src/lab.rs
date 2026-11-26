@@ -510,7 +510,7 @@ pub fn run(o: &Options, plan: &Plan) -> Lab {
                 rules: o.rules,
                 seeds: o.seeds.clone(),
                 keys: Vec::new(),
-                settings: vec![Setting { label: arm.label.clone(), values: Vec::new(), params: params.clone() }],
+                settings: vec![Setting { label: arm.label.clone(), values: Vec::new(), params: params.clone(), start: sweep::start_word(&params) }],
                 runs,
                 fact_index,
                 jobs,
