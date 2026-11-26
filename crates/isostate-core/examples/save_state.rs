@@ -54,6 +54,7 @@ use isostate_core::mines::Working;
 use isostate_core::observer::{ObserverState, Series, SeriesMeta};
 use isostate_core::peopling::Founding;
 use isostate_core::record::{ProjectSnap, Record, TownBytes};
+use isostate_core::squares::Change;
 use isostate_core::rng::{self, Rng, Rngs};
 use isostate_core::save::{self, Game};
 use isostate_core::state::{MonthStats, Project, RailOpened, Reason};
@@ -126,7 +127,7 @@ macro_rules! bin_num {
         }
     )*};
 }
-bin_num!(f64, f32, i64, i32, u64, u32, u8);
+bin_num!(f64, f32, i64, i32, i16, u64, u32, u8);
 
 impl Bin for usize {
     fn put(&self, w: &mut Vec<u8>) {
@@ -314,7 +315,8 @@ bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode, squares, squares_first });
+bin_struct!(Change { at, tenant, year, face });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
