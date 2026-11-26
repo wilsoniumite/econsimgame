@@ -35,7 +35,7 @@ The first build compiles Bevy and takes a while. On Linux you need `pkg-config`,
 | Left drag, WASD | pan |
 | Right drag, Q / E | turn and tilt |
 | Wheel, R / F | zoom |
-| Click | ask about a works, a town or a square |
+| Click | ask about a works, a pit, a town or the country round it (see What a click picks) |
 | 1 2 3 4 | the Family, Holdings, Markets and News panels (in a sandbox 1 to 5: Hand, Rules, Markets, News, Families) |
 | M | map views: rent, markets, reach, prices, made here, wages, town growth, residents, deposits, traffic, then the plain map (Shift+M back) |
 | G | the next good, when prices or where a good is made are mapped, or the next kind of ground on the deposits (Shift+G back) |
@@ -44,6 +44,8 @@ The first build compiles Bevy and takes a while. On Linux you need `pkg-config`,
 | Esc | close the note about what was clicked, put off a decision, or close the card at the century's end |
 | T | tilt-shift (miniature focus) on and off |
 | F3 | the frame strip: the last 240 frames as bars at the bottom left, green under 16.7 ms, amber to 33, red beyond, a dark tick under a frame a year arrived in and a pale one under a frame part of a year's scenery went to the card in; under it the middle frame, the longest and how many were over 33 (H's card does not list it yet) |
+
+**What a click picks** (`src/pick.rs`). A click picks a thing, never a square: first a works, by the yard it is drawn on; then a quarry, a clay pit or a mine at work, within 140 m of its pit; then a town, by any of its ground, within 700 m of its market place, or by its name on the map; and anywhere else on land, the country round the market town whose district it is. That card, "The country round Oakbury", gives the district's people and ends with "Round here": the land's uses at the spot, and where it lies from the market place and from the island's north-west corner. In a sandbox the simulation's rows for the ground under the spot follow, as "Round here, as it stands"; in the family game, the land agent's. The thing under the pointer is lit with a thin line (a works' yard, a town's ground, a ring round a pit or a spot) and the thing clicked more boldly; with the Ground tool in hand the pointer is a ring as wide as the brush paints. A tool that takes a place (Town, Build a works, Found a university) takes the spot clicked, and the edit names the simulation's 2 km cell under it, as before.
 
 While the opening card, a decision or the card at the century's end is up, the clock stands still and the other keys wait. Any key or a click closes the opening card without starting the clock (Alt, Shift, Ctrl and Print Screen do not).
 
