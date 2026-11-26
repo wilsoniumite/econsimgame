@@ -3,7 +3,9 @@
 //! the time the squares take at a year's end, and pictures of a town's squares.
 //!
 //!     cargo run --profile work -p isostate-core --example squares -- [--seeds 1-8] [--to 2050]
-//!         [--families 6] [--check] [--time] [--out DIR]
+//!         [--families 6] [--check] [--time] [--out DIR] [--set JSON]
+//!
+//! `--set` lays JSON over the game's rules, as `{"works":{"by_method":false}}`.
 //!
 //! Each island runs under the game's rules on its own thread.
 //!
@@ -117,8 +119,11 @@ struct Out {
     run_s: f64,
 }
 
-fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: bool) -> Out {
+fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: bool, set: Option<&str>) -> Out {
     let mut P = game_params();
+    if let Some(s) = set {
+        P = P.with_json_overrides(s).expect("--set takes JSON, as {\"works\":{\"by_method\":false}}");
+    }
     P.seed = seed;
     P.n_families = families;
     P.end_year = Some(to);
@@ -379,6 +384,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut seeds: Vec<u64> = vec![7];
     let (mut to, mut families, mut check, mut time, mut out_dir) = (2050i64, 6usize, false, false, None::<String>);
+    let mut set: Option<String> = None;
     let mut k = 0;
     while k < args.len() {
         match args[k].as_str() {
@@ -406,6 +412,10 @@ fn main() {
                 k += 1;
                 out_dir = Some(args[k].clone());
             }
+            "--set" => {
+                k += 1;
+                set = Some(args[k].clone());
+            }
             a => panic!("unknown argument {a}"),
         }
         k += 1;
@@ -413,7 +423,8 @@ fn main() {
     let first = seeds[0];
     let pictures = out_dir.is_some();
     let outs: Vec<Out> = std::thread::scope(|sc| {
-        let hs: Vec<_> = seeds.iter().map(|&s| sc.spawn(move || run(s, to, families, check, time, pictures && s == first))).collect();
+        let set = set.as_deref();
+        let hs: Vec<_> = seeds.iter().map(|&s| sc.spawn(move || run(s, to, families, check, time, pictures && s == first, set))).collect();
         hs.into_iter().map(|h| h.join().unwrap()).collect()
     });
     for o in &outs {

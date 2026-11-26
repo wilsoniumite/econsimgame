@@ -58,19 +58,23 @@ pub const METRES: f64 = 125.0;
 pub struct SquaresParams {
     /// The simulation keeps squares of 125 m where something is built.
     pub enabled: bool,
+    /// With the ground by method (`works.by_method`): a works keeps the squares
+    /// it holds while its ground in the books is at this share of them or more
+    /// (`keep_squares`): its buildings stand while some of its hands leave.
+    pub keep: f64,
 }
 
 impl Default for SquaresParams {
     /// Off: what the port runs with.
     fn default() -> SquaresParams {
-        SquaresParams { enabled: false }
+        SquaresParams { enabled: false, keep: 0.7 }
     }
 }
 
 impl SquaresParams {
     /// The game's squares.
     pub fn game() -> SquaresParams {
-        SquaresParams { enabled: true }
+        SquaresParams { enabled: true, ..SquaresParams::default() }
     }
 }
 
@@ -688,11 +692,45 @@ pub fn works_targets(st: &State, C: &Content, P: &Params) -> Vec<usize> {
         let x: Vec<f64> = x.iter().map(|v| v * scale).collect();
         let total = (sum * scale).round() as usize;
         let held: Vec<usize> = fs.iter().map(|&f| st.sq.works.get(f).map_or(0, |h| h.squares.len())).collect();
-        for (j, n) in share_out(&x, &held, total).into_iter().enumerate() {
+        let mut n = share_out(&x, &held, total);
+        if P.works.enabled && P.works.by_method {
+            keep_squares(&x, &held, &mut n, P.squares.keep);
+        }
+        for (j, n) in n.into_iter().enumerate() {
             want[fs[j]] = n;
         }
     }
     want
+}
+
+/// Works ground by method (`works.by_method`, docs/rules/works.md, part I): a
+/// works keeps the squares it holds while its ground in the books stays at
+/// `keep` of them or more, as a building stands while some of its hands are
+/// laid off; below that it gives back down to its ground. Where the cell has
+/// not room for what is kept, the works that keep most over their ground give
+/// it up first. `x` is each works' ground in squares, `held` what it holds,
+/// `n` the squares `share_out` gave it.
+pub fn keep_squares(x: &[f64], held: &[usize], n: &mut [usize], keep: f64) {
+    for j in 0..n.len() {
+        if held[j] > n[j] && x[j] >= keep * held[j] as f64 {
+            n[j] = held[j];
+        }
+    }
+    let mut over = n.iter().sum::<usize>().saturating_sub(PER_CELL);
+    if over == 0 {
+        return;
+    }
+    let mut order: Vec<usize> = (0..n.len()).filter(|&j| n[j] as f64 > x[j].round()).collect();
+    order.sort_by(|&a, &b| (n[b] as f64 - x[b]).total_cmp(&(n[a] as f64 - x[a])).then(a.cmp(&b)));
+    for j in order {
+        let floor = (x[j].round() as usize).min(n[j]);
+        let back = (n[j] - floor).min(over);
+        n[j] -= back;
+        over -= back;
+        if over == 0 {
+            break;
+        }
+    }
 }
 
 /// Squares each working should hold this year, from the books, within what the works leave.
@@ -1382,8 +1420,10 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         // a works holds its share of the cell to within a square
         let x = crate::works::land_held(st, C, P, f) * PER_CELL as f64;
         let n = h.squares.len() as f64;
-        // (a cell over-full is scaled down)
-        if (n - x).abs() >= 1.0 + 1e-9 && ks[h.cell] <= 1.0 && b.short == 0 {
+        // (a cell over-full is scaled down), or keeps more while its ground in the
+        // books is at `squares.keep` of what it holds (works.by_method)
+        let kept = P.works.enabled && P.works.by_method && n > x && x >= P.squares.keep * n - 1e-9;
+        if (n - x).abs() >= 1.0 + 1e-9 && !kept && ks[h.cell] <= 1.0 && b.short == 0 {
             return Err(format!("{year}: works {f} holds {n} squares for {x:.2} of ground"));
         }
     }
@@ -1427,9 +1467,13 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         if kinds.iter().skip(1).sum::<usize>() == 0 {
             return Err(format!("{year}: cell {c} keeps a table with nothing on it"));
         }
-        // the works' squares come to the cell's works share within a square
+        // the works' squares come to the cell's works share within a square, or
+        // as far over it as works keep squares while their ground ebbs
+        // (works.by_method, squares.keep)
         let share = ks[c].min(1.0);
-        if (works_on[c] as f64 - share * PER_CELL as f64).abs() > 1.0 && b.short == 0 {
+        let over = if P.works.enabled && P.works.by_method { (share * PER_CELL as f64 / P.squares.keep).min(PER_CELL as f64) } else { share * PER_CELL as f64 };
+        let n = works_on[c] as f64;
+        if (n < share * PER_CELL as f64 - 1.0 || n > over + 1.0) && b.short == 0 {
             return Err(format!("{year}: cell {c} has {} squares of works for {share:.4} of the cell", works_on[c]));
         }
         // a pit's squares come to its surface within a square
@@ -1463,7 +1507,14 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
             return Err(format!("{year}: cell {c} keeps no table and holds {:.4} of works{}", ks[c], if st.urban[c] { " and is a town's" } else { "" }));
         }
     }
-    // every works holds its squares
+    // every works holds its squares. What a works keeps while its ground ebbs
+    // (works.by_method) hangs on what it held before the year's allotting, so
+    // the targets reckoned again from what it holds after can differ where a
+    // cell is full; with that rule the check of each works against its ground,
+    // above, is the one that holds
+    if P.works.enabled && P.works.by_method {
+        return Ok(());
+    }
     let want = works_targets(st, C, P);
     for f in 0..st.F_count {
         if st.f_alive[f] {

@@ -32,7 +32,8 @@
 #   method:   group (the family trade, one of iron, textiles, coal, engineering, building, estates:
 #             without it no family can own the works), seed (opened in 1750 where its good is wanted),
 #             target (the year an invention is aimed at: read by the example that reports a run, not
-#             by the engine), site (where it must stand: read from stage 2, ignored until then)
+#             by the engine), site (where it must stand: read from stage 2, ignored until then),
+#             ground and ground_history (square metres a hand: the table at the end of this file)
 #
 # The comment above each method gives its unit sums at base prices as the designers reckoned them:
 # what a unit sells for, what its inputs, heat (0.376 a unit at base prices, nearly all coal) and
@@ -1340,3 +1341,303 @@ found_after = 1908
 stage = 6
 headline = "A hospital and a nurses' home at {town}"
 story = "{who} opens wards and a home for the old at {town}, staffed by trained nurses, with a doctor paid by the members' pennies. The sick who were nursed at home by their daughters are nursed here by strangers who know how."
+
+# ====================================================================================================
+# THE GROUND A WORKS TAKES (docs/rules/works.md, part I; `works.by_method`)
+#
+# Square metres of ground a hand of the method's plant takes: its buildings, yards, sidings, stock and
+# tips, not the quarry, pit or wood it draws on (those are the land's). `ground` is the number the books
+# use. Where the method can stand before 1900, the books keep today's number, 2,000 square metres a
+# hand (a cell of two kilometres holds 2,000 hands), so that nothing of 1750 to 1900 moves; history's
+# number is written beside it as `ground_history` and waits for the stage that lays the old towns out
+# anew. A method that cannot be found before 1901 (`found_after`) takes history's number now.
+#
+# History's numbers are site area over the hands employed, at the size the method was usually built,
+# from memory of the sites and the planners' rules of thumb (the English employment-density guides of
+# 2010 to 2015 for floor space a worker: offices 10 to 13 m², shops 15 to 20, factories 35 to 45,
+# warehouses 70 to 95; and plot ratios: a town office block three to five times its plot, a storeyed
+# mill three to four, a single-floor plant and its yards 0.4 to 0.5). None was looked up for this
+# table: each is good to a factor of two, which is all the books can tell apart.
+#
+#   kind of works                      m² a hand   from
+#   town office block                         10   13 m² of floor a clerk, three or four storeys on its plot, its share of yard and street
+#   shop on a high street                     15   18 m² of floor a hand, one or two floors above
+#   storeyed mill                             30   a five-storey cotton mill of the 1830s: 500 to 1,000 hands on one to two hectares
+#   builder's yard                            30   the yard, sheds and stores; the building work is on others' ground
+#   engineering shop, tool works              50   a works of 1900 on one or two floors with its yard
+#   crucible steel, smithy, pottery           60   a Sheffield crucible works or a Stoke potbank: crowded yards, 50 to 200 hands
+#   hospital, home of care                    60   80 to 100 m² of floor a bed on three floors, about two staff a bed, grounds twice the footprint
+#   shops, offices and warehouses together    65   a third of each
+#   single-floor plant with its yards         80   36 m² of floor a hand at 45 per cent cover of the site
+#   paper mill, glassworks                   100   the mill or furnace halls, ponds and stores
+#   integrated steelworks, rolling mill      150   furnaces, converters, mills, stock yards and slag on 100 hectares for 7,000 hands
+#   warehouse                                170   80 m² of floor a hand on half its plot
+#   timber yard and sawmill                  200   the logs and the stacked boards
+#   chemical works                           300   a Leblanc or ammonia-soda works with its tanks, heaps and sidings
+#   ironworks of blast furnaces              300   the furnaces, the casting floor, the coke and ore yards and the slag tip
+#   gasworks                                 400   retort houses, purifiers and holders for a few hundred hands
+#   brickfield, lime or cement works         500   the clamps or kilns, drying hacks and stock (the clay pit or quarry apart)
+#   charcoal blast furnace                 1,000   a furnace of fifty hands with its pool, charcoal barns and wheel
+#   power station, oil from coal           1,500   a station of 2,000 megawatts on a hundred hectares with its coal and ash, 700 hands
+# ====================================================================================================
+
+[[method]]
+name = "charcoal_burning"
+ground = 2000.0
+ground_history = 500.0
+
+[[method]]
+name = "bloomery"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "charcoal_furnace"
+ground = 2000.0
+ground_history = 1000.0
+
+[[method]]
+name = "coke_furnace"
+ground = 2000.0
+ground_history = 300.0
+
+[[method]]
+name = "services"
+ground = 2000.0
+ground_history = 15.0
+
+[[method]]
+name = "smithy"
+ground = 2000.0
+ground_history = 60.0
+
+[[method]]
+name = "hand_loom"
+ground = 2000.0
+ground_history = 10.0
+
+[[method]]
+name = "textile_mill"
+ground = 2000.0
+ground_history = 30.0
+
+[[method]]
+name = "brickworks"
+ground = 2000.0
+ground_history = 500.0
+
+[[method]]
+name = "millwright"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "engine_works"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "crucible_steel"
+ground = 2000.0
+ground_history = 60.0
+
+[[method]]
+name = "bessemer"
+ground = 2000.0
+ground_history = 150.0
+
+[[method]]
+name = "forge_rails"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "rolling_mill"
+ground = 2000.0
+ground_history = 150.0
+
+[[method]]
+name = "steel_rolling"
+ground = 2000.0
+ground_history = 150.0
+
+[[method]]
+name = "masons"
+ground = 2000.0
+ground_history = 30.0
+
+[[method]]
+name = "carpenters"
+ground = 2000.0
+ground_history = 30.0
+
+[[method]]
+name = "bricklayers"
+ground = 2000.0
+ground_history = 30.0
+
+[[method]]
+name = "contract_builders"
+ground = 2000.0
+ground_history = 30.0
+
+[[method]]
+name = "saw_pit"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "steam_sawmill"
+ground = 2000.0
+ground_history = 200.0
+
+[[method]]
+name = "lime_kiln"
+ground = 2000.0
+ground_history = 500.0
+
+[[method]]
+name = "cement_works"
+ground = 2000.0
+ground_history = 500.0
+
+[[method]]
+name = "brewhouse"
+ground = 2000.0
+ground_history = 60.0
+
+[[method]]
+name = "steam_brewery"
+ground = 2000.0
+ground_history = 80.0
+
+[[method]]
+name = "potbank"
+ground = 2000.0
+ground_history = 60.0
+
+[[method]]
+name = "pottery_works"
+ground = 2000.0
+ground_history = 60.0
+
+[[method]]
+name = "gasworks"
+ground = 2000.0
+ground_history = 400.0
+
+[[method]]
+name = "edge_tool_works"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "tool_factory"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "hot_blast"
+ground = 2000.0
+ground_history = 300.0
+
+[[method]]
+name = "machine_shop"
+ground = 2000.0
+ground_history = 50.0
+
+[[method]]
+name = "engineering_works"
+ground = 2000.0
+ground_history = 80.0
+
+[[method]]
+name = "continuous_kiln"
+ground = 2000.0
+ground_history = 500.0
+
+[[method]]
+name = "emporium"
+ground = 2000.0
+ground_history = 65.0
+
+[[method]]
+name = "soap_boilers"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "alkali_works"
+ground = 2000.0
+ground_history = 300.0
+
+[[method]]
+name = "ammonia_soda"
+ground = 2000.0
+ground_history = 300.0
+
+[[method]]
+name = "glasshouse"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "sheet_glass"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "tank_furnace"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "paper_mill"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "machine_paper"
+ground = 2000.0
+ground_history = 100.0
+
+[[method]]
+name = "electrical_works"
+ground = 2000.0
+ground_history = 50.0
+stage = 6
+
+[[method]]
+name = "coal_power_station"
+ground = 2000.0
+ground_history = 1500.0
+stage = 6
+
+[[method]]
+name = "oil_from_coal"
+ground = 2000.0
+ground_history = 1500.0
+stage = 6
+
+# no `found_after`: on island 7 it first stands in 1901, and it could stand before 1900 on another
+[[method]]
+name = "nitrogen_works"
+ground = 2000.0
+ground_history = 300.0
+stage = 6
+
+# found from 1901 or later: history's numbers
+[[method]]
+name = "offices"
+ground = 10.0
+stage = 6
+
+[[method]]
+name = "steel_frame"
+ground = 30.0
+stage = 6
+
+[[method]]
+name = "care_homes"
+ground = 60.0
+stage = 6
