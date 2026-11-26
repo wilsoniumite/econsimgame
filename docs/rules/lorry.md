@@ -18,8 +18,8 @@ island 7 to the end of 1904).
 
 **On under the game's rules, all three.** The lorry is found in 1923 on the mean of islands 1 to 8
 (1909 to 1933), and the hands a load takes by road are half what they were by hand 43 years later
-(41 to 45 on every island of sixteen), three years past the forty the pass asks: that one number is
-missed, and every other part of the pass is met ("The decision", below). Machines that tend
+(41 to 45 on every island of sixteen; 41.5 on main with pace, below), past the forty the pass asks:
+that one number is missed, and every other part of the pass is met ("The decision", below). Machines that tend
 ([tending.md](tending.md)) stay off: with the lorry and tending both on, the towns' share of people
 in 2050 is 0.493, against 0.550 with both off.
 
@@ -255,6 +255,16 @@ tenths that are not hauling (the driving and the dealing) and the drivers. Off, 
 at nine tenths of its freight to 2050 and its made roads falling back to half of 1950's: that is the
 larger fault. `--set tasks.lorry=false --set lorry.keep=false --set lorry.roads=false` is the island
 without it.
+
+**On main with pace** ([pace.md](pace.md), which landed while this was built), the same four arms on
+islands 1 to 16 (`R/merged-on`, `R/merged-off` in the night's notes; 64 runs, none failed, 12 of 12
+inside in each sweep), means of islands 1 to 8: the lorry found in 1925 and the hands a load takes
+halved 41.5 years later (41 to 42; 40 to 43 on all sixteen); the towns' share in 2050 0.556 with both
+off, 0.464 with tending alone, 0.570 with the lorry alone and 0.488 with both; 2050 over 1970 1.15,
+1.09, 1.18 and 1.16; the wage 1.25, 1.35, 1.26 and 1.35 per cent a year from 1900 to 1970; the road's
+freight in 2050 1,783, 2,692, 3,192 and 5,000 million weight-km against rail's 17,200, 26,240, 15,680
+and 25,290. So with pace the lorry alone lifts 2050 over 1970 (1.18 against 1.15), both on no longer
+reach 1.20, and the decision stands.
 
 **Machines that tend stay off.** With the lorry and tending both on, 2050 over 1970 is 1.20 on the mean
 of islands 1 to 8 (1.08 to 1.31), the first arm to reach the design's 1.20, and what is made a head in
