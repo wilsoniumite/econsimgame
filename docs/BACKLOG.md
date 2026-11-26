@@ -387,6 +387,16 @@ All the family game's rules and decisions are open to change, and nothing in it 
 - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year. *Open;* now the managing session's to decide.
 - *A toast for a works she orders by hand* (R31, C73). Today it may get none and no place in the major feed; the checked table files it with the core loop. Where: one condition in the viewer's `main.rs`, toasting the player's own items at a weight of 0.6 or more. *Open;* now the managing session's to decide.
 
+## The language and interface pass (her note of 26 November)
+
+Her note is at the foot. Nothing is built for it and nothing is started.
+
+- **What she asked.** A matter-of-fact, descriptive tone. Tooltips inside tooltips that lock on a timer. Links of more than one kind in different colours, one kind to Wikipedia. Terms, numbers and symbols on the panels and sentences in the tooltips, so that the tooltips form a graph a player can learn from. No tutorial where curiosity can do the job.
+- **What a first count found** ([probes/words.md](probes/words.md)). About 3,300 strings and 15,000 words that a player can meet, 330 of them over 12 words, and no tooltip anywhere to hold them. The commonest faults: one word with several meanings (hand, works, found, way), one thing with several words (the year's turn, a town's district), and a description where a name exists ("What a wage buys" for the real wage).
+- **Proposed by Claude, not agreed.** (1) House rules for interface text and a glossary of about sixty terms, settled with her on one sample panel. (2) The game's text moved out of the code into one data file, which "Towards a release" also asks for. (3) The tooltip engine, built on that panel. (4) The other panels converted one at a time, with a test that holds the rules. (5) The Wikipedia links, which are by then one field of the glossary. The land's words (square, ground, district) wait for the small squares.
+- **Held from 26 November, so that the pass does not grow while it waits (Claude's decision).** New text for a panel, a card or a toast is a term and a number where it can be, and no new sentence there is longer than 12 words. A piece that needs to explain more says so in its report, and the explanation waits for the tooltips.
+- **Waiting on her:** what she makes of the sketch of one card shown to her on 26 November, and then a real panel in two or three voices to choose from.
+
 ## Towards a release (26 November)
 
 A release on Steam is the far goal (her note of 26 November, at the foot). Nothing here is taken up for its own sake yet; the list is kept so that work in hand does not close a door. What the store page says and what the game costs are hers, and are not kept in this file.
@@ -757,3 +767,18 @@ Right. The chaos is mostly missing streets: a square of a town filled whole afte
 > I'm thinking that the sandbox part might be one mode that you can play in, and then I'm not sure about the second. I'm leaning something more political than the current family game, or just take the families and make politics much more central. Really undecided on that though, that comes much later.
 
 What a release needs is listed under "Towards a release"; none of it is started. The second was said of a draft of the store page's words that gave Claude the code and her the design: who made what is to be said plainly wherever it is said. The modes are filed with the family game, parked. What she said of the price and of the store page's wording is hers and is not kept here. Done the same day, since she agreed to it and it touches no code: the licence texts at the root, with the name kept out of the grant.
+
+**26 November 2026, on a language and interface pass.**
+
+> I want to do a language and UI pass on the game at some point. I don't dislike the language, but it's a bit hard to read, a bit "claudish" so to speak. Maybe that's the AI fingerprint that you are obligated to have, but hopefully we can still work something out. To do that, I think we should collect our most common terms and turns of phrase, try and work out what's wrong.
+>
+> As a general guide, i want the tone to be matter of fact and descriptive. In general for the UI I would like
+>
+> 1. Tooltips in tooltips, with timed locking, an idea borrowed from vicky 3
+> 2. links to wikipedia pages, meaning a highlighted word or phrase either opens another tooltip after a while of hovering, or you click and it opens wikipedia (different colors for the different kinds of links).
+> 3. On any ui element there should be not much in the way of sentences, sentences go into tooltips. Tooltips shuld essentially form a wikipedia like graph where players can learn, about the game, the simulation, or economics. On the UI, we use numbers, single words or terms or short phrases, symbols, that sort of thing.
+> 4. I'm hoping to mostly avoid a tutorial, in that hopefully player curiosity and quality of the UI and tooltips will be enough in most cases. Maybe near the end of the game when we have an idea for what the family mode (boyond the sandbox mode) will be.
+>
+> These are just ideas, thoughts? More ideas or considerations?
+
+Filed under "The language and interface pass". The terms and turns of phrase were counted the same day ([probes/words.md](probes/words.md)), and a sketch of one card under her four rules was shown to her. Nothing is built.
