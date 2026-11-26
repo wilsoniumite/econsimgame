@@ -1,8 +1,8 @@
 # Squares: where in its cell each built thing stands
 
-**On under the game's rules since 26 November 2026; off under the port's. A shadow: kept from 1750, read by no rule, so the economy, the books and the news are the same to the bit with it on or off.** It is stage 6 of leaving the grid (the judge's design of 26 November, `study-offgrid`), the first of two pieces: this one keeps the squares, the next writes them into the record for the viewer.
+**On under the game's rules since 26 November 2026; off under the port's. A shadow: kept from 1750, read by no rule, so the economy, the books and the news are the same to the bit with it on or off.** It is stage 6 of leaving the grid (the judge's design of 26 November, `study-offgrid`), in two pieces: the first keeps the squares, the second writes them into the record and hands them to a live game, as a log of what changed (below, "In the record").
 
-The code is `squares.rs`, with two hooks in `sim.rs` marked "squares": `squares::open` as the run opens (in `start_from`, after the families) and `squares::close_year` at each year's end (in `end_year`, after every rule that changes the books). The state is `State::sq`. Not in the Python.
+The code is `squares.rs`, with two hooks in `sim.rs` marked "squares": `squares::open` as the run opens (in `start_from`, after the families) and `squares::close_year` at each year's end (in `end_year`, after every rule that changes the books). The state is `State::sq`. The record keeps the log in `record.rs` (`squares_snapshot`, `squares_log`), the live year in `live.rs` (`LiveYear::squares`), and the viewer reads it in its `replay.rs` (`Squares`). Not in the Python.
 
 ## Why
 
@@ -54,6 +54,51 @@ A new square goes where its tenant does best by a score of the square, and the b
 
 The squares lie on the map's axes, and a later stage that draws a yard square by square would show a lattice of 125 m. Each square keeps, from the moment it is taken, which side its way lies on (`Table::face`: the bearing from the square's middle to the nearest point of the cell's ways, in 256ths of a turn, 0 toward the map's east and 64 toward its south). Each works and working keeps the same for its first square (`Holding::face`) and the heading of the way there (`Holding::along`, in 256ths of a half turn), which is what a yard should be turned square to. What else would help a later stage: the way's own course and level at that point once roads are kept by link (the judge's stage 1 draws only the links carts wore), and for a town cell the line of its high street, so that its blocks can be laid out from that and not from the eight half-links of the cell, which make stars (below).
 
+## In the record
+
+The squares reach the record and a live game as a log, not as a picture of every year: each year's end, the changes it made.
+
+**One list, two readers.** At the end of `close_year` the book is compared, square by square, with what the log last told of it (every table, those given up too), and every square whose tenant, year or face is not what was told goes into `SquareBook::changes`, in order of the square (`Change::at`, the cell times 256 plus the square). A change says what the square now is: its tenant's code, the year the tenant took it and its face; a square given up is told as tenant, year and face 0. The first year's changes are made out of no squares at all, and carry the opening's. The record copies the list into its log for the year (`record::squares_snapshot`), and the live year hands the same list over (`LiveYear::squares`), so a live game and a replay of the same run hold the same squares by construction. A live cursor counts the year's ends it has told; one that has missed a year is sent the whole book, marked `whole`, and a reader starts again from it.
+
+**In `run.bin`.** Two arrays, written only by a run that keeps the squares: `sq_log`, the bytes of every year's changes one year after another, and `sq_first`, where each year's begin (n_years + 1 of them, as `mine_first`). The header says `"squares": {"layout": 1, "side": 16, "metres": 125, "kinds": [...]}`. A year's bytes (`squares::encode_year`, read by `squares::decode_year`) go cell by cell in rising order: the cell less the one before it, the number of runs, and each run of squares given to one tenant with one year: a head, `((number << 3 | kind) << 1 | dated)` with the kind as `squares::KINDS` numbers it (0 for squares given up), the year less the log's own year where `dated` says it differs, zigzagged, the count, and for each square its place in the cell and its face (no face for a square given up). Every number but the squares and faces is a varint, seven bits a byte, low first. A square taken by a tenant that takes others in its cell that year is two bytes.
+
+**Old records and saves.** A record made before the squares were kept, or under the port's rules, has neither array nor the header's word: it opens as it always did, and the viewer says in its log that the run "keeps no squares of 125 m". A save is a log of orders, played again under today's rules, so its squares are worked out again as it plays and come out as they were (`tests/squares.rs`, `a_save_plays_again_with_its_squares_and_a_port_record_keeps_none`); a save made before the squares were kept gets them the same way.
+
+**The viewer** reads the log into `Builds::squares` (`replay.rs`, `Squares`) and draws nothing from it yet. It can give the squares of any cell in any year (`Squares::cell`, a binary search in each year's list) and every cell's in a year (`Squares::year`, the log read once to that year); both read the log and nothing else, so a scenery build can ask for them off the frame. A record's years are kept as their bytes and read the first time they are asked for, so that opening a record does not wait for them.
+
+**What it measured.** Islands 7 and 2, game rules, six families, to 2050, with a live cursor beside the run as a game has (`cargo run --profile work -p isostate-core --example squares_log -- --seeds 7,2 --to 2050`):
+
+| | island 7 | island 2 |
+|---|---|---|
+| years in which the live game held the book's squares | 301 of 301 | 301 of 301 |
+| years in which the record, packed and read back, held them | 301 of 301 | 301 of 301 |
+| squares held in 2050 | 240,171 | 253,521 |
+| changes in all, 1750 to 2050 | 1,952,146 | 1,962,742 |
+| the first year's, with the opening | 22,617 | 23,290 |
+| the most in a later year | 18,644 (2039) | 19,710 (2041) |
+| the log | 4.37 MB, 2.24 bytes a change | 4.52 MB, 2.30 bytes a change |
+| `run.bin` with the log, and without | 260.6 and 256.2 MB (+1.7%) | 258.0 and 253.4 MB (+1.8%) |
+| packing the record, with the log and without (median of 3) | 559 and 432 ms | 524 and 457 ms |
+| of it, writing the log alone; reading it all back | 71 ms; 38 ms | 72 ms; 40 ms |
+
+The viewer opens island 7's record of 2050 in 396 ms with the log and 392 ms without it (+1%, medians of seven openings of each in turn, wall clock, the dev profile; `ISOSTATE_TIME_OPEN="a.bin;b.bin" cargo test -p isostate-viewer -- --ignored time_to_open --nocapture`); reading every year's squares the first time, to 2050, then takes 103 ms. Read whole at opening instead, the log made the opening 13 per cent slower (445 ms against 395), which is why it is left until it is asked for.
+
+Most of the changes are works' ground going up and down by a square from one year to the next (the books' capacity on order comes and goes): of island 7's 1.95 million, 630,000 give a square to a works and 454,000 take one from a works to nothing, 207,000 take house blocks for works and 199,000 give them back; 310,000 give a square back to the tenant it had in the three years before. They fall where the works are: on island 7 the busiest cells, in the five large towns, change 13 to 14 squares a year on the mean.
+
+## For the stages that draw from them
+
+What the builders of the judge's stages 8 (works on their squares) and 10 (the viewer's towns after 1900) will find, and what they will not, from the pictures of the shadow and the viewer's towns as they are:
+
+- **In the log:** each square's tenant (which works, which town's house blocks, park or open ground, which working's pit, which works left derelict ground), the year it was taken, and its face, the side its way lay on when it was taken. A works' squares are those with its tenant in its cell; never in two cells, today.
+- **Not in the log, kept in the core:** a holding's first square and the order its squares were taken (`Holding::squares`), which is where it first stood and which way it grew; `Holding::along`, the heading of the way at its first square, which is what a yard should be turned square to; its annexes. A yard laid from the log alone can take its heading only from the faces (square to the most common face of its squares), which is near enough beside a straight way and wrong at a corner. Stage 8 should put `face` and `along` of each holding into the record (a few bytes a works when it first takes ground) before it lays yards.
+- **The face points to the core's ways, not the drawn ones.** The core reckons a square's way as the viewer has joined its roads: from the cell's meeting place half way to each of its eight neighbours' wherever both cells have any road. Once the viewer draws only the links carts wore (the judge's stage 1), a face may point to a way that is not drawn. Stage 8 should either reckon faces again against the drawn links, in the viewer, or have the core keep the links the carts wore.
+- **Height and slope:** not in the log. The viewer has the same land (the 500 m nodes, `newland`), so it can take a square's height, slope and whether it is under water at its middle itself, as the core does with `crossings::metres_at`. Under water matters: on island 7 about 1,700 squares of works and pits lie under the sea or a lake in 2050, which a picture must place on piers or leave out.
+- **Neighbours:** a square's neighbours in its cell are in the same year's table; across a cell's edge they are in the next cell's (`Squares::year` gives every cell at once). A works never reaches over its cell's edge, so the cells' lattice shows in the works' outlines until the ground a works takes (stage 7) lets it.
+- **Stars and slabs.** House blocks are placed toward the eight half-links, so a cell part built grows along a star; and a works takes 2,000 m² a book hand, so the middle of a large town is a slab of works a cell wide by 1950. A town drawn square by square from the log (stage 10) will show both until the ground of a works (stage 7) and a frame from the high street are mended. Drawn now, the squares would make the picture worse, not better.
+- **No density by the square:** how densely a block is built is a cell's (the record's `dens` and `fill`); every house square of a cell is built alike. An estate as a run of squares of one year (stage 10) can be read from the log's years.
+- **No year of rebuilding:** the year is the year taken. Stage 11's "no look changes without a rebuilt year" needs a year rebuilt by the square, which nothing keeps yet.
+- **Reading in a scenery build:** `Squares::year` reads the log from the start each time it is called (about 100 ms to 2050 in the dev profile). A build that goes year by year should keep the tables it made and lay each year's changes on them (`Squares::changes`), a few milliseconds a year.
+
 ## Its numbers
 
 `SquaresParams`, in `squares.rs`. Off under `default_params()`; `SquaresParams::game()` in `game_params()`.
@@ -96,4 +141,5 @@ The book of 2050 holds about 1,200 tables in use, of about 4.4 kB each with the 
 - **The park comes in specks.** The park takes the poorest squares of each cell filled whole, which are the wet and steep ones scattered about it: green specks, not a park. A park should be one piece, grown as a works is.
 - **Water.** The books count a coastal cell whole. Houses and parks are kept on the dry ground, but works are not: 1,725 squares of works and pits on island 7 lie under the sea or a lake in 2050, where a cell's works hold more than its dry ground. The town's open ground takes the rest of the water.
 - **An old cell is solid.** A town cell built long ago is filled toward the ceiling, so its house blocks take nearly all of its dry ground and leave no open ground: a small old town (Maredge, island 7) is one solid block of 256 squares. Streets are lines over squares and take none, but a later picture will want lanes, yards and gardens inside a block.
+- **The log flickers.** A sixth of the log is a square going back to the tenant it had a year or three before, as a works' ground in the books rises and falls by a square. A works that kept a square for a year or two after its ground fell below it would take most of that out of the log (not tried); it would move what the check holds (a works' squares within one square of its ground), so it waits.
 - **Once a year.** A works founded in the year has its squares at the year's end, not on its founding day; the books share land out once a year too, so nothing reads the difference.

@@ -27,6 +27,10 @@
 //! for a mill, off steep and wet ground) with a hash of the square's place to
 //! break ties, so no draw comes from the run's streams of chance.
 //!
+//! Each year's end also writes down what it changed (`tell`, into
+//! `SquareBook::changes`), which the record keeps as a log in bytes
+//! (`encode_year`) and a live game hands over: the same list for both.
+//!
 //! Nothing here is read by any rule: the economy, the books and the news are
 //! the same to the bit with the switch on or off. Switched off, `open` and
 //! `close_year` return at once and the book stays empty.
