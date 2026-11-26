@@ -1452,6 +1452,42 @@ mod tests {
         assert!(c.advances().iter().all(|a| 1751 + *a as i64 <= c.to));
     }
 
+    /// Every choice and button is reached by the keys alone: Down goes through
+    /// all of them and round, and Left or Right changes every field.
+    #[test]
+    fn every_choice_is_reached_without_the_mouse() {
+        let listed = Listed { path: PathBuf::from("x.json"), place: Place::Sandbox, seed: 7, families: 6, year: 1790, month: 0, to: 2050, family: String::new(), old_land: false, when: 0 };
+        let mut page = Page { choices: Choices::default(), saves: vec![listed.clone(), listed], focus: Focus::Save(0), more: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
+        for more in [false, true] {
+            page.more = more;
+            let order = page.order();
+            let mut seen = Vec::new();
+            page.focus = order[0];
+            for _ in 0..order.len() {
+                seen.push(page.focus);
+                page.move_focus(1);
+            }
+            assert_eq!(seen, order);
+            assert_eq!(page.focus, order[0], "round again");
+            page.move_focus(-1);
+            assert_eq!(page.focus, *order.last().unwrap());
+            for want in [Focus::Save(1), Focus::Draw, Focus::Begin, Focus::More, Focus::Copy, Focus::WhatsNew, Focus::Backlog, Focus::Notes, Focus::Quit] {
+                assert!(order.contains(&want), "{want:?}");
+            }
+            let fields: Vec<Field> = Field::NEW.iter().chain(if more { &Field::MORE[..] } else { &[] }).copied().collect();
+            for f in fields {
+                assert!(order.contains(&Focus::Field(f)), "{f:?}");
+                let before = page.choices.clone();
+                page.choices.step(f, 1);
+                if page.choices == before {
+                    page.choices.step(f, -1);
+                }
+                // (a start with one way to begin has nothing to change to)
+                assert!(page.choices != before || (f == Field::Start && starts().len() == 1), "{f:?} does not change with the keys");
+            }
+        }
+    }
+
     #[test]
     fn the_pages_lines_are_short() {
         let mut c = Choices::default();

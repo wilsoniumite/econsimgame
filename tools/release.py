@@ -171,10 +171,10 @@ TO PLAY
   it closes the game. Press H in the game for every key. The first start makes the island,
   which takes a few seconds.
 
-  A plain start opens a sandbox: nobody plays a family, and the tray under the clock changes the
-  island by hand. To play one of the families, start it from a command line:
-    {PROGRAM} --family
-  and {PROGRAM} --help lists everything else.
+  It opens on a start page: go on with a saved game, or begin a new island, as a sandbox
+  (nobody plays a family, and the tray under the clock changes the island by hand) or as the
+  family game. Its foot shows the command line that does the same, and {PROGRAM} --help
+  lists everything else a command line can ask for.
 
 WHAT IT NEEDS
   Windows 10 or 11, 64-bit, and graphics that do DirectX 12 or Vulkan (nearly every card or
