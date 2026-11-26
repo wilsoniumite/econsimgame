@@ -9,28 +9,31 @@
 //! - **Trunk roads** (`highways.trunk`, from `TRUNK_FROM`). Each year the state
 //!   looks at the cheapest way over the ground between every two large towns
 //!   (`LARGE` of all townsfolk or more, the `LARGE_MOST` largest), and prices
-//!   bettering the part of it not yet a trunk road: `TRUNK_STONE` of stone a
-//!   square on lowland (hills and mountains their carting cost's multiple),
-//!   with `WAGES` on every shilling of stone for the town's men, and a bridge
-//!   on every link of it that fords or ferries. What it saves a year is the
-//!   year's weight by road over each square times what a trunk road takes off
-//!   the square's cost (`TRUNK_MULT` against the turnpike's 0.3, both cheapened
-//!   alike by the lorry), and the fords' charge on the links it bridges. It
-//!   builds the ways that save `HURDLE` a year on their cost, best first, as
-//!   far as the year's budget for works goes. A trunk road is bettered in
-//!   place: its squares are the old road's, and no trunk road fords a river.
-//! - **Bypasses** (`highways.bypass`, from `BYPASS_FROM`). From then a square
-//!   of a town's ground is slow to pass by road, `STREET` at full density
-//!   (the high street, shared with the town's own carts, cars and people). For
-//!   each town a finished trunk road passes through, the state prices the
-//!   through traffic's delay in its streets (the trade between two other
-//!   towns, by road, over its squares) against two cures: widening the high
-//!   street, at `FRONTAGE` of the value of the houses along it, or a way round
-//!   over the cheapest squares outside every town's ground, at the stone and
-//!   the land it takes (`LAND_TAKEN` of each square's value), less what the
-//!   longer way costs the through traffic. It builds the cheaper cure where it
-//!   saves `HURDLE` a year on its cost. So a bypass lies on the side the
-//!   traffic passes, as one arc, and no town gets one without the traffic.
+//!   bettering the part of it not yet a trunk road: `WORK_YEARS` men's years
+//!   at the town's wage a square of lowland (hills and mountains their carting
+//!   cost's multiple), a third of it stone and two thirds wages, and a bridge
+//!   on every link of it that fords or ferries. Through a third town's ground
+//!   the old road is that town's high street and is left as it is. What it
+//!   saves a year is the year's weight by road over each square bettered times
+//!   what a trunk road takes off the square's cost, and the fords' charge on
+//!   the links it bridges. A trunk road's square costs a turnpike's, less a
+//!   third of it on the share of the hauling the lorries do (`trunk_mult`): a
+//!   horse goes no faster on a surfaced road, a motor does. It builds the ways
+//!   that save `HURDLE` a year on their cost, best first, as far as the year's
+//!   budget for works goes. A trunk road is bettered in place, on the old
+//!   road's squares, and no trunk road fords a river.
+//! - **Bypasses** (`highways.bypass`, from `BYPASS_FROM`). For each town a
+//!   finished trunk road passes through, the state prices two cures for the
+//!   town's stretch of it, the high street the trunk road was not bettered
+//!   through: a way round over the cheapest squares outside every town's
+//!   ground, at its work and the land it takes (`LAND_TAKEN` of each square's
+//!   value), which saves the through traffic (the trade between two other
+//!   towns, by road) what crossing the town costs over going round on a trunk
+//!   road; or widening the high street into a trunk road, at `FRONTAGE` of the
+//!   value of the houses along it and half the work, which saves every load
+//!   over it what a trunk road takes off a square. It builds the better cure
+//!   where it saves `HURDLE` a year on its cost. So a bypass lies on the side
+//!   the traffic passes, as one arc, and no town gets one without the traffic.
 //!
 //! **The treasury buys.** A state's works is a road works (`ways::ROAD`, as a
 //! parish's bridge is): its stone is bought at the market of the town whose
@@ -65,8 +68,8 @@ pub struct HighwayParams {
     /// From `TRUNK_FROM` the treasury betters the ways between the large towns
     /// into trunk roads, where the traffic pays for them.
     pub trunk: bool,
-    /// From `BYPASS_FROM` a town's streets are slow, and the treasury builds a
-    /// bypass, or widens the high street, where the through traffic pays.
+    /// From `BYPASS_FROM` the treasury bypasses a town a trunk road passes
+    /// through, or widens its high street, where what it saves pays.
     pub bypass: bool,
 }
 
@@ -87,8 +90,7 @@ impl HighwayParams {
 /// The first year at whose end the state puts a trunk road in hand: the year
 /// of Britain's Road Board.
 pub const TRUNK_FROM: i64 = 1909;
-/// The first year at whose end a town's streets are slow and a bypass may be
-/// put in hand.
+/// The first year at whose end a bypass may be put in hand.
 pub const BYPASS_FROM: i64 = 1920;
 /// What a square of trunk road costs to pass, against 0.3 for a turnpike: a
 /// wider, graded, surfaced road with its fords bridged.
@@ -109,12 +111,6 @@ pub const WORKS_SHARE: f64 = 0.01;
 pub const LARGE: f64 = 0.04;
 /// And no more than this many towns are large.
 pub const LARGE_MOST: usize = 10;
-/// What a square of a town's ground at full density adds to the cost of
-/// passing it by road, from `BYPASS_FROM`, where every load goes by motor (a
-/// turnpike's square is 0.3 by cart): the high street's crawl, shared with
-/// the town's own carts, cars and people. It comes with the motor: a share
-/// of it as the lorries do that share of the hauling.
-pub const STREET: f64 = 0.4;
 /// The share of the houses' value along a high street that widening it pulls down.
 pub const FRONTAGE: f64 = 0.15;
 /// The share of a square's land a road takes.
@@ -201,7 +197,7 @@ pub struct HighwayState {
     /// By square: the year it became a trunk road, and a bypass, or `NOT`.
     pub trunk: Vec<i32>,
     pub bypass: Vec<i32>,
-    /// By square: its high street was widened, so it is not slow.
+    /// By square: its high street was widened into a trunk road.
     pub widened: Vec<bool>,
     /// By square: last year's weight by road (`sim::update_roads`'s wear).
     pub wear: Vec<f64>,
@@ -285,15 +281,10 @@ fn cell_cost_now(st: &State, mult: &[f64; 4], tm: f64, c: usize) -> f64 {
     if is_trunk(st, c) { tr::TERRAIN_COST[st.world.terrain[c] as usize] * tm } else { cell_cost(st, mult, c) }
 }
 
-/// What square `c` adds to a passing load's cost by road from `BYPASS_FROM`,
-/// with the lorries doing `motor` of the hauling: `STREET` times that, times
-/// how full its town's ground is (`urban_res` over the full density); nothing
-/// outside a town's ground, on a bypass or a widened street.
-pub fn street(st: &State, c: usize, motor: f64) -> f64 {
-    if !st.urban[c] || st.catch[c] < 0 || st.hw.bypass.get(c).is_some_and(|&y| y != NOT) || st.hw.widened.get(c) == Some(&true) {
-        return 0.0;
-    }
-    STREET * motor.clamp(0.0, 1.0) * (st.urban_res[c] / st.urban_density.max(1.0)).clamp(0.0, 1.0)
+/// Whether square `c` is a town's ground, which a trunk road is not bettered
+/// through: the old road's line there is a high street, with houses along it.
+fn in_town(st: &State, c: usize) -> bool {
+    st.urban[c] && st.catch[c] >= 0
 }
 
 /// What bettering square `c` into a trunk road costs, money, at town `t`'s wage.
@@ -301,28 +292,15 @@ fn work_money(st: &State, c: usize, t: usize) -> f64 {
     WORK_YEARS * 12.0 * st.wbar.get(t).copied().unwrap_or(0.0).max(0.0) * terrain(st, c)
 }
 
-/// Whether the graph being made has the town's streets slow.
-fn streets_slow(st: &State, P: &Params) -> bool {
-    P.highways.bypass && st.hl.year >= BYPASS_FROM
-}
-
 /// The year's cost graph (`haulage::build_graph`, before the canals, the tolls
-/// and the fords are laid on it): a trunk road's squares cost `trunk_mult`, and
-/// from `BYPASS_FROM` a town's squares their `street` more, on the ground's
-/// edges (not by train or boat).
+/// and the fords are laid on it): a trunk road's squares cost `trunk_mult`, on
+/// the ground's edges (not by train or boat).
 pub fn graph(st: &State, P: &Params, g: &mut tr::Graph, mult: &[f64; 4]) {
-    if !on(P) || st.hw.trunk.len() != st.N {
-        return;
-    }
-    let slow = streets_slow(st, P);
-    let any_trunk = st.hw.trunk.iter().any(|&y| y != NOT);
-    if !slow && !any_trunk {
+    if !on(P) || st.hw.trunk.len() != st.N || !st.hw.trunk.iter().any(|&y| y != NOT) {
         return;
     }
     let (N, H, W) = (st.N, st.world.H, st.world.W);
     let tm = trunk_now(st, mult);
-    let motor = motor_share(st);
-    let s: Vec<f64> = if slow && motor > 0.0 { (0..N).map(|c| street(st, c, motor)).collect() } else { vec![0.0; N] };
     let land = &st.world.land;
     let nav = &st.world.navigable;
     let mut changed = false;
@@ -336,14 +314,12 @@ pub fn graph(st: &State, P: &Params, g: &mut tr::Graph, mult: &[f64; 4]) {
             if !land[b] || g.railed[e] || !g.w[e].is_finite() || (nav[a] && nav[b]) {
                 continue;
             }
-            let step = tr::step_len(k);
-            let mut add = 0.0;
-            if any_trunk && (is_trunk(st, a) || is_trunk(st, b)) {
-                let old = cell_cost(st, mult, a) + cell_cost(st, mult, b);
-                let new = cell_cost_now(st, mult, tm, a) + cell_cost_now(st, mult, tm, b);
-                add += step * 0.5 * (new - old);
+            if !(is_trunk(st, a) || is_trunk(st, b)) {
+                continue;
             }
-            add += step * 0.5 * (s[a] + s[b]);
+            let old = cell_cost(st, mult, a) + cell_cost(st, mult, b);
+            let new = cell_cost_now(st, mult, tm, a) + cell_cost_now(st, mult, tm, b);
+            let add = tr::step_len(k) * 0.5 * (new - old);
             if add != 0.0 {
                 g.w[e] = (g.w[e] + add).max(1e-3);
                 changed = true;
@@ -629,7 +605,10 @@ fn plan_trunk(st: &mut State, C: &Content, P: &Params, year: i64, budget: f64, r
             if cells.len() < 2 || cells.iter().any(|&c| busy[c] || !st.world.land[c]) {
                 continue;
             }
-            let new: Vec<usize> = cells.iter().copied().filter(|&c| !is_trunk(st, c)).collect();
+            // (into the two towns' own middles, as an arterial road; but not through
+            // a third town's ground, where the old road is its high street)
+            let third = |c: usize| in_town(st, c) && st.catch[c] as usize != i && st.catch[c] as usize != j;
+            let new: Vec<usize> = cells.iter().copied().filter(|&c| !is_trunk(st, c) && !third(c)).collect();
             let links = fords(st, &cells, i, &held);
             if new.is_empty() && links.is_empty() {
                 continue;
@@ -673,7 +652,6 @@ fn plan_bypass(st: &mut State, C: &Content, P: &Params, year: i64, budget: f64, 
     let freight = crate::longrun::freight(st, P);
     let mult = crate::lorry::road_mult(st, P);
     let tm = trunk_now(st, &mult);
-    let motor = motor_share(st);
     // the towns by their through traffic, for the record
     let mut ranked: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
     ranked.sort_by(|&a, &b| st.hw.town_thru[b].total_cmp(&st.hw.town_thru[a]).then(a.cmp(&b)));
@@ -690,11 +668,11 @@ fn plan_bypass(st: &mut State, C: &Content, P: &Params, year: i64, budget: f64, 
     let mut cand: Vec<(f64, usize, usize, bool, Vec<usize>, Vec<(u32, usize)>, f64, f64, f64)> = Vec::new();
     for (r, route) in st.hw.routes.iter().enumerate() {
         let cells: Vec<usize> = route.cells.iter().map(|&c| c as usize).collect();
-        // a trunk road is bypassed once it is open all its length
-        if !cells.iter().all(|&c| is_trunk(st, c)) {
+        // a trunk road is bypassed once it is open all its length outside the towns
+        if !cells.iter().all(|&c| is_trunk(st, c) || in_town(st, c)) {
             continue;
         }
-        let mut towns: Vec<usize> = cells.iter().filter(|&&c| st.urban[c] && st.catch[c] >= 0).map(|&c| st.catch[c] as usize).collect();
+        let mut towns: Vec<usize> = cells.iter().filter(|&&c| in_town(st, c)).map(|&c| st.catch[c] as usize).collect();
         towns.sort();
         towns.dedup();
         for k in towns {
@@ -707,8 +685,7 @@ fn plan_bypass(st: &mut State, C: &Content, P: &Params, year: i64, budget: f64, 
                 continue;
             }
             let S = &cells[f..=l];
-            let delay: f64 = S.iter().map(|&c| freight * st.hw.thru[c] * street(st, c, motor)).sum();
-            if !(delay > 0.0) || S.iter().any(|&c| busy[c]) {
+            if S.iter().any(|&c| busy[c] || is_trunk(st, c)) || !S.iter().any(|&c| st.hw.thru[c] > 0.0) {
                 continue;
             }
             let thru: f64 = S.iter().map(|&c| st.hw.thru[c]).sum::<f64>() / S.len() as f64;
@@ -756,18 +733,22 @@ fn plan_bypass(st: &mut State, C: &Content, P: &Params, year: i64, budget: f64, 
             town_way.push(exit);
             let c_town = len_cost(&town_way, &|c| cell_cost_now(st, &mult, tm, c));
             let c_round = len_cost(&way, &|c| tr::TERRAIN_COST[st.world.terrain[c] as usize] * tm);
-            let save_by = delay - freight * thru * (c_round - c_town).max(0.0);
+            // the way round saves the through traffic what crossing the town's
+            // squares costs over going round on a trunk road; widening the high
+            // street saves every load over it what a trunk road takes off a square
+            let save_by = freight * thru * (c_town - c_round);
+            let save_wi: f64 = S.iter().map(|&c| freight * st.hw.wear[c] * (cell_cost(st, &mult, c) - tr::TERRAIN_COST[st.world.terrain[c] as usize] * tm).max(0.0)).sum();
             let links = fords(st, &way, k, &held);
             // (the rents are a month's)
             let mut cost_by: f64 = inner.iter().map(|&c| work_money(st, c, buyer(st, c, k)) + P.years_purchase * 12.0 * st.cell_rent[c].max(0.0) * LAND_TAKEN).sum();
             cost_by += links.iter().map(|l| P.crossings.bridge_stone * st.xs.table.links[l.0 as usize].span as f64 * st.pbar[(l.1, gs)] * (1.0 + WAGES)).sum::<f64>();
             let cost_wi: f64 = S.iter().map(|&c| P.years_purchase * 12.0 * st.cell_urban_rent[c].max(0.0) * FRONTAGE + 0.5 * work_money(st, c, buyer(st, c, k))).sum();
             let r_by = if cost_by > 0.0 { save_by / cost_by } else { 0.0 };
-            let r_wi = if cost_wi > 0.0 { delay / cost_wi } else { 0.0 };
+            let r_wi = if cost_wi > 0.0 { save_wi / cost_wi } else { 0.0 };
             if r_by >= r_wi && r_by >= HURDLE {
                 cand.push((r_by, k, r, false, inner, links, thru, save_by, cost_by));
             } else if r_wi > r_by && r_wi >= HURDLE {
-                cand.push((r_wi, k, r, true, S.to_vec(), Vec::new(), thru, delay, cost_wi));
+                cand.push((r_wi, k, r, true, S.to_vec(), Vec::new(), thru, save_wi, cost_wi));
             }
         }
     }
@@ -850,19 +831,17 @@ pub fn month(st: &mut State, C: &Content, P: &Params, year_float: f64, events: &
         let w = st.hw.works.remove(w);
         back += pr.cash;
         pr.cash = 0.0;
+        // (a high street widened is a trunk road through the town from now on)
         for &c in &w.cells {
+            st.road[c] = st.road[c].max(3);
+            st.road_quiet[c] = 0;
+            if st.hw.trunk[c] == NOT {
+                st.hw.trunk[c] = year as i32;
+            }
             match w.serves {
                 WIDEN => st.hw.widened[c] = true,
-                _ => {
-                    st.road[c] = st.road[c].max(3);
-                    st.road_quiet[c] = 0;
-                    if st.hw.trunk[c] == NOT {
-                        st.hw.trunk[c] = year as i32;
-                    }
-                    if w.serves == BYPASS && st.hw.bypass[c] == NOT {
-                        st.hw.bypass[c] = year as i32;
-                    }
-                }
+                BYPASS if st.hw.bypass[c] == NOT => st.hw.bypass[c] = year as i32,
+                _ => {}
             }
         }
         let span: f64 = w.links.iter().map(|&l| st.xs.table.links[l as usize].span as f64).sum();
@@ -962,8 +941,9 @@ pub fn header(st: &State, P: &Params) -> Option<serde_json::Value> {
 /// switches, while the traffic record is kept): km of trunk road and of
 /// bypass open, bypasses and high streets widened; the through traffic by
 /// road (millions of weight-km), the share of it through the three towns with
-/// most; the treasury's tax, programmes and works over the year's income, and
-/// the hands at its works over all hands. Over the run: the trunk road's links
+/// most; the treasury's tax and programmes over the year's income, its months
+/// held, and over the ten years to the mark its works over income and over its
+/// spending, and the hands at its works over all hands. Over the run: the trunk road's links
 /// that ford or ferry (none by construction), the year of the first trunk
 /// road, and the mean place by through traffic of the towns bypassed.
 pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
@@ -990,11 +970,20 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         let g = |h: &dyn Fn(&crate::purse::PurseYear) -> f64| p.map_or(f64::NAN, h);
         out.push((format!("state_tax_over_income_{y}"), Kind::Share, g(&|p| share(p.tax, p.income))));
         out.push((format!("state_programmes_over_income_{y}"), Kind::Share, g(&|p| share(p.schools + p.pensions + p.university, p.income))));
-        let works = f(&|v| v.spent);
-        out.push((format!("state_works_over_income_{y}"), Kind::Share, g(&|p| share(works, p.income))));
-        out.push((format!("state_works_over_spending_{y}"), Kind::Share, g(&|p| share(works, p.schools + p.pensions + p.university + works))));
-        let menders = f(&|v| v.menders);
-        out.push((format!("state_works_hands_{y}"), Kind::Share, g(&|p| share(menders, p.hands))));
+        // the works over the ten years to y, since a works is built in two or three years of ten
+        let (mut works, mut menders, mut income, mut programmes, mut hands) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for z in y - 9..=y {
+            if let (Some(v), Some(p)) = (at(z), pu(z)) {
+                works += v.spent;
+                menders += v.menders;
+                income += p.income;
+                programmes += p.schools + p.pensions + p.university;
+                hands += p.hands;
+            }
+        }
+        out.push((format!("state_works_over_income_{y}"), Kind::Share, share(works, income)));
+        out.push((format!("state_works_over_spending_{y}"), Kind::Share, share(works, programmes + works)));
+        out.push((format!("state_works_hands_{y}"), Kind::Share, share(menders, hands)));
         out.push((format!("state_months_held_dec_{y}"), Kind::Real, g(&|p| p.months_held)));
     }
     if on(P) {
@@ -1022,6 +1011,10 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         towns.sort();
         towns.dedup();
         out.push(("bypassed_towns".into(), Kind::Count, towns.len() as f64));
+        // and of every cure opened, a bypass or a high street widened
+        let cured: Vec<f64> = st.hw.bypasses.iter().filter(|b| b.opened != NOT as i64).map(|b| b.rank as f64).collect();
+        out.push(("cured_rank_mean".into(), Kind::Real, if cured.is_empty() { f64::NAN } else { cured.iter().sum::<f64>() / cured.len() as f64 }));
+        out.push(("cured_rank_most".into(), Kind::Real, cured.iter().copied().fold(f64::NAN, f64::max)));
     }
     out
 }

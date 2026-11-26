@@ -1139,11 +1139,22 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     // the railways are graded curves with their own works (rails.rs)
     let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk, &sidings(r, cen, k));
     let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
+    // highways (the core's docs/rules/highways.md): the record marks a trunk road's
+    // square 64 and a bypass's 128; a link between two such squares is drawn in
+    // tarmac, a bypass's paler, until their look is drawn (a later piece)
+    let tr = &r.trans[k * r.n..(k + 1) * r.n];
     for (c, m, lv) in road_segments(r, k) {
         let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
+        let trunk = tr[c] & 64 != 0 && tr[m] & 64 != 0;
+        let colour = match (trunk, tr[c] & 128 != 0 || tr[m] & 128 != 0) {
+            (true, true) => *lk.ground.tarmac_worn,
+            (true, false) => *lk.ground.tarmac,
+            _ if lv == 3 => main,
+            _ => lane,
+        };
         // (crossings: round the meanders its straight line cuts, where the run keeps its crossings;
         // on the new land round a lake or a tideway, or over it on a causeway)
-        roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), if lv == 3 { main } else { lane });
+        roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), colour);
     }
     Nets { roads, rails }
 }

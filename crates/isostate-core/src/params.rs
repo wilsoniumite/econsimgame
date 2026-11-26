@@ -734,6 +734,10 @@ pub fn game_params() -> Params {
     // haulage (docs/rules/haulage.md): from 1901 a load pays a station's handling at
     // each end of a railway haul, and a road is worn by its own traffic alone
     P.haulage = crate::haulage::HaulageParams::game();
+    // highways (docs/rules/highways.md): from 1909 the treasury betters the ways between
+    // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
+    // street, where what they save pays
+    P.highways = crate::highways::HighwayParams::game();
     P
 }
 
