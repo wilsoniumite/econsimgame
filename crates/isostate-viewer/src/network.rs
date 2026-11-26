@@ -598,7 +598,14 @@ const APPROACH_PAST: f32 = 0.03;
 /// not, or where `route` takes the road round a meander along the bank, the
 /// way is `route`'s. On the new land it then keeps off standing water as
 /// `route` does (`round_water`).
-pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool) -> Way {
+///
+/// `seek` is asked for the way of each stretch between two of those points
+/// (from a point and its direction to the next): its points after the first,
+/// or none for the curve. A road on the new land seeks its way over the
+/// ground there (`road_ground`); where the way it finds crosses a river more
+/// often than the straight line, or stands in water, the curve is drawn
+/// instead, as it is with no seeking at all.
+pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool, seek: &mut dyn FnMut(Vec2, Vec2, Vec2, Vec2) -> Option<Vec<Vec2>>) -> Way {
     let straight = route_rivers(g, a, b, round);
     // (a way that goes round a meander, a lake or the tide keeps the way it had)
     if !straight.straight() || route(g, a, b, round).water != OnWater::None {
@@ -633,12 +640,23 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool)
     if stops.windows(2).any(|w| (w[1].0 - w[0].0).dot(chord) < 0.03) {
         return route(g, a, b, round);
     }
-    let mut pts: Vec<Vec2> = vec![a];
-    for w in stops.windows(2) {
-        let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };
-        let n = ((w[0].0.distance(w[1].0) / 0.04).ceil() as usize).max(4);
-        pts.extend((1..=n).map(|i| ends.point(i as f32 / n as f32, 0.0)));
-    }
+    let curve = |stops: &[(Vec2, Vec2)], seek: &mut dyn FnMut(Vec2, Vec2, Vec2, Vec2) -> Option<Vec<Vec2>>| {
+        let mut pts: Vec<Vec2> = vec![a];
+        for (i, w) in stops.windows(2).enumerate() {
+            // (across a bridge or a ford and its ramps, every second stretch, the way runs
+            // straight and seeks nothing)
+            match (i % 2 == 0).then(|| seek(w[0].0, w[0].1, w[1].0, w[1].1)).flatten() {
+                Some(found) => pts.extend(found),
+                None => {
+                    let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };
+                    let n = ((w[0].0.distance(w[1].0) / 0.04).ceil() as usize).max(4);
+                    pts.extend((1..=n).map(|i| ends.point(i as f32 / n as f32, 0.0)));
+                }
+            }
+        }
+        pts
+    };
+    let mut pts = curve(&stops, seek);
     // it crosses each river as often as the straight line it is drawn for does, and only there
     let count = |pts: &[Vec2]| {
         let mut by: Vec<(u32, usize)> = Vec::new();
@@ -653,7 +671,13 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool)
         by.sort_unstable();
         by
     };
-    if count(&pts) != count(&[a, b]) {
+    let want = count(&[a, b]);
+    // (a way sought over the ground that crosses a river more often, or stands in a lake or
+    // the tide, gives way to the curve)
+    if count(&pts) != want || (g.laid.is_some() && standing_on(g, &pts)) {
+        pts = curve(&stops, &mut |_, _, _, _| None);
+    }
+    if count(&pts) != want {
         return route(g, a, b, round);
     }
     // each crossing as the straight line has it, crossed the way the curve runs there
