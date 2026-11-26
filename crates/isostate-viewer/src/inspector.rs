@@ -51,6 +51,15 @@ pub struct Answers {
 }
 
 impl Answers {
+    /// An edit taken back (back.rs): every answer is of the island as it
+    /// stood after the edit, and is let go, to be asked again.
+    pub fn forget(&mut self) {
+        self.told.clear();
+        self.asked.clear();
+        self.took.clear();
+        self.version += 1;
+    }
+
     /// For a scripted run: each new answer is printed once.
     pub fn printing() -> Answers {
         Answers { print: true, ..default() }

@@ -10,6 +10,7 @@
 //! sheets of the scenery's generators and stops (lab.rs).
 
 mod ages_chart;
+mod back;
 mod purse_chart;
 mod boats;
 mod built;
@@ -1094,6 +1095,9 @@ fn main() {
     app.add_systems(Update, season_clock.after(advance_time).before(seasons));
     // which of the trees' meshes show is settled in one place, by the season and the map view together
     app.add_systems(Update, show_trees.after(seasons));
+    // an edit taken back: what came after it is forgotten in the frame its answer is read, before the
+    // year's scenery is looked at and before the square or the panels are asked about again
+    app.add_systems(Update, back::taken_back.after(game::pump).before(rebuild_year).before(game::ask_site).run_if(resource_exists::<live::Live>));
     if let Some(l) = live {
         app.insert_resource(l);
         // a game changed by hand: the tray of tools, and the family game's cards kept away

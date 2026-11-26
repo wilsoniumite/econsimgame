@@ -273,6 +273,15 @@ impl Present {
 }
 
 impl Sandbox {
+    /// An edit taken back (back.rs): a run on stops, no edit is out, and the
+    /// ideas and the square's works are asked for again.
+    pub fn forget(&mut self) {
+        (self.run, self.sent, self.asking) = (None, None, false);
+        (self.ideas, self.ideas_at) = (None, None);
+        (self.offers, self.turn) = (None, None);
+        self.version += 1;
+    }
+
     /// Running on to a year.
     pub fn running(&self) -> bool {
         self.run.is_some()

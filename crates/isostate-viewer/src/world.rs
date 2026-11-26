@@ -1534,6 +1534,17 @@ pub fn closes_built(order: &[(u32, u8, f32)], houses: usize) -> (usize, usize) {
     (count(BUILT_GROUND, 0), count(HOUSE_GROUND, (EDGE_CLOSES * 0.5).round() as usize))
 }
 
+impl TownClosesKnown {
+    /// An edit taken back (back.rs): the roads of year `from` (counted from
+    /// the start) and after are gone through again when next asked for.
+    pub fn forget_roads_from(&self, from: usize) {
+        if let Ok(mut known) = self.roads.lock() {
+            known.0 = known.0.min(from);
+            known.1.retain(|_, y| (*y as usize) < from);
+        }
+    }
+}
+
 /// The first year (counted from the start) each pair of neighbouring cells
 /// had a road between them, among the years up to `k`: by the lower cell and
 /// the higher. A road the map draws no more (a diagonal is left out once two

@@ -101,6 +101,27 @@ impl Table {
         }
     }
 
+    /// Take the last edit back, and forget what came after it as
+    /// `back::taken_back` does; or the thread's refusal.
+    fn take_back(&mut self) -> Result<TakenBack, String> {
+        self.live.send(Cmd::TakeBack);
+        match self.wait() {
+            Msg::TakenBack(to) => {
+                crate::back::forget(&mut self.r, &to);
+                self.months.forget_from(to.t);
+                crate::game::families_back(&mut self.view, &to.families, to.family.as_ref(), to.year as i32, to.filled);
+                self.view.prospects = to.prospects.clone();
+                self.live.taken_back(to.filled.clamp(1, self.r.ny) - 1, to.months, to.standing.clone());
+                Ok(*to)
+            }
+            Msg::Done { ok: false, text, standing, .. } => {
+                self.live.standing = standing;
+                Err(text)
+            }
+            _ => panic!("a take back was asked for"),
+        }
+    }
+
     fn site(&self, cell: usize) -> SiteInfo {
         self.live.send(Cmd::Site(cell));
         match self.wait() {
@@ -1503,4 +1524,144 @@ fn a_games_traffic_and_trade_between_towns_are_its_recordings() {
     let lines = crate::traffic::trade_lines(&board.r, k, t).unwrap();
     eprintln!("{lines}");
     assert!(lines.starts_with("Trades most with") && lines.lines().count() == 1 + crate::traffic::PARTNERS, "{lines}");
+}
+
+/// A square near the first town whose hand's list has a works allowed, and
+/// the method that promises most there (as the Works tool offers it).
+fn a_square_for_a_works(a: &Table) -> (usize, String) {
+    let (k, w, n) = (a.r.filled - 1, a.r.w as i64, a.r.n);
+    let node = a.r.header.towns[0].node as i64;
+    let mut near: Vec<usize> = (-5..=5i64)
+        .flat_map(|dz| (-5..=5i64).map(move |dx| node + dz * w + dx))
+        .filter(|&c| c >= 0 && (c as usize) < n && c != node)
+        .map(|c| c as usize)
+        .filter(|&c| a.r.catch[k * n + c] == 1)
+        .collect();
+    near.sort_by_key(|&c| ((c as i64 % w - node % w).pow(2) + (c as i64 / w - node / w).pow(2), c));
+    near.iter()
+        .find_map(|&c| {
+            let hand = a.site(c).hand.ok()?;
+            let best = hand.into_iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.ok().map(|s| (o.name, s.expected_return))).max_by(|x, y| x.1.total_cmp(&y.1))?;
+            Some((c, best.0))
+        })
+        .expect("a square near the first town takes a works")
+}
+
+/// What the island holds as its save says: its `save::check`, once the save
+/// of the year and month asked for is written, played again.
+fn check_of_save(file: &std::path::Path, year: i64, month: usize) -> String {
+    let kept = saves::waited_for(120.0, || saves::read(file).is_ok_and(|s| s.year == year && s.month == month));
+    assert!(kept, "{}", saves::gave_up(120.0, &format!("{month} months into {} was to be saved", year + 1)));
+    let save = saves::read(file).unwrap();
+    let loaded = isostate_core::save::load(&save, |_| {}).expect("the save plays again");
+    assert!(!loaded.drifted && loaded.refused.is_empty(), "the save plays again as it was played");
+    isostate_core::save::check(&loaded.game.sim)
+}
+
+#[test]
+fn an_edit_taken_back_leaves_the_island_that_never_had_it() {
+    // Taking back (docs/designs/sandbox.md, 4.4 and 6.8). Island 7, six families,
+    // the game's rules as they stand, played to January 1791 through the thread.
+    // Each case is set beside the same island played with no edit at all, so it
+    // leans on no one island's history and sets no rule by name: the take back
+    // must give that island back, in the viewer as on the thread and in its save.
+    use isostate_core::edits::Edit;
+    let dir = saves::test_dir("take-back-test");
+    let game_at = |name: &str| {
+        let file = dir.join(format!("{name}.json"));
+        (Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, save: Some(file.to_string_lossy().into_owned()), ..default() }, file)
+    };
+    let (o, untouched) = game_at("untouched");
+    let mut u = Table::open(&o);
+
+    // 1. Halving the largest town's people at the turn into 1791, two years on, taken back.
+    let (o, file) = game_at("at-the-turn");
+    let mut a = Table::open(&o);
+    assert_eq!(a.year(), 1790);
+    // (no edit has been made since the window opened)
+    assert_eq!(a.live.standing.back, None);
+    assert_eq!(a.take_back().unwrap_err(), NOTHING_TO_TAKE_BACK);
+    let (k, nt) = (a.r.filled - 1, a.r.n_towns);
+    let town = (0..nt).max_by(|&x, &y| a.r.town_pop[k * nt + x].total_cmp(&a.r.town_pop[k * nt + y])).unwrap();
+    // a refused edit makes no copy
+    assert!(!a.order("by_hand", Cmd::ByHand(Edit::People { town, factor: 50.0 })));
+    assert_eq!(a.live.standing.back, None);
+    assert!(a.order("by_hand", Cmd::ByHand(Edit::People { town, factor: 0.5 })), "{}", a.said);
+    assert_eq!(a.live.standing.back, Some((1790, 0)), "the edit can be taken back to the turn into 1791");
+    a.step();
+    a.step();
+    assert_eq!((a.year(), a.live.standing.back), (1792, Some((1790, 0))));
+    // (the thread writes the year's save after it has sent the year)
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1792));
+    assert!(kept, "{}", saves::gave_up(120.0, "1792 was to be saved"));
+    let with_edit = saves::read(&file).unwrap();
+    assert!(with_edit.orders.iter().any(|g| matches!(g.order, Order::ByHand { .. })));
+    let to = a.take_back().expect("the edit is taken back");
+    assert_eq!((to.year, to.months, to.filled, to.t), (1790, 0, 41, 41 * 12));
+    assert_eq!((a.year(), a.live.standing.back), (1790, None));
+    same(&a, &u, "the edit at the turn into 1791 taken back two years on");
+    assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new(), "the run taken back is the run never edited");
+    // a second is refused, in the sentence the viewer is to show
+    assert_eq!(a.take_back().unwrap_err(), NOTHING_TO_TAKE_BACK);
+    // the save that held the edit is set aside whole, once, and the game's own no longer holds it
+    let kept = saves::waited_for(120.0, || saves::read(&saves::previous(&file)).is_ok());
+    assert!(kept, "{}", saves::gave_up(120.0, "the save with the edit was to be set aside"));
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), with_edit);
+    assert!(saves::read(&file).unwrap().orders.iter().all(|g| !matches!(g.order, Order::ByHand { .. })));
+    for _ in 0..10 {
+        a.step();
+        u.step();
+    }
+    assert_eq!(a.year(), 1800);
+    same(&a, &u, "ten years after the take back");
+    assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new(), "ten years after the take back");
+    assert_eq!(check_of_save(&file, 1800, 0), check_of_save(&untouched, 1800, 0), "the save ten years after the take back");
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), with_edit, "set aside once, not again at every year");
+    assert!(!saves::game_before(&file, 2).exists(), "nothing else was set aside");
+    drop(a);
+    // the island never edited, five months into 1801, for the cases that follow (kept as the clock
+    // stopping keeps it)
+    for _ in 0..5 {
+        assert!(!u.month());
+    }
+    u.live.send(Cmd::Keep);
+
+    // 2. The same edit five months into 1791; 3. a works by hand that waited for the turn.
+    for case in ["five-months-in", "a-works-that-waited"] {
+        let (o, file) = game_at(case);
+        let mut a = Table::open(&o);
+        let edit = if case == "five-months-in" {
+            Edit::People { town, factor: 0.5 }
+        } else {
+            let (cell, method) = a_square_for_a_works(&a);
+            Edit::BuildWorks { method, cell }
+        };
+        for _ in 0..5 {
+            assert!(!a.month());
+        }
+        assert!(a.order("by_hand", Cmd::ByHand(edit.clone())), "{case}: {}", a.said);
+        assert_eq!(a.live.standing.back, Some((1790, 5)), "{case}");
+        if edit.at_turn() {
+            assert_eq!(a.live.standing.waiting, vec![Order::ByHand { edit }], "{case}: the works waits for the turn");
+        }
+        a.step();
+        a.step();
+        assert_eq!(a.year(), 1792);
+        let to = a.take_back().expect("the edit is taken back");
+        assert_eq!((to.year, to.months, to.t), (1790, 5, 41 * 12 + 5), "{case}");
+        assert!(a.live.standing.waiting.is_empty() && a.live.standing.back.is_none(), "{case}: {:?}", a.live.standing);
+        for _ in 0..10 {
+            a.step();
+        }
+        for _ in 0..5 {
+            assert!(!a.month());
+        }
+        same(&a, &u, &format!("{case}: ten years after the take back"));
+        assert_eq!(crate::back::differ(&a.r, &u.r), Vec::<&str>::new(), "{case}: ten years after the take back");
+        same_months(&a, &u, 50 * 12..51 * 12 + 5, case);
+        a.live.send(Cmd::Keep);
+        assert_eq!(check_of_save(&file, 1800, 5), check_of_save(&untouched, 1800, 5), "{case}: the save ten years after the take back");
+    }
+    drop(u);
+    let _ = std::fs::remove_dir_all(&dir);
 }
