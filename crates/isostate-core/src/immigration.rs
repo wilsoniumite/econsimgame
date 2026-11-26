@@ -15,6 +15,9 @@
 //!   `rate` of the port's own people (those who come because kin wrote home),
 //!   and never more than `max_share` of the port's people in a year (what it
 //!   can house).
+//! - **None to a hungry port** (`shun_hungry`): a port whose worst month's
+//!   food fell under the famine line this year takes nobody that year nor
+//!   for the `shun_years` after, the hungry year counted.
 //! - **Their ages** are mostly young adults (`AGES`): they enter the ages'
 //!   reckoning at those ages and not as births (`ages::year`).
 //! - **People only.** They bring no money: the island's purses are those of
@@ -64,19 +67,29 @@ pub struct ImmigrationParams {
     pub rate: f64,
     /// The most settlers a port takes in a year, as a share of its people.
     pub max_share: f64,
+    /// No settlers to a hungry port: a port whose people went hungry in a
+    /// year (its worst month's food under the famine line,
+    /// `facts::FAMINE_LINE`, as the news has it) takes no settlers that year
+    /// nor for `shun_years` after.
+    pub shun_hungry: bool,
+    /// The years the ships stay away from a port that went hungry, the
+    /// hungry year counted: 5. Word of a hungry colony went home by the next
+    /// ships and was believed for some years; the letters of kin that drew
+    /// most settlers said where not to go (from memory).
+    pub shun_years: i64,
 }
 
 impl Default for ImmigrationParams {
     /// Off: nobody comes.
     fn default() -> ImmigrationParams {
-        ImmigrationParams { enabled: false, abroad: 1.5, abroad_growth: 0.01, abroad_from: 1820, ships: 400.0, rate: 0.015, max_share: 0.05 }
+        ImmigrationParams { enabled: false, abroad: 1.5, abroad_growth: 0.01, abroad_from: 1820, ships: 400.0, rate: 0.015, max_share: 0.05, shun_hungry: false, shun_years: 5 }
     }
 }
 
 impl ImmigrationParams {
-    /// On, with the numbers above (the landfall start's).
+    /// On, with the numbers above (the landfall start's), and none to a hungry port.
     pub fn game() -> ImmigrationParams {
-        ImmigrationParams { enabled: true, ..ImmigrationParams::default() }
+        ImmigrationParams { enabled: true, shun_hungry: true, ..ImmigrationParams::default() }
     }
 }
 
@@ -89,6 +102,17 @@ pub struct ImmigrationState {
     pub years: Vec<(i64, f64)>,
     /// All who have come.
     pub total: f64,
+    /// The last year each town went hungry (`shun_hungry`); None if never.
+    /// Empty while `shun_hungry` is off.
+    pub hungry: Vec<Option<i64>>,
+    /// Ports the ships stayed away from in each year (`shun_hungry`): (year, ports).
+    pub shunned: Vec<(i64, usize)>,
+}
+
+/// Whether the ships stay away from town `t` in `year`: it went hungry this
+/// year or in the `shun_years - 1` before (`shun_hungry`).
+pub fn shunned(st: &State, P: &Params, t: usize, year: i64) -> bool {
+    P.immigration.shun_hungry && st.immigration.hungry.get(t).copied().flatten().is_some_and(|y| year - y < P.immigration.shun_years)
 }
 
 /// The living abroad in `year`, in baskets a head.
@@ -109,8 +133,20 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64, g: &mut [f64], eve
     let ports: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.world.coast[st.town_node[t]] && st.pop[t] > 0.0).collect();
     let port_people = pairwise_sum(&ports.iter().map(|&t| st.pop[t]).collect::<Vec<_>>());
     let there = abroad(P, year);
+    // no settlers to a hungry port: the towns that went hungry this year are marked first
+    if ip.shun_hungry {
+        st.immigration.hungry.resize(T, None);
+        for t in (0..T).filter(|&t| st.town_active[t] && st.food_min_acc[t] < crate::facts::FAMINE_LINE) {
+            st.immigration.hungry[t] = Some(year);
+        }
+    }
     let mut came = vec![0.0; T];
+    let mut shunned_ports = 0;
     for &t in &ports {
+        if shunned(st, P, t, year) {
+            shunned_ports += 1;
+            continue;
+        }
         let pull = (y.get(t).copied().unwrap_or(0.0) / there - 1.0).clamp(0.0, 1.0);
         let n = (pull * (ip.ships * st.pop[t] / port_people.max(1.0) + ip.rate * st.pop[t])).min(ip.max_share * st.pop[t]).max(0.0);
         came[t] = n;
@@ -120,6 +156,9 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64, g: &mut [f64], eve
     st.immigration.came = came.clone();
     st.immigration.years.push((year, all));
     st.immigration.total += all;
+    if ip.shun_hungry {
+        st.immigration.shunned.push((year, shunned_ports));
+    }
     // ages (docs/rules/ages.md): they enter the reckoning at their ages
     crate::ages::came(st, P, &came, there);
     let island = pairwise_sum(&st.pop);

@@ -136,6 +136,23 @@ What this says:
    the United States of 1800, from memory), against 0.35 on the settled
    island; settlers, who are young adults, take it to 0.38 to 0.41.
 
+### Land that stays taken, and no settlers to a hungry port
+
+Two of the mends the study of the start ordered on 26 November come with
+`--start landfall` (they sit in `FrontierParams::game` and
+`ImmigrationParams::game`): land once taken stays taken
+(`frontier.claimed`, [frontier.md](frontier.md)) and no ship brings settlers
+to a port that went hungry that year or the four before
+(`immigration.shun_hungry`, [immigration.md](immigration.md)). Measured with
+carriage on prices from 1750 (`--set longrun.freight_from=1750`), islands 1
+to 8 to 2050, means: with the two mends the free share is 0.03 in 1950 and
+0.04 in 2050 (without them 0.32 and 0.65); people are 493k in 1900 and
+1,731k in 2050 (558k and 2,338k), growing 0.28 per cent a year from 2000 to
+2050 (0.36); hunger falls to 0.6 years an island after 1900 (1.0) and rises
+to 1.6 before it (1.0); the wage in grain is 14.6 / 30.2 / 101.1 in 1800 /
+1900 / 2050 (14.3 / 32.3 / 92.5). With settlers off as well the colony has
+168k people in 1900 and 684k in 2050. No run failed.
+
 ## The trap
 
 The trial held the land beyond 20 km of the town empty through the warm-up
