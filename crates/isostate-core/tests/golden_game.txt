@@ -329,6 +329,11 @@
 # the squares' log (sq_first, sq_log) and the header's word of its layout
 # (docs/rules/squares.md, 'In the record'); the squares are read by no rule,
 # so the economy, the books and the news of both eras are main's
+# Taken: Taken again on the merged tree of night/g-batch-settle-a (one-town,
+# squares-shadow, squares-record on main f8bf321): only 1901-2050 run.bin
+# moves against main, by the squares' log in the record; the landfall start
+# and its rules are off in game_params(), and the squares' shadow is read by
+# no rule.
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
