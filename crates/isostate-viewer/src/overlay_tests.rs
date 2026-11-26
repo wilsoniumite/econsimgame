@@ -435,11 +435,11 @@ fn a_town_that_doubles_in_ten_years_reads_seven_point_two_a_year_and_new_ground_
     // wages go by towns: each square takes its market's rate
     assert!(m.by_town && m.cells[2] == m.towns[0] && m.cells[0] == trend::Change::Nothing);
     // the movers: Ashby rising, and nobody falling (Brill held)
-    let (up, down) = trend::movers(&r, &m, 10);
+    let (up, down) = trend::movers(&r, &m);
     assert_eq!((up.len(), up[0].name.as_str(), down.len()), (1, "Ashby", 0));
-    // a town under the floor at both ends is left out
-    r.town_urban = vec![500.0; 11 * 2];
-    assert!(trend::movers(&r, &m, 10).0.is_empty());
+    // a town under the floor at the span's start is left out, whatever it has grown to
+    r.town_urban[0] = 500.0;
+    assert!(trend::movers(&r, &m).0.is_empty());
     // the scale is even about nought, and never nearer than the least end
     let e = trend::trend_ends(&r, 10, Overlay::Wages, 0, Span::Ten).unwrap();
     assert!(e.lo == -e.hi && e.hi >= trend::LEAST_END, "{e:?}");

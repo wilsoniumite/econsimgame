@@ -85,9 +85,11 @@ pub fn trends(kind: Overlay) -> bool {
 /// colours stretched over its noise. In per cent a year.
 pub const LEAST_END: f32 = 0.5;
 
-/// The movers are towns of at least this many people living in them at one
-/// end of the span or the other, so that a hamlet's doubling does not lead
-/// (the build notes, "The floor").
+/// The movers are towns of at least this many people living in them at the
+/// span's start, so that a hamlet's doubling does not lead, nor a town
+/// founded a few years before (island 7's Oakbury, 383 people in 1890 and
+/// 3,982 in 1900); a town that empties is among them, being one that was a
+/// town (the build notes, "The floor").
 pub const FLOOR_PEOPLE: f32 = 2000.0;
 
 /// How many towns the movers name each way.
@@ -275,12 +277,12 @@ pub struct Mover {
 
 /// The towns rising fastest and falling fastest by the view's own measure,
 /// `MOVERS` each way, of those with `FLOOR_PEOPLE` living in them at the
-/// span's start or its end. A town new in the span, or gone, has no rate and
-/// is not among them.
-pub fn movers(r: &Replay, m: &TrendMap, k: usize) -> (Vec<Mover>, Vec<Mover>) {
+/// span's start. A town new in the span, or gone, has no rate and is not
+/// among them.
+pub fn movers(r: &Replay, m: &TrendMap) -> (Vec<Mover>, Vec<Mover>) {
     let people = |j: usize, t: usize| r.town_urban.get(j * r.n_towns + t).copied().filter(|v| v.is_finite()).unwrap_or(0.0);
     let mut rated: Vec<(usize, f32)> = (0..m.towns.len())
-        .filter(|&t| people(m.from, t).max(people(k, t)) >= FLOOR_PEOPLE)
+        .filter(|&t| people(m.from, t) >= FLOOR_PEOPLE)
         .filter_map(|t| if let Change::Rate(v) = m.towns[t] { Some((t, v)) } else { None })
         .collect();
     rated.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -290,13 +292,16 @@ pub fn movers(r: &Replay, m: &TrendMap, k: usize) -> (Vec<Mover>, Vec<Mover>) {
     (rising, falling)
 }
 
-/// A rate in words: "+7.2%", "-0.4%", "0%".
+/// A rate in words: "+7.2%", "-0.4%", "+5%", "0%".
 pub fn rate_words(v: f32) -> String {
     if v.abs() < 0.05 {
         "0%".to_string()
     } else if v.abs() >= 99.5 {
         format!("{v:+.0}%")
+    } else if v.abs() < 0.995 {
+        // a quarter per cent on a calm scale's marks is written as it is
+        format!("{v:+.2}").trim_end_matches('0').to_string() + "%"
     } else {
-        format!("{v:+.1}%")
+        format!("{v:+.1}").trim_end_matches(".0").to_string() + "%"
     }
 }

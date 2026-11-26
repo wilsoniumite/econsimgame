@@ -88,7 +88,12 @@
 //!     range:year      the legend's chip for how the colours' ends are taken:
 //!     range:30        this year, thirty years gliding, the whole run
 //!     range:all
-//!     row:GOOD        click a good's row in the Markets panel (row:coal)
+//!     trend:10        the legend's Trend chip: off, 5, 10 or 30 years; map
+//!                     then adds the span, the ends and the movers
+//!     mover:N         click a town among the movers on the legend card:
+//!                     0 to 2 rising fastest, 3 to 5 falling; it says which
+//!                     town, and map then says where the camera points
+//!     row:GOOD       click a good's row in the Markets panel (row:coal)
 //!     half:island     click a chip of the Markets panel: the island's charts,
 //!     half:goods      the goods, or the island's work and owners (print on
 //!     half:work       that half gives its figures, a line for each fifty
@@ -144,6 +149,11 @@ enum Step {
     Good(i32),
     /// the legend's chip for how the colours' ends are taken
     Range(crate::ranges::Range),
+    /// the legend's Trend chip: off, or its years
+    Trend(Option<crate::overlay::trend::Span>),
+    /// a town among the movers on the legend card, by its place among them
+    /// (0 to 2 rising, 3 to 5 falling)
+    Mover(usize),
     /// a good's row in the Markets panel, by name
     Row(String),
     Half(MarketsShow),
@@ -309,6 +319,11 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') && !arg.contains('+') => Step::Chip(arg.to_ascii_lowercase()),
             "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, traffic, plain and pill")),
             "range" => Step::Range(crate::ranges::Range::parse(arg).ok_or_else(|| format!("{part}: range:year, range:30 or range:all"))?),
+            "trend" => Step::Trend(crate::overlay::trend::parse_word(&format!("trend{}", arg.to_ascii_lowercase())).ok_or_else(|| format!("{part}: trend:off, trend:5, trend:10 or trend:30"))?),
+            "mover" => match num("the mover's place")? {
+                i if (0.0..6.0).contains(&i) => Step::Mover(i as usize),
+                _ => return Err(format!("{part}: mover:0 to mover:2 are the towns rising fastest, mover:3 to mover:5 those falling fastest")),
+            },
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
                 "back" => Step::Good(-1),
@@ -680,11 +695,15 @@ fn print_map(world: &World, note: &str) {
     // a view that colours by a number adds its range, its ends and its round figures
     let k = (world.resource::<Timeline>().t.floor() as usize).min(data.r.ny - 1);
     let range = if ov.kind.is_some_and(|k| k.scaled()) { format!(" {}", ov.range_said(&data.r, k)) } else { String::new() };
+    let o = world.resource::<Orbit>();
     println!(
-        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}{range}",
+        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}{range} camera: {:.1},{:.1} at {:.1}",
         if note.is_empty() { String::new() } else { format!("[{note}] ") },
         good(ov.good),
-        ui.good.map_or("none", good)
+        ui.good.map_or("none", good),
+        o.target.x,
+        o.target.z,
+        o.dist
     );
 }
 
@@ -1123,6 +1142,30 @@ fn step(world: &mut World, sc: &mut Script) {
                 match find_marked::<crate::overlay::RangeChip>(world, &format!("range:{}", range.word()), |c| c.0 == range) {
                     Ok(e) => press(world, sc, e),
                     Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Trend(span) => {
+                let what = format!("trend:{}", span.map_or("off", |s| s.word()));
+                match find_marked::<crate::overlay::TrendChip>(world, &what, |c| c.0 == span) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Mover(i) => {
+                // the town in that place among the movers the card shows, and where the camera went
+                let town = world.resource::<MapOverlay>().mover(i);
+                match town {
+                    Some(t) => match find_marked::<crate::overlay::MoverRow>(world, &format!("mover:{i}"), |m| m.0 == t) {
+                        Ok(e) => {
+                            press(world, sc, e);
+                            let name = world.resource::<Data>().r.header.towns.get(t).map_or(String::new(), |t| t.name.clone());
+                            println!("script: mover:{i} is {name}");
+                        }
+                        Err(why) => println!("script: no click: {why}"),
+                    },
+                    None => println!("script: no click: mover:{i}: the card names no town there"),
                 }
                 frame = true;
             }

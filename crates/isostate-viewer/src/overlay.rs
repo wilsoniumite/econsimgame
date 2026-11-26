@@ -375,6 +375,13 @@ impl MapOverlay {
         MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), trend: None, painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None, preview: Preview::default() }
     }
 
+    /// The town in place `i` among the movers the card shows: 0 to 2 the
+    /// rising, 3 to 5 the falling (for a script's `mover:`).
+    pub fn mover(&self, i: usize) -> Option<usize> {
+        let (up, down) = self.legend.as_ref()?.movers.as_ref()?;
+        if i < trend::MOVERS { up.get(i) } else { down.get(i - trend::MOVERS) }.map(|m| m.town)
+    }
+
     /// The trend the view on shows, if the switch is on and the view has one.
     pub fn trend_shown(&self) -> Option<Span> {
         self.trend.filter(|_| self.kind.is_some_and(trend::trends))
@@ -1441,10 +1448,7 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
         let col = change_tint(m.cells[c], &sc);
         cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], region(c)]);
     }
-    let values = ranges::ticks(sc.lo, sc.hi, false);
-    let whole = values.iter().all(|v| v.fract().abs() < 1e-3);
-    let words = |v: f32| if v.abs() < 1e-4 { "0%".to_string() } else if whole { format!("{v:+.0}%") } else { trend::rate_words(v) };
-    let ticks = values.iter().map(|&v| (sc.at(v), words(v))).collect();
+    let ticks = ranges::ticks(sc.lo, sc.hi, false).into_iter().map(|v| (sc.at(v), trend::rate_words(v))).collect();
     let (new, gone) = m.new_and_gone();
     let unit = if m.by_town { "town" } else { "square" };
     let s = |n: usize| if n == 1 { "" } else { "s" };
@@ -1468,7 +1472,7 @@ pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span,
         ends: format!("{} to {} a year", trend::rate_words(sc.lo), trend::rate_words(sc.hi)),
         range: Some(scaling.range),
         keys,
-        movers: Some(trend::movers(r, &m, k)),
+        movers: Some(trend::movers(r, &m)),
     };
     Wash { cells, legend, soft, lines }
 }
@@ -2027,7 +2031,7 @@ fn legend_card(
                 }
             });
             let floor = ui::thousands(trend::FLOOR_PEOPLE);
-            p.spawn((text(&f, &format!("Towns of {floor} people or more at either end; a click takes you there."), 11.5, MUTED), Node { width: Val::Px(CARD_W), ..default() }));
+            p.spawn((text(&f, &format!("Towns of {floor} people or more at the start; a click takes you there."), 11.5, MUTED), Node { width: Val::Px(CARD_W), ..default() }));
         }
         if let Some(range) = l.range {
             // how the ends are taken: three small chips, the one in use lit
