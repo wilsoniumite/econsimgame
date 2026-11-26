@@ -55,7 +55,9 @@
 //!                     pointer on the box whose name starts so, or on the
 //!                     ribbon GOOD>BOX (point:coal>households); point:none
 //!                     gives the pointer back to the mouse; point:town:NAME
-//!                     picks the town by its name and opens its making
+//!                     picks the town by its name and opens its making;
+//!                     point:menu:NAME opens the hand's menu of a box
+//!                     (TOWN-FLOW-HAND), point:menu:none shuts it
 //!
 //! and for the map views and the Markets panel:
 //!
