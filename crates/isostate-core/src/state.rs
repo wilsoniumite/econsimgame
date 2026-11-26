@@ -607,4 +607,10 @@ pub struct State {
     // ---------------- highways (docs/rules/highways.md; empty while it neither acts nor watches)
     /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
     pub hw: crate::highways::HighwayState,
+
+    // ---------------- squares (docs/rules/squares.md; empty while `squares.enabled` is off)
+    /// Squares of 125 m in every cell with something built: each square's
+    /// tenant and the year it was taken, and each works' and working's squares.
+    /// Read by no rule.
+    pub sq: crate::squares::SquareBook,
 }

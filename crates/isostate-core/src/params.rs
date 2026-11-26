@@ -418,6 +418,11 @@ pub struct Params {
     /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub highways: crate::highways::HighwayParams,
+    /// Squares of 125 m kept where something is built: which works, house
+    /// blocks, park, pit or derelict ground stands where in its cell, and since
+    /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub squares: crate::squares::SquaresParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -647,6 +652,7 @@ pub fn default_params() -> Params {
         pace: crate::pace::PaceParams::default(),
         haulage: crate::haulage::HaulageParams::default(),
         highways: crate::highways::HighwayParams::default(),
+        squares: crate::squares::SquaresParams::default(),
     }
 }
 
@@ -738,6 +744,9 @@ pub fn game_params() -> Params {
     // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
     // street, where what they save pays
     P.highways = crate::highways::HighwayParams::game();
+    // squares (docs/rules/squares.md): the place of everything built, kept in
+    // squares of 125 m from 1750; a shadow that no rule reads
+    P.squares = crate::squares::SquaresParams::game();
     P
 }
 

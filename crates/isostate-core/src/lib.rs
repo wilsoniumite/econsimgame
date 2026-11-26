@@ -86,6 +86,7 @@ pub mod rulebook;
 pub mod save;
 pub mod scorecard;
 pub mod sim;
+pub mod squares;
 pub mod standing;
 pub mod state;
 pub mod sweep;
