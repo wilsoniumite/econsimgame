@@ -731,8 +731,9 @@ fn draw(
                 Yearly::Title => t.0 = title_words(&ideas),
                 Yearly::Summary => t.0 = summary_words(&ideas),
                 Yearly::Now => {
-                    t.0 = format!("now, {}", ideas.now);
-                    node.left = Val::Px(LABEL_W + pl.x(ideas.now.min(pl.to) as f64) + 3.0);
+                    let (words, x) = now_label(&pl);
+                    t.0 = words;
+                    node.left = Val::Px(x);
                 }
             }
         }
@@ -761,7 +762,24 @@ fn draw(
 }
 
 fn title_words(i: &IslandIdeas) -> String {
-    format!("The island's ideas, {} to {}, as they stand in {}", i.from, i.end, i.now)
+    if i.now > i.end {
+        format!("The island's ideas, {} to {}, as they stood when the run ended", i.from, i.end)
+    } else {
+        format!("The island's ideas, {} to {}, as they stand in {}", i.from, i.end, i.now)
+    }
+}
+
+/// The present's label on the axis, and where it stands: right of its line,
+/// or left of it near the run's end.
+fn now_label(pl: &Plan) -> (String, f32) {
+    let x = LABEL_W + pl.x(pl.ideas.now.min(pl.to) as f64);
+    if pl.ideas.now > pl.to {
+        ("the end".to_string(), x - 46.0)
+    } else if pl.ideas.now + 15 > pl.to {
+        (format!("now, {}", pl.ideas.now), x - 62.0)
+    } else {
+        (format!("now, {}", pl.ideas.now), x + 3.0)
+    }
 }
 
 fn summary_words(i: &IslandIdeas) -> String {
@@ -807,9 +825,9 @@ fn axis(p: &mut ChildSpawnerCommands, f: &Handle<Font>, pl: &Plan) {
             }
             y += 50;
         }
-        let xn = LABEL_W + pl.x(pl.ideas.now.min(pl.to) as f64);
         // (under the years, so that it never stands on one of them)
-        a.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(xn + 3.0), top: Val::Px(13.0), ..default() }, text(f, &format!("now, {}", pl.ideas.now), 11.0, HAND_INK), Yearly::Now));
+        let (words, x) = now_label(pl);
+        a.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(13.0), ..default() }, text(f, &words, 11.0, HAND_INK), Yearly::Now));
     });
 }
 
@@ -1049,4 +1067,100 @@ fn painter(mut plate: ResMut<Plate>, mut images: ResMut<Assets<Image>>) {
     }
     let task = AsyncComputeTaskPool::get().spawn(async move { paint(&pl, lit).2 });
     plate.painting = Some((plate.generation, lit, task, Instant::now()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use isostate_core::island_ideas::{Drag, IdeaGroup};
+
+    fn row(name: &str, found: Option<i64>, pin: Option<(i64, PinWhen)>, by_hand: bool) -> IdeaRow {
+        IdeaRow {
+            name: name.into(),
+            label: name.replace('_', " "),
+            kind: "technique",
+            target: Some(1825),
+            found,
+            at_start: false,
+            town: found.map(|_| (0, "Kelside".into())),
+            how: String::new(),
+            by_hand,
+            learnt: found.map_or(Vec::new(), |y| vec![("Kelside".into(), Some(y)), ("Melbourne".into(), Some(y + 3))]),
+            spread_to: found.map(|y| y + 3),
+            pin,
+            waits: String::new(),
+            likely: None,
+            likely_words: String::new(),
+            handle: 1830,
+            said: vec![name.into()],
+            drag: if found.is_some() { Err("a find".into()) } else { Ok(Drag { first: 1801, hold_from: 1802, now_town: Some((0, "Kelside".into())) }) },
+        }
+    }
+
+    fn ideas() -> IslandIdeas {
+        IslandIdeas {
+            from: 1750,
+            now: 1801,
+            end: 2050,
+            towns: 2,
+            groups: vec![
+                IdeaGroup { name: "Ways of working".into(), rows: vec![row("railway", None, Some((1880, PinWhen::NotBefore)), false), row("wagonway", Some(1790), None, false)] },
+                IdeaGroup { name: "Machines for tasks".into(), rows: vec![row("hoist", None, None, false), row("cutter", Some(1795), None, true)] },
+            ],
+        }
+    }
+
+    fn px(img: &(usize, usize, Vec<u8>), x: f32, y: f32) -> [u8; 3] {
+        let (w, _, v) = img;
+        let i = 4 * (y as usize * w + x as usize);
+        [v[i], v[i + 1], v[i + 2]]
+    }
+
+    #[test]
+    fn every_row_has_a_line_and_a_group_folds_to_its_name() {
+        let i = ideas();
+        let open = plan(&i, &HashSet::new(), 600.0);
+        assert_eq!(open.lines.len(), 2 + 4);
+        assert_eq!((0..open.lines.len()).filter_map(|l| open.row(l)).count(), 4, "every row of every group has its line");
+        assert_eq!(open.h, 6.0 * LINE_H);
+        let folded = plan(&i, &["Ways of working".to_string()].into_iter().collect(), 600.0);
+        assert_eq!(folded.lines.len(), 2 + 2);
+        assert_eq!(folded.lines[0], Line::Group { name: "Ways of working".into(), n: 2, folded: true });
+        assert_eq!(folded.find("hoist"), Some(2));
+        assert_eq!(folded.find("railway"), None, "a folded row is not on the panel");
+        // the years across, and the pointer's line and year
+        assert_eq!(open.year_at(open.x(1880.0)), 1880);
+        assert_eq!(open.year_at(open.x(1750.0)), 1750);
+        let at = Vec2::new(open.x(1880.0), 1.5 * LINE_H);
+        assert_eq!(hit(&open, at), Some((1, 1880)));
+        assert_eq!(hit(&open, Vec2::new(10.0, open.h + 1.0)), None);
+        // the names: greyed, inked, or in the hand's ink with the pin's year
+        let names = names_key(&open);
+        assert_eq!(names[1], ("railway  (held until 1880)".to_string(), 2));
+        assert_eq!(names[2], ("wagonway  1790".to_string(), 0));
+        assert_eq!(names[4], ("hoist".to_string(), 1));
+        assert_eq!(names[5].1, 2, "found by hand");
+    }
+
+    #[test]
+    fn a_find_is_a_dot_a_hold_is_ruled_in_the_hands_ink_and_a_drag_shows_where_it_goes() {
+        let i = ideas();
+        let p = plan(&i, &HashSet::new(), 600.0);
+        let img = paint(&p, Lit::default());
+        assert_eq!((img.0, img.1), (600, (6.0 * LINE_H) as usize));
+        let mid = |line: usize| line as f32 * LINE_H + 0.5 * LINE_H;
+        // the wagonway's find, a dark dot at 1790
+        let dot = px(&img, p.x(1790.0), mid(2));
+        assert!(dot.iter().all(|&c| c < 90), "{dot:?}");
+        // the railway held until 1880: the hand's ink between now and 1880, paper after it
+        let ink = px(&img, p.x(1850.0), mid(1));
+        assert!(ink[2] > ink[0] + 30, "the hand's blue-black: {ink:?}");
+        let after = px(&img, p.x(1955.0), mid(1) - 4.0);
+        assert!(after[0] > 230, "paper after the hold: {after:?}");
+        // a drag of the hoist to 1900 draws its mark there in the hand's ink
+        let before = px(&img, p.x(1900.0) + 5.5, mid(4));
+        let lit = paint(&p, Lit { hover: Some(4), drag: Some((4, 1900)) });
+        let ghost = px(&lit, p.x(1900.0) + 5.5, mid(4));
+        assert!(ghost[2] > ghost[0] && ghost != before, "{before:?} then {ghost:?}");
+    }
 }
