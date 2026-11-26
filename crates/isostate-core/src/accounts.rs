@@ -1513,7 +1513,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     y.land_value = P.years_purchase * rents;
     y.land_value_families = P.years_purchase * fam_rents;
     y.money = Money {
-        households: st.hh_cash.iter().sum(),
+        // (the lorry, docs/rules/lorry.md: with the hauliers' tills, which are theirs)
+        households: st.hh_cash.iter().sum::<f64>() + st.tasks.cart_till.iter().sum::<f64>(),
         landlords: st.lord_cash.iter().sum(),
         merchants: st.merch_cash.iter().sum(),
         works: (0..st.f_cash.len()).map(|f| st.f_cash[f]).sum(),
