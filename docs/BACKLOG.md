@@ -277,6 +277,10 @@ Every fault and line for the backlog that the builders' and landers' notes have 
 - **Dear years told as news of their own,** now that the news reads what is made (30324eb): the dear years of timber are no longer told as slumps, and so are not told at all (ranked on 20 November).
 - **The machines' month kept between months.** The tasks rule's month is a fifth of a run and of the viewer's year of about half a second; reckoning it once and keeping it should save most of that. The game's golden must hold (ranked on 20 November).
 - **The month's long function split** into phases (the first step back). *26 November:* the form it takes is one ledger of buyers ("Agreed in the same talk", 1).
+- At the year's turn a small town that takes in a district has its January wage set again, at the mean of its old and its newcomers' wages, and on the settled island after 1900 its wage then rises 16 to 21 times in the year (`peopling.rs` about lines 744 to 750, `land.rs` about 395 to 399). The study's verdict designs the mend, `years-turn`: the hands that come with a district count as supply as well as demand in its first month, behind `peopling.carry_hands`, off until its sweep is read; not built (study-landfall).
+- New money grows 1.75 per cent a year of the money whatever the island's people and trade do (`econ.rs`), so a fast-growing colony's money a head falls twelvefold by 1900 and its prices with it; money issued with the people or the output would mend it, and would move the settled island (study-landfall, carriage).
+- On the settled start carriage still costs fixed coins until 1900 (`longrun.freight_from`), and landfall's carriage on prices from 1750 is a stopgap that makes a ton-km take fewer hands as prices fall. The truer rule is carting that takes hands by the load and the distance and costs their wage, from 1750 on both starts; then `freight_from` goes (study-landfall, carriage).
+- The port buys and sells nothing: the island trades with nobody, there is no price abroad, and settlers bring no money (study-landfall).
 
 **The loop** (the gate, the builds, the tests and the documents):
 
@@ -293,6 +297,7 @@ Every fault and line for the backlog that the builders' and landers' notes have 
 - `docs/rules/ground.md` says `dens` is 1.6 at most in the largest towns where `docs/rules/city.md` says 2 in island 7's city, measured before and after the city's rules (backlog-sweep).
 - `ISOSTATE_LOTS`'s count "by 1900" counts forms built 1900 to 1909 under the key 1900 (`lots::tell`; town-streets).
 - Tests that lean on one island's history break whenever a later rule changes it (For the managing session, below): each piece since 20 November has played another around a newer rule.
+- An idea's threshold in tons of the island's own output (the plain numbers, the railway's among them) makes a small island find things late, which is right for an island alone; the ideas' page (`isostate-core atlas ideas`, [atlas.md](atlas.md)) should say so (study-landfall).
 
 ## The run to 2050: what is built and what is left (note 1; F22)
 
