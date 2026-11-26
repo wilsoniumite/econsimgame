@@ -4,6 +4,10 @@ Working notes, newest first. The plan lives in PLAN.md; this is what happened an
 
 An entry that lands something a player can see or press ends its paragraph with one sentence that begins `In the game:` and says the way to it, keys and names as the screen shows them, in as few words as will do; an entry with nothing to find leaves it out. The game's What's new card shows that sentence under the entry's title and takes everything after `In the game:` to the paragraph's end, so it must be the paragraph's last (since 26 November 2026).
 
+## 2026-11-27: what landed
+
+**The ground a works takes, by its method and its hands at work.** Behind `works.by_method` (on under the game's rules), a works' ground follows its method. Offices, steel-frame builders and care, found only after 1900, take history's ground a hand (offices about 10 m²) for their hands at full work; older methods keep 2,000 m² a hand of plant, less the hands machines take. A works gives ground back once its hands need under four fifths of it, and squares once its ground falls under seven tenths of them. On islands 1 to 8 in 2050 works hold 0.95 of the houses' squares, not 3.04; the linked wage of 1966 to 1975 is higher on all eight. The century to 1900 is untouched ([rules/works.md](rules/works.md)).
+
 ## 2026-11-26: what landed
 
 **The ways: a design page for roads, streets and highways.** `docs/designs/ways.md` says who builds each kind of way and why: the parish's track, the turnpike trust, the promoters' railways and canals, the town's streets, and the state's roads and highways of the motor age, split into the lorry, the state's ways and the car. Today's ways were measured on islands 1 to 8 to 2050 first. Made roads fall from 2,886 km in 1900 to 1,325 in 2050, because a road nobody uses for six years falls back; drawn roads ford rivers more often than they bridge them; turnpikes cover three land squares in four; and rail carries nine tenths of freight to 2050. The page says what to build, in stages, and the backlog's Ways item points at it.

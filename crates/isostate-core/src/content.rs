@@ -129,6 +129,15 @@ pub struct Content {
     /// 0: any year). No number is drawn for it before then (`tech::discovery`).
     /// Nothing in the port's content says it.
     pub tech_after: Vec<i64>,
+    /// Square metres of ground a hand of the method's plant takes, as the books
+    /// reckon it (`works::land_take`, docs/rules/works.md, "The ground a works
+    /// takes"); 0 where the content does not say, and then `works.hands_per_cell`
+    /// fills a cell. Nothing in the port's content says it.
+    pub m_ground: Vec<f64>,
+    /// History's number for a method whose books still keep the old number
+    /// (`m_ground` 2,000, today's books): it waits for the stage that lays the
+    /// old towns out anew. 0 where the books already use history's number.
+    pub m_ground_history: Vec<f64>,
     /// TASKS (docs/rules/tasks.md): the classes of task and the machines for
     /// them (`data/tasks.toml`). Empty in the port's content; only
     /// `game_content` fills it.
@@ -304,6 +313,9 @@ pub(crate) struct RawMethod {
     pub(crate) seed: bool,
     pub(crate) target: Option<i64>,
     pub(crate) found_after: Option<i64>,
+    // works' ground (docs/rules/works.md, "The ground a works takes")
+    pub(crate) ground: Option<f64>,
+    pub(crate) ground_history: Option<f64>,
 }
 
 /// Parse content from TOML text.
@@ -489,6 +501,8 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         method_seed: methods.iter().map(|d| d.seed).collect(),
         tech_target: tech_list.iter().map(|(d, _)| d.target.unwrap_or(0)).collect(),
         tech_after: tech_list.iter().map(|(d, _)| d.found_after.unwrap_or(0)).collect(),
+        m_ground: methods.iter().map(|d| d.ground.unwrap_or(0.0)).collect(),
+        m_ground_history: methods.iter().map(|d| d.ground_history.unwrap_or(0.0)).collect(),
         tasks: Default::default(),
     };
     for s in sectors {

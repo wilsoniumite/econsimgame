@@ -308,6 +308,164 @@ refuses the orders the new start does not allow (on island 7, three
 brickworks of a save's four orders, the family no longer knowing building
 materials), as `save.rs` says a save made under other rules does.
 
+## I. The ground a works takes: by its method and its hands at work
+
+`works.by_method`, with `works.keep` and `squares.keep`: off under the port,
+on under the game's rules, and like G and H a switch of its own. Built on 26
+November 2026; its measure is `examples/works_ground.rs` (below).
+
+**Why.** Part B gives every works 2,000 square metres of ground for each hand
+of its plant, whatever it makes: a cell of two kilometres holds 2,000 hands.
+That is a refinery's ground, not a mill's or an office's. Measured on islands
+1 to 8 under the game's rules (six families, the mean of the eight), the
+works held 0.55 of the houses' ground in 1850 and 0.67 in 1900, but 1.45 in
+1950, 2.32 in 2000 and 3.04 in 2050 (177,827 squares of 125 metres against
+58,591): offices 1,033 km², steel-frame builders 444, converters 417, care
+254. Two things made it so. The offices and their kind took two hundred times
+an office's ground. And the books counted the plant's hands (its capacity at
+the method's labour a unit) where the hands at work had fallen far below them:
+the plant's hands were 1.8 times the hands at work in 1850 and 1900 and 4.0
+times in 2050, so that a converter works held 18,000 square metres for each
+man in it.
+
+**The rule.** Each method carries its square metres a hand in the content
+(`ground` in `data/game.toml`, read into `Content::m_ground`; the table and
+its sources are at the end of that file). A works' ground is its hands at work
+times that number:
+
+- A method that cannot be found before 1901 (`found_after`: offices,
+  steel-frame builders, hospitals and homes of care) takes history's number:
+  10, 30 and 60 square metres a hand. Its hands are its plant's hands at full
+  work: the plant's at the method's labour a unit, fewer as the works grows
+  more productive (`f_prod`) and as machines take their tasks (`tasks`'
+  factor), never more than the plant's (`works::ground_need`).
+- Every other method can stand before 1900 and keeps today's number, 2,000
+  square metres a hand of its plant, so that nothing of 1750 to 1900 moves.
+  History's number is written beside it (`ground_history`, from 10 for the
+  handloom to 1,500 for a power station) and waits for the stage that lays the
+  old towns out anew. Such a works holds ground for the share of its plant's
+  hands the machines leave it (`State::works_hands`). No machine for a task is
+  found before 1901, so to 1900 that share is 1 by cause, not by date, and the
+  first era of the golden test holds.
+
+**When hands leave.** Buildings do not vanish in a month. Once a year, at the
+head of the review, each works settles its ground with what its hands need
+(`works::settle_ground`): it keeps what it holds, and pays rent on it, until
+its hands need under `works.keep` (0.8) of it, and then gives back down to
+what they need, its rent falling in the same measure. Hands that come back
+take ground at once, at the cell's rent, as an order does (`works::ordered`).
+On the squares a works keeps its squares while its ground in the books is at
+`squares.keep` (0.7) of them or more (`squares::keep_squares`; on a full cell
+the works keeping most over its ground gives way first). The squares' log
+flickered: on island 7 to 2050, 303,033 of its 1.88 million changes gave a
+square back to the tenant it had within three years, as a works' ground in
+the books rose and fell by a square. With the rule, 25,942 of 790,582 do
+(islands 1 to 8: 22,384 to 27,508 each, against 289,141 to 351,150).
+
+**Rent** is paid on the ground held. For a works of the new methods the rent
+follows its ground both ways; for the old, it falls with the hands' share as
+machines take hands, and is otherwise as part B has it (the most ground it
+has taken, priced when it took it).
+
+**Works smaller than a square.** The books hold any share of a cell. The
+squares pool a cell's shares into whole squares by the largest remainders
+(`squares::share_out`), so a works under half a square may hold none of its
+own: it stands in a square a neighbour holds, or in a house block. Works under
+one square of ground in the books, islands 1 to 8 (with no square of their
+own): 165 (73) in 1850 and 95 (32) in 1900 either way; in 2050 411 (267) for
+133 (64), nearly all of them offices, builders and care homes, which are now
+yards and buildings in a town and not slabs. The piece after this one puts
+shops and offices inside the house blocks.
+
+**`cell_limit`** (0.8 of a cell) is left as it is. It still binds every old
+method at 1,600 hands of plant; for an office at 10 square metres a hand it is
+320,000, so offices are limited by the year's room alone.
+
+### What it does (islands 1 to 8, to 2050)
+
+`works_ground --seeds 1-8` with the rule off (`--set
+'{"works":{"by_method":false}}'`, main's books to the bit) and on; the mean of
+eight islands:
+
+| | 1900 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|
+| works' squares, off / on | 42,161 / 45,827 | 110,098 / 57,830 | 143,269 / 64,540 | 177,827 / 61,981 |
+| houses' squares, off / on | 63,293 / 62,441 | 75,844 / 87,708 | 61,685 / 70,267 | 58,591 / 65,401 |
+| works over houses, off / on | 0.67 / 0.73 | 1.45 / 0.66 | 2.32 / 0.92 | 3.04 / 0.95 |
+| works' ground in the books, km², off / on | 659 / 659 | 1,720 / 826 | 2,239 / 901 | 2,779 / 861 |
+| works standing, off / on | 1,216 / 1,216 | 2,410 / 2,117 | 2,252 / 1,706 | 2,304 / 1,470 |
+| m² a hand at work, off / on | 3,663 / 3,663 | 5,407 / 2,526 | 6,394 / 2,502 | 7,935 / 2,457 |
+| rent over sales, off / on | 1.5% / 1.5% | 4.5% / 1.5% | 4.0% / 1.4% | 4.2% / 1.5% |
+| rent over profit before rent, off / on | 8.2% / 8.2% | 25.3% / 10.8% | 23.4% / 11.1% | 20.1% / 9.1% |
+| what landowners take from works a year, millions | 0.69 / 0.69 | 7.2 / 2.2 | 25 / 11 | 87 / 48 |
+
+In 1900 the books are the same to the bit; the squares hold 9 per cent more
+for the works, which keep squares while their plant ebbs (`squares.keep`).
+
+The squares, island by island in 2050 (works over houses): 0.86, 0.85,
+0.90, 1.04, 0.82, 0.99, 1.05 and 1.15, for 2.88, 2.66, 2.85, 3.11, 2.65,
+2.63, 3.38 and 4.79 with the rule off. Where the works still hold more than
+the houses it is the old methods' 2,000 square metres a hand of plant: the
+converters alone hold 23,000 squares on the mean island. A town cell of 2050 (island 1's cell 3318, the cell of its
+largest town with the most works) was two converter works of 182 and 65
+squares with three squares of houses; it is now two converter works of 124 and
+87 squares and a brewery of 44.
+
+**The rest of the island** (islands 1 to 8 and 17 to 32, to 2050, six
+families, the rule off and on side by side: `isostate-core sweep --seeds
+1-8,17-32 --rules game --families 6 --end-year 2050 --set
+works.by_method=false,true`; 0 of 48 runs failed):
+
+- **What a wage buys** (the linked wage, `real_wage_linked`, over 1750's):
+  1966 to 1975 13.6 for 16.2 on islands 1 to 8, higher on all eight (by 1.2
+  to 3.9), and 13.5 for 16.0 on islands 17 to 32, higher on all sixteen;
+  2041 to 2050 15.8 for 19.4, higher on all 24. Less rent, and works sized by
+  what pays rather than by room: the study's five times the room (15.4 for
+  13.7) did the same for the same reason.
+- **Towns' share of people** in 2050: 0.582 and 0.590 on islands 1 to 8,
+  0.592 and 0.587 on 17 to 32; island by island up to 0.03 either way on 1 to
+  8 and up to 0.06 on 17 to 32 (island 28, 0.598 for 0.536). In 1970 it is
+  higher (0.591 for 0.610). In 1900 it is the same to the digit.
+- **People**: 1.26 million in 2050 for 1.23 (lower on 23 islands of 24).
+- **Hard spells**: the real wage's worst year after 1800 is a little deeper
+  (37 per cent down for 39 on 1 to 8, 31 for 36 on 17 to 32; half the islands
+  each way); famine years 0.4 for 0.6 and 0.8 for 0.8 a run.
+- **The works**: 2,371 standing in 2050 for 1,500; the works' share of
+  income 0.158 for 0.141; closures in the news 494 for 474 a run.
+- **Processor time** of a run to 2050, side by side in one sweep: 160 s for
+  119 on islands 1 to 8, 153 for 113 on 17 to 32: a quarter less, from fewer
+  works.
+
+**The largest works** are now offices. In 2050 the five largest on islands 1
+to 8 have 35,000 to 45,000 clerks at work, 0.17 to 0.22 of their town's
+works' hands and 0.26 to 0.38 of their island's office work, on 47 to 61
+squares; before, the largest were hospitals of 1,200 to 1,300 hands on 170 to
+200 squares, each 0.01 of its town's hands and 0.02 of its good, stopped by
+their cells. Two offices of one town often stand side by side at the same
+size (on island 4, 45,249 and 45,248 clerks): the year's room is shared out a
+third to each, so the two largest grow in step.
+
+**What `cell_limit` still binds.** Every old method: in 2050 the works on a
+cell built 0.95 or more are 14 an island for 223, and none of the five largest
+is at its own limit. For offices, builders and care it no longer binds at all.
+`examples/works_ground.rs` prints both.
+
+### What worries me in part I
+
+- **The old methods still hold too much.** Their 2,000 square metres a hand
+  of plant is the books' number for 1750 to 1900, not history's (10 for a
+  handloom to 1,500 for a power station), and a converter works of 2050 still
+  holds 13,000 square metres for each man in it. They lose ground only as
+  machines take their hands' tasks. History's numbers wait for the stage that
+  lays the old towns out anew.
+- **Offices of 45,000 clerks**, a third of an island's office work in one
+  concern. The room no longer stops them; nothing else does yet.
+- **The squares hold more than the books**: 12 per cent in 2050, 9 per cent
+  in 1900, as buildings stand while their plant ebbs. Before 1900 that is the
+  only thing part I changes, and only on the squares.
+- **People** are 3 per cent fewer in 2050, on nearly every island, and the
+  towns' share moves by up to 0.06 on one island. Not traced.
+
 ## What was tried and left out
 
 - **Amalgamating small works, stopping economies of scale at four sizes,
@@ -882,7 +1040,20 @@ cargo run --release -p isostate-core --example bots -- --rules game
 cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --out DIR/game
 cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --list 3
 cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --set '{"works":{"spread_first":false,"keep_order":false}}'
+cargo run --profile work -p isostate-core --example works_ground -- --seeds 1-8
+cargo run --profile work -p isostate-core --example works_ground -- --seeds 1-8 --set '{"works":{"by_method":false}}'
 ```
+
+`works_ground` is the measure of part I: for each year asked (`--years`,
+1850 to 2050 by fifty), summed over the islands, the ground works hold by kind
+and by method in the books and on the squares, their hands at work and their
+plant's hands, square metres a hand of each, the houses' squares, rent over
+sales and over profit before rent, what landowners take, what a town cell's
+land earns, works under one square, the largest works and what they share of
+their town's hands and of their good; then the squares' log and its flicker
+(a change that gives a square back to a tenant it had in the three years
+before), the first year each method stood, and one town cell printed square by
+square (`--cell C`).
 
 `works_mends` is the measure of parts G and H: the exact twins by where they
 came from and by the decade they opened, the works of 1749 that share a cell
