@@ -581,3 +581,8 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - [works-ground] The sweep's comparison counts three facts of the state's seat in 1900 as differing whose values are the same seed for seed (from night/g-batch-ground-a, 2026-11-27)
 - [works-ground] Island 2's linked wage grows 0.82 per cent a year from 1900 to 1970 with the ground by method off (under the asked 1), 0.97 with it (from night/g-batch-ground-a, 2026-11-27)
 - [works-ground] examples/save_state.rs must be told of every new field of State by hand (it was: works_hands) (from night/g-batch-ground-a, 2026-11-27)
+- [start-page] Settlers by ship (immigration.enabled) are not a choice on the start page: the save does not remember them and the viewer has no argument for them (from night/g-batch-start-a, 2026-11-27)
+- [start-page] The games set aside (.previous.json) and the earlier years are listed nowhere on the start page; only --load reaches them (from night/g-batch-start-a, 2026-11-27)
+- [start-page] The way back from a game (H, Start page) was tried only in a script, never with a window (from night/g-batch-start-a, 2026-11-27)
+- [start-page] The release trial starts with arguments, so it never meets the start page: what a player sees first is not checked by the release tool (from night/g-batch-start-a, 2026-11-27)
+- [start-page] The seeded build cache's hard links to proc-macro DLLs failed to link (LNK1104) until removed so the build made its own copies (from night/g-batch-start-a, 2026-11-27)
