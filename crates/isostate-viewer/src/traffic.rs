@@ -319,6 +319,14 @@ pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale,
         let up = 1e-6 * i as f32;
         pts.iter_mut().for_each(|p| p.y += up);
         b.ribbon(&pts, width, col);
+        // highways (the core's docs/rules/highways.md): a link between two squares of
+        // trunk road (the record's 64) has a dark line down its middle, a bypass's (128) a red one
+        let (tc, td) = (r.trans[k * r.n + c], r.trans[k * r.n + d]);
+        if tc & 64 != 0 && td & 64 != 0 {
+            let bypass = tc & 128 != 0 || td & 128 != 0;
+            pts.iter_mut().for_each(|p| p.y += 1e-4);
+            b.ribbon(&pts, 0.3 * width, meshkit::hex(if bypass { 0xb3261e } else { 0x262626 }));
+        }
     }
     b
 }
