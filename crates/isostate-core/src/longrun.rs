@@ -266,7 +266,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params) {
     }
     let p: Vec<f64> = lr.acc_p.iter().map(|v| v / 12.0).collect();
     let q: Vec<f64> = lr.acc_q.iter().map(|v| v / 12.0).collect();
-    lr.chain *= crate::engel::fisher(&lr.base_p, &lr.base_q, &p, &q);
+    lr.chain *= crate::engel::fisher_from(C.G_base, &lr.base_p, &lr.base_q, &p, &q);
     lr.base_p = p;
     lr.base_q = q;
     let w = lr.acc_w / 12.0 / lr.wage0.max(1e-12);

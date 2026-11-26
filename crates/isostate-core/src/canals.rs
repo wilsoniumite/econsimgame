@@ -456,7 +456,7 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
         return;
     }
     let way = way(st, C, P);
-    ways::progress(st, &way, year_float, events);
+    ways::progress(st, C, &way, year_float, events);
 }
 
 /// The start of a month's labour market: the navvies who dug last month, at last

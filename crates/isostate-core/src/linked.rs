@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::Content;
 use crate::observer::Series;
 use crate::state::State;
-use crate::util::pairwise_sum_by;
+use crate::util::pairwise_sum_from;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -184,7 +184,7 @@ pub fn begins(P: &crate::params::Params, y0: i64, year: i64) -> bool {
 }
 
 /// Begin the next link on the window's means and join it to the one in hand.
-fn new_link(l: &mut LinkedState, window: usize) {
+fn new_link(l: &mut LinkedState, window: usize, base: usize) {
     let take = l.years.len().min(window);
     if take == 0 {
         return;
@@ -195,13 +195,13 @@ fn new_link(l: &mut LinkedState, window: usize) {
     let mean = |f: &dyn Fn(&Sums) -> &Vec<f64>| -> Vec<f64> { (0..G).map(|g| w.iter().map(|s| f(s)[g]).sum::<f64>() / months).collect() };
     let (bought, price, island_price, made) = (mean(&|s| &s.bought), mean(&|s| &s.price), mean(&|s| &s.island_price), mean(&|s| &s.made));
     // the old basket at the window's prices against its own: the old link's mean over the window
-    let old = pairwise_sum_by(G, |g| l.basket[g] * price[g]) / pairwise_sum_by(G, |g| l.basket[g] * l.prices[g]);
+    let old = pairwise_sum_from(base, G, |g| l.basket[g] * price[g]) / pairwise_sum_from(base, G, |g| l.basket[g] * l.prices[g]);
     if old.is_finite() && old > 0.0 {
         l.level *= old;
     }
     // what the window made at the old link's prices, over the same at the new: the scale that
     // gives the new link the old one's mean over the window
-    let scale = pairwise_sum_by(G, |g| l.made_prices[g] * made[g]) / pairwise_sum_by(G, |g| island_price[g] * made[g]);
+    let scale = pairwise_sum_from(base, G, |g| l.made_prices[g] * made[g]) / pairwise_sum_from(base, G, |g| island_price[g] * made[g]);
     if scale.is_finite() && scale > 0.0 {
         l.made_scale *= scale;
     }
@@ -220,11 +220,11 @@ pub fn record_month(st: &mut State, C: &Content, P: &crate::params::Params, s: &
     let m = month(st, C, P_nat);
     let l = &mut st.linked;
     let G = C.G;
-    let base = pairwise_sum_by(G, |g| l.basket[g] * l.prices[g]);
-    let cpi = l.level * pairwise_sum_by(G, |g| l.basket[g] * m.price[g]) / base;
+    let base = C.sum_goods(|g| l.basket[g] * l.prices[g]);
+    let cpi = l.level * C.sum_goods(|g| l.basket[g] * m.price[g]) / base;
     s.set("cpi_linked", t, cpi);
     s.set("real_wage_linked", t, wage / cpi.max(1e-9) / st.wage_base);
-    s.set("made_linked", t, l.made_scale * pairwise_sum_by(G, |g| l.made_prices[g] * m.made[g]));
+    s.set("made_linked", t, l.made_scale * C.sum_goods(|g| l.made_prices[g] * m.made[g]));
     l.year.add(&m);
     if l.year.months == 12 {
         let done = std::mem::replace(&mut l.year, Sums::zeros(G));
@@ -236,7 +236,7 @@ pub fn record_month(st: &mut State, C: &Content, P: &crate::params::Params, s: &
         // the year that has just ended is year0 + t / 12; the next begins a link?
         let next = C.start_year + (t / 12) as i64 + 1;
         if begins(P, C.start_year, next) {
-            new_link(l, window);
+            new_link(l, window, C.G_base);
         }
     }
 }
@@ -309,7 +309,7 @@ mod tests {
         let old_level = 1.5 * 32.0 / 18.0;
         // what was made over the window at the old prices: mean (5, 2): 5 + 8 = 13, times 2
         let old_made = 2.0 * 13.0;
-        new_link(&mut l, 5);
+        new_link(&mut l, 5, 2);
         assert!((l.level - old_level).abs() < 1e-12);
         assert_eq!(l.basket, vec![8.0, 3.0]);
         assert_eq!(l.prices, vec![2.0, 6.0]);
@@ -321,7 +321,7 @@ mod tests {
         assert!((new_made - old_made).abs() < 1e-12, "{new_made} against {old_made}");
         // a window of one year takes the last year only
         let mut one = LinkedState { basket: vec![1.0, 1.0], prices: vec![1.0, 1.0], level: 1.0, made_prices: vec![1.0, 1.0], made_scale: 1.0, years: l.years.clone(), year: Sums::zeros(2) };
-        new_link(&mut one, 1);
+        new_link(&mut one, 1, 2);
         assert_eq!(one.basket, vec![7.0, 3.0]);
         assert_eq!(one.prices, vec![2.0, 8.0]);
     }

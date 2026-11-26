@@ -19,6 +19,17 @@ pub struct Content {
     pub start_year: i64,
     pub end_year: i64,
     pub G: usize,
+    /// The goods every run has from the start: those the content gives no
+    /// `begins`, which come first in the list. The goods after them begin
+    /// later, in a year or with an idea (`good_begins`). A sum over the goods
+    /// adds these in numpy's order and each later good's term after them, one
+    /// at a time (`sum_goods`), so that a good added after today's moves
+    /// nothing while nothing of it is made, bought or held (docs/rules/goods.md).
+    /// It is every good of the port's content, and of the game's as it stood on
+    /// 26 November 2026.
+    pub G_base: usize,
+    /// When each good begins: `Begins::Start` for the first `G_base`.
+    pub good_begins: Vec<Begins>,
     pub good_name: Vec<String>,
     pub good_label: Vec<String>,
     pub good_color: Vec<String>,
@@ -119,12 +130,50 @@ pub struct Content {
     pub tasks: crate::tasks::TaskTable,
 }
 
+/// When a good begins (the content's `begins`, docs/rules/goods.md).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Begins {
+    /// Every run has it from the start: the goods with no `begins`.
+    #[default]
+    Start,
+    /// From January of this year (`begins = 1950`).
+    Year(i64),
+    /// Once this idea, a method or an invention, is found anywhere on the
+    /// island (`begins = "motor_works"`): an index into `tech_name`.
+    Idea(usize),
+}
+
 impl Content {
     /// Index of a good by name; panics on a name the content does not have.
     pub fn gi(&self, name: &str) -> usize {
         match self.good_index.get(name) {
             Some(&g) => g,
             None => panic!("unknown good {name:?}"),
+        }
+    }
+
+    /// The sum of `f(g)` over the goods that a good added after today's cannot
+    /// move: the first `G_base` terms in numpy's pairwise order, as every sum
+    /// over the goods has always been taken, then each later good's term added
+    /// on its own (`util::pairwise_sum_from`). With no later goods it is
+    /// `pairwise_sum_by(G, f)` to the last bit.
+    pub fn sum_goods(&self, f: impl Fn(usize) -> f64) -> f64 {
+        crate::util::pairwise_sum_from(self.G_base, self.G, f)
+    }
+
+    /// `sum_goods` of a slice with a value for each good.
+    pub fn sum_goods_of(&self, v: &[f64]) -> f64 {
+        crate::util::pairwise_sum_from(self.G_base, v.len(), |g| v[g])
+    }
+
+    /// Whether good `g` has begun by `year` (with the ideas found so far in
+    /// `tech_year`, `State::tech_year`: a year, or -1 while not found). The
+    /// goods every run has from the start always have.
+    pub fn good_begun(&self, g: usize, year: i64, tech_year: &[i64]) -> bool {
+        match self.good_begins.get(g).copied().unwrap_or_default() {
+            Begins::Start => true,
+            Begins::Year(y) => year >= y,
+            Begins::Idea(t) => self.tech_known.get(t).copied().unwrap_or(false) || tech_year.get(t).is_some_and(|&y| y >= 0 && y <= year),
         }
     }
 }
@@ -163,6 +212,17 @@ pub(crate) struct RawGood {
     pub(crate) traded: Option<bool>,
     pub(crate) stock_months: Option<f64>,
     pub(crate) opens_dear: Option<bool>,
+    /// goods (docs/rules/goods.md): a year, or the name of an idea
+    #[serde(default)]
+    pub(crate) begins: Option<RawBegins>,
+}
+
+/// `begins = 1950` or `begins = "motor_works"`.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum RawBegins {
+    Year(i64),
+    Idea(String),
 }
 
 #[derive(Clone, Deserialize)]
@@ -243,7 +303,12 @@ pub fn content_from_str(text: &str) -> Result<Content, String> {
 
 /// The flat tables from the file as written.
 pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
-    let goods = &raw.meta.goods;
+    // goods (docs/rules/goods.md): a good that begins later goes after every
+    // good a run has from the start, whatever the file's order, and the later
+    // ones keep their own order among themselves
+    let goods: Vec<&RawGood> =
+        raw.meta.goods.iter().filter(|g| g.begins.is_none()).chain(raw.meta.goods.iter().filter(|g| g.begins.is_some())).collect();
+    let G_base = goods.iter().filter(|g| g.begins.is_none()).count();
     let gname: Vec<String> = goods.iter().map(|g| g.name.clone()).collect();
     let gi: HashMap<String, usize> = gname.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect();
     let G = goods.len();
@@ -333,10 +398,24 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         }
     }
 
+    let mut good_begins = Vec::with_capacity(G);
+    for g in &goods {
+        good_begins.push(match &g.begins {
+            None => Begins::Start,
+            Some(RawBegins::Year(y)) => Begins::Year(*y),
+            Some(RawBegins::Idea(name)) => match tech_list.iter().position(|(d, _)| &d.name == name) {
+                Some(t) => Begins::Idea(t),
+                None => return Err(format!("content: the good {:?} begins with {name:?}, which is neither a method nor an invention", g.name)),
+            },
+        });
+    }
+
     let mut c = Content {
         start_year: raw.meta.start_year,
         end_year: raw.meta.end_year,
         G,
+        G_base,
+        good_begins,
         good_name: gname.clone(),
         good_label: goods.iter().map(|g| g.label.clone()).collect(),
         good_color: goods.iter().map(|g| g.color.clone()).collect(),
