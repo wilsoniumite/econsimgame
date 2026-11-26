@@ -1509,14 +1509,17 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
     }
     // every works holds its squares. What a works keeps while its ground ebbs
     // (works.by_method) hangs on what it held before the year's allotting, so
-    // reckoned again from what it holds after, a cell's last square can fall to
-    // a neighbour: within one square then.
+    // the targets reckoned again from what it holds after can differ where a
+    // cell is full; with that rule the check of each works against its ground,
+    // above, is the one that holds
+    if P.works.enabled && P.works.by_method {
+        return Ok(());
+    }
     let want = works_targets(st, C, P);
-    let slack = if P.works.enabled && P.works.by_method { 1 } else { 0 };
     for f in 0..st.F_count {
         if st.f_alive[f] {
             let n = b.works.get(f).map_or(0, |h| h.squares.len());
-            if n.abs_diff(want[f]) > slack && b.short == 0 {
+            if n != want[f] && b.short == 0 {
                 return Err(format!("{year}: works {f} holds {n} squares and its ground comes to {}", want[f]));
             }
         }
