@@ -75,8 +75,9 @@ pub fn set_start(P: &mut Params, word: &str) -> Result<(), String> {
 }
 
 /// The landfall start and the rules that come with it: births that answer to
-/// free land, hamlets, settlers from abroad, the guard on a short town's wage
-/// and carriage that follows prices from 1750.
+/// free land, hamlets, settlers from abroad, the guard on a short town's wage,
+/// carriage that follows prices from 1750, pits at the size of their market,
+/// land that stays taken, no settlers to a hungry port and ideas by sea.
 pub fn landfall(P: &mut Params) {
     P.start.landfall = true;
     P.frontier = crate::frontier::FrontierParams::game();
@@ -89,6 +90,8 @@ pub fn landfall(P: &mut Params) {
     // pits and quarries that work at the size of their market (docs/rules/mines.md,
     // "G. At the size of the market"); `--set mines.glut=false` puts it back
     P.mines.glut = true;
+    // ideas by sea (docs/rules/abroad.md): every port has abroad for a neighbour
+    P.abroad = crate::abroad::AbroadParams::game();
 }
 
 /// The people the start shares among its towns.

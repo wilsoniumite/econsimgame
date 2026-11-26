@@ -481,7 +481,14 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         st.y_acc.iter_mut().for_each(|v| *v = 0.0);
         st.food_min_acc.iter_mut().for_each(|v| *v = 9.0);
     }
-    tech::diffusion(st, C, P);
+    // abroad (docs/rules/abroad.md): with ideas by sea each port has abroad for a neighbour
+    match crate::abroad::sea(st, C, P, year).filter(|_| !warm) {
+        None => tech::diffusion(st, C, P),
+        Some(sea) => {
+            tech::diffusion_with(st, C, P, Some(&sea));
+            crate::abroad::landed(st, C, &sea, year, events);
+        }
+    }
     st.cell_flow_year = st.cell_flow.clone();
     // roads (docs/probes/dx-roads.md): the roads of 1750 are inherited, then paid for
     if !warm {

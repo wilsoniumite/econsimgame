@@ -2422,6 +2422,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             // and the idea it waits on found, and the uses it needs (the tending machines)
             let waits = us.idea.is_some_and(|t| st.tech_year.get(t).is_none_or(|&y| y < 0)) || us.needs.iter().any(|&v| st.tasks.found[v] < 0);
             let found = us.allowed(P) && next >= us.found_after && !waits && us.discover.iter().all(|&(g, x)| made(g) >= x);
+            // abroad (docs/rules/abroad.md): or it comes by sea, `abroad.lag` years after abroad has it
+            let found = found || (us.allowed(P) && next >= us.found_after && !waits && crate::abroad::use_comes(C, P, u, next));
             // a pin by hand (edits::Pin): held back, or found in its year whatever was made
             let found = match crate::edits::pin_says(st, crate::edits::Idea::Use(u), next) {
                 crate::edits::Pinned::Free => found,

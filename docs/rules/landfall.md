@@ -33,7 +33,9 @@ guard on a short town's wage (`hands.short_rise` 1.06), and with carriage
 that follows prices from 1750 (`longrun.freight_from` 1750, below,
 "Carriage that follows prices"), and with pits and quarries that work at
 the size of their market (`mines.glut`, below, "Pits at the size of their
-market"). Each can be set off
+market"), and with land that stays taken, no settlers to a hungry port
+(`frontier.claimed`, `immigration.shun_hungry`) and ideas by sea
+(`abroad.ideas`), below under "What the runs showed". Each can be set off
 again after it: `--start landfall --set immigration.enabled=false` is the
 colony with nobody coming. `--set start.landfall=true` alone is the one town
 under today's rules of people. A saved game says its start
@@ -152,6 +154,21 @@ to 8 to 2050, means: with the two mends the free share is 0.03 in 1950 and
 to 1.6 before it (1.0); the wage in grain is 14.6 / 30.2 / 101.1 in 1800 /
 1900 / 2050 (14.3 / 32.3 / 92.5). With settlers off as well the colony has
 168k people in 1900 and 684k in 2050. No run failed.
+
+### Ideas by sea
+
+Since the study's fifth piece `--start landfall` also brings ideas by sea
+(`abroad.ideas`, in `AbroadParams::game`, [abroad.md](abroad.md)): every port
+has abroad for one more neighbour in the spreading of ideas, across a sea of
+cost 105, and abroad knows each idea from history's year or the settled
+island's. Measured as above, islands 1 to 8 to 2050, means, against the same
+start with ideas off: the first railway in 1848 (1846 to 1855) against 1863
+(1842 to 1879); the wage in grain 43.4 in 1900 against 30.2 and 106.8 in 2050
+against 101.1; the farm's multiplier 10.1 in 1900 against 7.0; 1,630k people
+in 2050 against 1,731k; hunger in 3.8 years an island after 1900 against 0.6,
+on three islands of eight. The colony alone, `--set immigration.enabled=false
+--set abroad.ideas=false`, is the isolated people: its railway in 1889, 12.6
+in grain in 1900, 684k people in 2050. No run failed.
 
 ## The trap
 

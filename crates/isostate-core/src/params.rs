@@ -442,6 +442,11 @@ pub struct Params {
     /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub squares: crate::squares::SquaresParams,
+    /// Ideas by sea: every port has abroad for one more neighbour (not in the
+    /// Python; off under the game's rules, the isolated state, and on with the
+    /// landfall start; see docs/rules/abroad.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub abroad: crate::abroad::AbroadParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -676,6 +681,7 @@ pub fn default_params() -> Params {
         immigration: crate::immigration::ImmigrationParams::default(),
         care: crate::care::CareParams::default(),
         squares: crate::squares::SquaresParams::default(),
+        abroad: crate::abroad::AbroadParams::default(),
     }
 }
 

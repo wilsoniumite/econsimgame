@@ -1120,3 +1120,7 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
   colliery's make only as far as the town asks for the good and their shelves have room, the working
   hires for what they take, and no town sinks a working into a glut. Off on the settled island for now:
   a marked difference between the starts. [mines.md](mines.md), G, `mines.glut`.
+- **ideas by sea**: every port has one more neighbour in the spreading of ideas, abroad, across a sea
+  of cost 105, which knows each idea from the year `data/abroad.toml` gives (history's year where the
+  content has one, else the settled island's); the tasks' uses come five years after abroad. Off, the
+  island is alone: the isolated state. [abroad.md](abroad.md), `abroad.ideas`.
