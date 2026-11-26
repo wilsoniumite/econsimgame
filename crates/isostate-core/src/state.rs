@@ -418,6 +418,10 @@ pub struct State {
     pub works_added: Mat,
     /// The share of its cell each works pays rent on: the most land it has taken so far.
     pub works_lease: Vec<f64>,
+    /// The share of its plant's hands each works keeps ground for, with the
+    /// ground by method (`works.by_method`, `works::settle_ground`): 1 until
+    /// machines take some of their tasks. Empty while the rule is off.
+    pub works_hands: Vec<f64>,
 
     // ---------------- railways (docs/rules/railways.md; empty while `railways` is off)
     /// What the game's railway promoters remember: pairs joined, places refused,

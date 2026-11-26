@@ -176,6 +176,10 @@ struct OverMethod {
     target: Option<i64>,
     /// The first year it may be found (`Content::tech_after`).
     found_after: Option<i64>,
+    /// Square metres a hand of plant, and history's number where the books
+    /// keep the old one (`Content::m_ground`, `m_ground_history`).
+    ground: Option<f64>,
+    ground_history: Option<f64>,
     /// Where the works must stand. Read from stage 2; kept so that a stage 1
     /// method may already say it.
     #[allow(dead_code)]
@@ -219,6 +223,8 @@ fn raw_of(C: &Content) -> RawContent {
             seed: m.and_then(|m| C.method_seed.get(m)).copied().unwrap_or(false),
             target: C.tech_target.get(t).copied().filter(|&y| y != 0),
             found_after: C.tech_after.get(t).copied().filter(|&y| y != 0),
+            ground: m.and_then(|m| C.m_ground.get(m)).copied().filter(|&v| v != 0.0),
+            ground_history: m.and_then(|m| C.m_ground_history.get(m)).copied().filter(|&v| v != 0.0),
         }
     };
     RawContent {
@@ -435,6 +441,8 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
             r.group = o.group.clone().or(r.group.take());
             r.target = o.target.or(r.target);
             r.found_after = o.found_after.or(r.found_after);
+            r.ground = o.ground.or(r.ground);
+            r.ground_history = o.ground_history.or(r.ground_history);
             if let Some(v) = &o.headline {
                 r.headline = v.clone();
             }

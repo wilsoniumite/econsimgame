@@ -45,10 +45,11 @@ fn off_is_the_port_and_on_is_the_game() {
     assert!(!default_params().works.enabled, "the port has no life cycle");
     assert!(game_params().works.enabled, "the game has");
     // the numbers are the same either way, so --set works.enabled=true measures the game's
-    // life cycle; the two mends G and H are switches of their own, on in the game alone
-    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, ..WorksParams::game() }, WorksParams::default());
-    assert!(game_params().works.spread_first && game_params().works.keep_order);
-    assert!(!default_params().works.spread_first && !default_params().works.keep_order);
+    // life cycle; the two mends G and H and the ground by method (I) are switches
+    // of their own, on in the game alone
+    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, by_method: false, ..WorksParams::game() }, WorksParams::default());
+    assert!(game_params().works.spread_first && game_params().works.keep_order && game_params().works.by_method);
+    assert!(!default_params().works.spread_first && !default_params().works.keep_order && !default_params().works.by_method);
     // and a port run never fills the state's tables
     let r = sim::run_with(&port(3, 0, 1752), default_content(), false, true).expect("money is conserved");
     assert_eq!(r.state.works_added.rows, 0);
@@ -255,6 +256,93 @@ fn more_ground_is_never_free() {
     st.f_K[f] -= dK;
     works::ordered(&mut st, &C, &on, f, 0.5 * dK);
     assert_eq!(st.f_rent[f], before);
+}
+
+#[test]
+fn the_ground_a_works_takes_is_by_its_method() {
+    // I. the game's content laid as a run lays it, under the port's rules with the
+    // life cycle and the ground by method (so that 1750 is the port's, and quick)
+    let mut on = params(7, 0, 1750);
+    on.works.by_method = true;
+    let mut off = on.clone();
+    off.works.by_method = false;
+    let C = tree::content(&game_params(), game_content()).expect("the game's content");
+    let (offices, mill) = (method(&C, "offices"), method(&C, "textile_mill"));
+    let K = 3.0 * C.m_K0[offices];
+
+    // a method that can stand before 1900 keeps today's books to the bit, with history's number beside it
+    assert_eq!(C.m_ground[mill], 2000.0);
+    assert!(C.m_ground_history[mill] > 0.0 && C.m_ground_history[mill] < 2000.0);
+    assert!(!works::by_method(&C, &on, mill));
+    for k in [0.37, 1.0, 151.3, 2.0e4] {
+        assert_eq!(works::land_take(&C, &on, mill, k).to_bits(), works::land_take(&C, &off, mill, k).to_bits());
+    }
+    // offices, which cannot be found before 1901, take history's ten square metres a hand
+    assert!(works::by_method(&C, &on, offices) && !works::by_method(&C, &off, offices));
+    let take = works::land_take(&C, &on, offices, K);
+    assert!((take - K * C.m_labor[offices] * 10.0 / works::CELL_M2).abs() < 1e-15);
+    assert!((works::land_take(&C, &off, offices, K) / take - 200.0).abs() < 1e-9, "two hundredth of the ground");
+    assert!((works::max_K(&C, &on, offices) / works::max_K(&C, &off, offices) - 200.0).abs() < 1e-9, "and two hundred times the size on one cell");
+
+    // a works of 1750 made over into offices, to watch its lease from year to year
+    let (mut st, _, _, _) = a_town(&on, &C);
+    let f = alive(&st).into_iter().find(|&f| st.f_K[f] > 0.0).expect("a works of 1750");
+    let c = st.f_cell[f];
+    st.f_method[f] = offices;
+    st.f_K[f] = K;
+    st.f_order_K[f] = 0.0;
+    st.f_prod[f] = 1.0;
+    st.works_lease[f] = take;
+    st.f_rent[f] = 120.0;
+    st.land_rent_only[c] = 0.0;
+    assert_eq!(works::land_held(&st, &C, &on, f), take);
+    // twice as productive, it needs half the hands and half the ground: it gives back
+    // the half, and pays half the rent
+    st.f_prod[f] = 2.0;
+    assert!((works::ground_need(&st, &C, &on, f) - 0.5 * take).abs() < 1e-15);
+    works::settle_ground(&mut st, &C, &on);
+    assert!((st.works_lease[f] - 0.5 * take).abs() < 1e-15);
+    assert!((st.f_rent[f] - 60.0).abs() < 1e-9);
+    // a little less productive again: it takes the ground back, at the rate it pays
+    st.f_prod[f] = 1.6;
+    works::settle_ground(&mut st, &C, &on);
+    assert!((st.works_lease[f] - take / 1.6).abs() < 1e-15);
+    assert!((st.f_rent[f] - 120.0 / 1.6).abs() < 1e-9);
+    // and a works whose plant needs a little less keeps its ground and its rent:
+    // buildings do not vanish in a month
+    let (lease, rent) = (st.works_lease[f], st.f_rent[f]);
+    st.f_prod[f] = 1.6 / 0.8;
+    works::settle_ground(&mut st, &C, &on);
+    assert_eq!((st.works_lease[f], st.f_rent[f]), (lease, rent));
+    assert_eq!(works::land_held(&st, &C, &on, f), lease, "it holds what it leases");
+    // nor does a works with ground by today's books ever give any back
+    st.f_method[f] = mill;
+    st.works_lease[f] = 10.0 * works::land_take(&C, &on, mill, K);
+    works::settle_ground(&mut st, &C, &on);
+    assert_eq!(st.works_lease[f], 10.0 * works::land_take(&C, &on, mill, K));
+    assert_eq!(works::land_held(&st, &C, &on, f), works::land_take(&C, &on, mill, K));
+}
+
+#[test]
+fn the_squares_of_a_works_whose_hands_leave() {
+    use isostate_core::squares::{PER_CELL, keep_squares};
+    // a works whose ground falls from ten squares to nine keeps its ten ...
+    let mut n = vec![9, 3];
+    keep_squares(&[9.2, 3.0], &[10, 3], &mut n, 0.75);
+    assert_eq!(n, vec![10, 3]);
+    // ... and one whose ground falls under three quarters of them gives back down to it
+    let mut n = vec![7];
+    keep_squares(&[7.4], &[10], &mut n, 0.75);
+    assert_eq!(n, vec![7]);
+    // a cell has no room for what is kept: the works keeping most over its ground gives it up
+    let (x, held) = ([200.0, 56.0], [250, 0]);
+    let mut n = vec![200, 56];
+    keep_squares(&x, &held, &mut n, 0.75);
+    assert_eq!(n, vec![200, 56]);
+    assert!(n.iter().sum::<usize>() <= PER_CELL);
+    let mut n = vec![190, 40];
+    keep_squares(&[190.0, 40.0], &[240, 40], &mut n, 0.75);
+    assert_eq!(n, vec![216, 40], "the cell is full at 256");
 }
 
 #[test]
