@@ -2380,7 +2380,8 @@ mod tests {
         assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals", "electricity", "oil", "fertiliser"]);
         assert!(names(Group::Estates).contains(&"beer"), "{:?}", names(Group::Estates));
         assert_eq!(names(Group::Iron), ["iron", "steel", "rails"]);
-        // every good is some one trade's, but what the shops sell, which no family trade makes
+        // every good is some one trade's, but what the shops sell, which no family trade makes, and
+        // care, whose hospitals and homes no family trade owns (the core's docs/rules/care.md)
         let mut owners = vec![0; c.G];
         for list in &goods {
             for &g in list {
@@ -2388,7 +2389,7 @@ mod tests {
             }
         }
         let none: Vec<&str> = (0..c.G).filter(|&g| owners[g] == 0).map(|g| c.good_name[g].as_str()).collect();
-        assert_eq!(none, ["services"]);
+        assert_eq!(none, ["services", "care"]);
         assert!(owners.iter().all(|&n| n <= 1), "a good under two trades: {owners:?}");
         // and the line a decision shows is the content's labels, in the content's order
         let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None, weight: None, price: None, begins: crate::replay::Begins::of(&c, g) }).collect();

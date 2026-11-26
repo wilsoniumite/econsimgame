@@ -118,10 +118,13 @@ fn with_the_rule_off_it_is_never_sought_and_the_island_is_the_island_without_it(
     assert!(off.st.tech_year[t] < 0, "found in {} with the rule off", off.st.tech_year[t]);
     assert!((0..off.st.T_max).all(|i| off.st.know[(i, t)] == 0.0));
     // the overlay without the invention
-    let start = tree::GAME_OVERLAY_TOML.find("name = \"managed_woodland\"").unwrap();
-    let start = tree::GAME_OVERLAY_TOML[..start].rfind("[[tech]]").unwrap();
-    let end = tree::GAME_OVERLAY_TOML[start..].find("\n\n").map_or(tree::GAME_OVERLAY_TOML.len(), |k| start + k);
-    let without = format!("{}{}", &tree::GAME_OVERLAY_TOML[..start], &tree::GAME_OVERLAY_TOML[end..]);
+    // (read with its line ends made plain, so that a checkout that writes the file with
+    // Windows line ends finds the blank line after the invention too)
+    let overlay = tree::GAME_OVERLAY_TOML.replace("\r\n", "\n");
+    let start = overlay.find("name = \"managed_woodland\"").unwrap();
+    let start = overlay[..start].rfind("[[tech]]").unwrap();
+    let end = overlay[start..].find("\n\n").map_or(overlay.len(), |k| start + k);
+    let without = format!("{}{}", &overlay[..start], &overlay[end..]);
     let C = tree::lay(&game_content(), &without, 6).unwrap();
     assert!(!C.tech_name.iter().any(|n| n == MANAGED));
     let none = played(&P, C);

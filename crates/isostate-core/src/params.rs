@@ -423,6 +423,11 @@ pub struct Params {
     /// when. Read by no rule yet (not in the Python; see docs/rules/squares.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub squares: crate::squares::SquaresParams,
+    /// Care: a need for work of presence in the towns, which richer and older
+    /// households buy more of and no machine takes (not in the Python; see
+    /// docs/rules/care.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub care: crate::care::CareParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -653,6 +658,7 @@ pub fn default_params() -> Params {
         haulage: crate::haulage::HaulageParams::default(),
         highways: crate::highways::HighwayParams::default(),
         squares: crate::squares::SquaresParams::default(),
+        care: crate::care::CareParams::default(),
     }
 }
 
@@ -747,6 +753,10 @@ pub fn game_params() -> Params {
     // squares (docs/rules/squares.md): the place of everything built, kept in
     // squares of 125 m from 1750; a shadow that no rule reads
     P.squares = crate::squares::SquaresParams::game();
+    // care (docs/rules/care.md): from the island's find of it, a need for work of
+    // presence in the towns, which richer and older households buy more of and no
+    // machine takes
+    P.care = crate::care::CareParams::game();
     P
 }
 

@@ -520,6 +520,8 @@ macro_rules! state_parts {
                 hw: Default::default(),
                 // squares (docs/rules/squares.md): carried across as the roads are
                 sq: Default::default(),
+                // care (docs/rules/care.md): carried across as the roads are
+                care: Default::default(),
             }
         }
 
@@ -655,6 +657,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.hl = carry.hl.clone();
     st.hw = carry.hw.clone();
     st.sq = carry.sq.clone();
+    st.care = carry.care.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

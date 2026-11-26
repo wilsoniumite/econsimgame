@@ -306,14 +306,28 @@
 # run.bin moved by the hauliers' till (lorry.till), which acts from the
 # lorry's find; 1750-1900 held; the new good's mends move nothing, so none
 # moved against lorry-bill's own
-# Taken: 1901-2050 run.bin alone: the record carries the squares' log
-# (sq_first, sq_log) and the header's word of its layout
-# (docs/rules/squares.md, 'In the record'); the squares are read by no rule,
-# so the economy, the books and the news of both eras held
+# Taken: care (docs/rules/care.md), on under the game's rules from its find
+# (1908 or later): the 1901-2050 economy, books, news and run.bin move;
+# 1750-1900 held
+# Taken: care (docs/rules/care.md), on under the game's rules from its find
+# (1908 or later): the 1901-2050 economy, books, news and run.bin move;
+# 1750-1900 held (taken again with care's series before the ages')
+# Taken: tending's slumps (docs/rules/tending.md, "The slumps"):
+# tasks.own_run, on under the game's rules: a works whose machines run on the
+# good it makes (the power stations' on electricity) runs them on its own
+# making, so the market's shortage of current no longer idles the stations'
+# machines; acts from 1901 (no machine runs on anything before): the 1901-2050
+# economy, books, news and run.bin move; 1750-1900 held
+# Taken: on the merged tree of the batch night/g-batch-care-a (care,
+# tending-again, trend, whats-new). Care's ninth need (care.enabled) and the
+# stations' machines run on their own making (tasks.own_run) act from 1901
+# only; trend and whats-new touch only the viewer. Against main the second
+# era's economy, books, news and run.bin moved; the first era held; the hashes
+# are those tending-again took on its own tree.
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0xde9077cd6d28238d
-1901-2050 books    0x08522b94c9e2e540
-1901-2050 news     0x6221c2742892399b
-1901-2050 run.bin  0x1f54773d60a88f68
+1901-2050 economy  0x5875ceddf2e1f730
+1901-2050 books    0x7d790c5aace7b340
+1901-2050 news     0xf39bc02c0208303d
+1901-2050 run.bin  0xf942c238ac918984
