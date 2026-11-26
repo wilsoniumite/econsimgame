@@ -679,7 +679,8 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
         .add_plugins(crate::backlog_seen::plugin)
         // the tooltips that lock and nest, behind each choice's name (tips.rs); Esc closes them first
         .add_plugins(crate::tips::plugin)
-        .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).after(crate::tips::escape))
+        // (after the pointer's own pass over the buttons, so that a button Enter presses stays pressed for the cards to see)
+        .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).after(bevy::ui::UiSystems::Focus).after(crate::tips::escape))
         .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, news_count, up_after, go).chain());
     if let Some(p) = picture {
         app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None });
@@ -914,7 +915,7 @@ fn foot(root: &mut ChildSpawnerCommands, f: &Handle<Font>) {
             });
             foot_button(row, f, "Copy", Focus::Copy, Press::Copy);
         });
-        c.spawn((ui::text(f, "", 13.5, crate::ui::BAD), SaidText, Node { display: Display::None, ..default() }));
+        c.spawn((ui::text(f, "", 13.5, INK), SaidText, Node { display: Display::None, ..default() }));
         c.spawn((Node { height: Val::Px(1.0), ..default() }, BackgroundColor(RULE)));
         c.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|row| {
             row.spawn((Node { flex_grow: 1.0, ..default() },)).with_children(|v| {
