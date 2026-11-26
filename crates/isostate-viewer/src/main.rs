@@ -24,6 +24,7 @@ mod fences;
 mod fields;
 mod frames;
 mod game;
+mod ground;
 mod hand_tab;
 mod handover;
 mod icons;
@@ -1089,6 +1090,7 @@ fn main() {
         .add_plugins(town_flow::plugin)
         .add_plugins(rulebook::plugin)
         .add_plugins(take_back::plugin)
+        .add_plugins(ground::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
@@ -1749,8 +1751,11 @@ fn camera_input(
     data: Res<Data>,
     ui: Res<UiState>,
     mut on_map: Local<[bool; 2]>,
+    brush: Option<Res<ground::Brush>>,
 ) {
     let dt = time.delta_secs();
+    // (with the brush in hand a drag with the left button paints, ground.rs)
+    let painting = brush.is_some_and(|b| b.in_hand());
     let fwd = Vec3::new(-o.yaw.sin(), 0.0, -o.yaw.cos());
     let right = Vec3::new(o.yaw.cos(), 0.0, -o.yaw.sin());
     let pan = o.dist * 0.0016;
@@ -1760,7 +1765,7 @@ fn camera_input(
             on_map[i] = !ui.hover;
         }
     }
-    if buttons.pressed(MouseButton::Left) && on_map[0] {
+    if buttons.pressed(MouseButton::Left) && on_map[0] && !painting {
         let d = motion.delta;
         o.target -= right * d.x * pan;
         o.target += fwd * d.y * pan;
@@ -2269,7 +2274,7 @@ fn write_class_map(r: &Replay, g: &Ground, v: &ShotSpec, size: (u32, u32), defau
 
 // ------------------------------------------------------------------ click to inspect
 
-fn ground_hit(g: &Ground, ray: Ray3d) -> Option<Vec3> {
+pub(crate) fn ground_hit(g: &Ground, ray: Ray3d) -> Option<Vec3> {
     let dir = *ray.direction;
     let mut t = 0.0f32;
     let mut prev = ray.origin;

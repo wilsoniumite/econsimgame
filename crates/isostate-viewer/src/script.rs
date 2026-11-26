@@ -61,6 +61,11 @@
 //!                     picks the town by its name and opens its making;
 //!                     point:menu:NAME opens the hand's menu of a box
 //!                     (TOWN-FLOW-HAND), point:menu:none shuts it
+//!     stroke:X,Z,...  in a sandbox with the Ground tool in hand, draw the
+//!                     brush through these spots on the map (x,z pairs), a
+//!                     square a frame as a hand drags it, and let it go at
+//!                     the last (ground.rs); it says what the frames' work
+//!                     was meanwhile, as `sample` does
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -139,6 +144,8 @@ enum Step {
     Back,
     /// MAKING: the Making panel's pointer, on a box or a ribbon by name (town_flow.rs)
     Point(String),
+    /// GROUND-BRUSH: the brush drawn through these spots on the map (ground.rs)
+    Stroke(Vec<(f32, f32)>),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -298,6 +305,11 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
                 _ => return Err(format!("{part}: half:island, half:goods or half:work")),
             },
             "map" => Step::Map(arg.to_string()),
+            // GROUND-BRUSH: the brush drawn from spot to spot (ground.rs)
+            "stroke" => match nums()?.as_slice() {
+                v if !v.is_empty() && v.len() % 2 == 0 => Step::Stroke(v.chunks(2).map(|p| (p[0], p[1])).collect()),
+                _ => return Err(format!("{part}: stroke takes x,z pairs, as stroke:40.5,30.5,44.5,31.5")),
+            },
             // MAKING: the Making panel's pointer (town_flow.rs)
             "point" if !arg.is_empty() => Step::Point(arg.to_string()),
             "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
@@ -1014,6 +1026,31 @@ fn step(world: &mut World, sc: &mut Script) {
                 picked.what = what;
                 picked.stamp = picked.stamp.wrapping_add(1);
                 frame = true;
+            }
+            // GROUND-BRUSH: the brush drawn through the spots, a square a frame (ground.rs)
+            Step::Stroke(points) => {
+                if !sc.begun {
+                    sc.begun = true;
+                    sc.tally = Tally::default();
+                    let r = &world.resource::<Data>().r;
+                    let (w, h) = (r.w, r.h);
+                    let at = |&(x, z): &(f32, f32)| (x.floor().clamp(0.0, (w - 1) as f32) as usize) + (z.floor().clamp(0.0, (h - 1) as f32) as usize) * w;
+                    let cells: Vec<usize> = points.iter().map(at).collect();
+                    let mut squares = vec![cells[0]];
+                    for p in cells.windows(2) {
+                        squares.extend(crate::ground::line(p[0], p[1], w).into_iter().skip(1));
+                    }
+                    match world.get_resource_mut::<crate::ground::Brush>() {
+                        Some(mut b) => b.script(squares),
+                        None => println!("script: no stroke: the brush is a sandbox's"),
+                    }
+                }
+                sample(world, &mut sc.tally);
+                done = !world.get_resource::<crate::ground::Brush>().is_some_and(|b| b.scripting());
+                if done {
+                    println!("script: stroke: the brush was drawn over {} frames", sc.tally.frames);
+                    print_work(&sc.tally);
+                }
             }
             Step::Look(x, z, d) => {
                 let y = world::height_at(&world.resource::<Data>().g, x, z).max(0.0);
