@@ -877,6 +877,16 @@ pub struct TasksState {
     pub cart_work: Vec<f64>,
     pub cart_hands: Vec<f64>,
     pub cart_cost: Vec<f64>,
+    /// By town, this month (watched, for the probes and the tests): what the
+    /// lorries' oil and their plant cost, as paid.
+    pub cart_paid_run: Vec<f64>,
+    pub cart_paid_plant: Vec<f64>,
+    /// By town, under the hauliers' till (`lorry.till`; empty without it): the
+    /// till, and the share of this month's carting pay that is the lorries'
+    /// (`cart_cost` over `cart_hands * wage + cart_cost`, at the wage the
+    /// carters were hired at).
+    pub cart_till: Vec<f64>,
+    pub cart_split: Vec<f64>,
     /// The island's cost of an hour of the carting's work over the wage in the
     /// year just closed (each town's weighted by its bill; nothing before the
     /// lorry carts anything): what the cost graph's land squares are multiplied
@@ -2054,6 +2064,17 @@ pub fn cart_hiring(st: &mut State, C: &Content, P: &Params) -> bool {
         st.tasks.cart_hands[t] = h;
         st.tasks.cart_cost[t] = m;
     }
+    // the hauliers' till: the lorries' part of each hour of the carting's work
+    if P.lorry.till {
+        let T = st.T_max;
+        st.tasks.cart_till.resize(T, 0.0);
+        st.tasks.cart_split.resize(T, 0.0);
+        for t in 0..T {
+            let (h, m) = (st.tasks.cart_hands[t], st.tasks.cart_cost[t]);
+            let all = h * st.wage[t] + m;
+            st.tasks.cart_split[t] = if st.town_active[t] && m > 0.0 && all > 0.0 { m / all } else { 0.0 };
+        }
+    }
     true
 }
 
@@ -2064,16 +2085,36 @@ pub fn cart_hiring(st: &mut State, C: &Content, P: &Params) -> bool {
 pub struct CartBuy {
     pub run: Mat,
     pub plant: Mat,
+    /// By town, under the hauliers' till (`lorry.till`; empty without it): what
+    /// the till keeps back at the month's end, the plant its lorries still lack
+    /// for the share the carting means to hold and the month's oil, at the
+    /// month's prices; and the most the town's households may put into it this
+    /// month.
+    pub keep: Vec<f64>,
+    pub put: Vec<f64>,
 }
 
 /// The month's `CartBuy` (`econ::step_month`); None where nothing is asked.
-pub fn cart_orders(st: &State, C: &Content, P: &Params) -> Option<CartBuy> {
+/// `budgets` is what each town's households spend this month (rent and
+/// goods), set before this is asked.
+///
+/// Under the hauliers' till (`lorry.till`, docs/rules/lorry.md, "The lorry's
+/// bill") each town's order is then cut to what its carting can pay at the
+/// month's prices: what the till holds, and what the town's households may put
+/// into it from their savings, the cash they will not spend this month, up to
+/// the share of it they put into a new works of the town (`invest_frac_hh`).
+/// The oil is paid first, the plant from what is left. What is cut is never
+/// bought: it stays in the merchants' store, and the order's fill (next month's
+/// `cart_fill`) says so, which slows the share the carting means to hold.
+pub fn cart_orders(st: &State, C: &Content, P: &Params, budgets: &[f64]) -> Option<CartBuy> {
     if !cart_on(st, P) {
         return None;
     }
     let (T, G) = (st.T_max, C.G);
     let sh = C.tasks.carting;
     let (mut run, mut plant) = (Mat::zeros(T, G), Mat::zeros(T, G));
+    let till = P.lorry.till && st.tasks.cart_till.len() == T;
+    let (mut keep, mut put) = if till { (vec![0.0; T], vec![0.0; T]) } else { (Vec::new(), Vec::new()) };
     let mut any = false;
     for t in (0..T).filter(|&t| st.town_active[t]) {
         let w = st.tasks.cart_work[t];
@@ -2095,10 +2136,31 @@ pub fn cart_orders(st: &State, C: &Content, P: &Params) -> Option<CartBuy> {
                     plant[(t, g)] = x;
                     any = true;
                 }
+                if till {
+                    keep[t] += 4.0 * x * price(g);
+                }
+            }
+        }
+        if till {
+            let v_run: f64 = (0..G).map(|g| run[(t, g)] * price(g)).sum();
+            let v_plant: f64 = (0..G).map(|g| plant[(t, g)] * price(g)).sum();
+            keep[t] += v_run;
+            let cash = st.hh_cash[t].max(0.0);
+            put[t] = (P.invest_frac_hh * cash).min(cash - budgets[t]).max(0.0);
+            let can = st.tasks.cart_till[t].max(0.0) + put[t];
+            // the oil first, then the plant from what is left
+            let k_run = if v_run > can { can / v_run } else { 1.0 };
+            let left = (can - v_run).max(0.0);
+            let k_plant = if v_plant > left { left / v_plant } else { 1.0 };
+            if k_run < 1.0 || k_plant < 1.0 {
+                for g in 0..G {
+                    run[(t, g)] *= k_run;
+                    plant[(t, g)] *= k_plant;
+                }
             }
         }
     }
-    any.then_some(CartBuy { run, plant })
+    any.then_some(CartBuy { run, plant, keep, put })
 }
 
 /// What the market gave the lorries' orders: the oil at the day's trade's
@@ -2133,6 +2195,75 @@ pub fn cart_deliver(st: &mut State, C: &Content, b: &CartBuy, plant: &Mat, run_f
         }
         st.tasks.cart_fill[t] = if asked > 1e-12 { (paid / asked).clamp(0.0, 1.0) } else { 1.0 };
         st.tasks.cart_run_fill[t] = run_fill[t];
+    }
+}
+
+/// The lorries' bill paid, under the hauliers' till (`econ::step_month`, where
+/// the households paid it before): out of the till, and what the till lacks out
+/// of the households' purse, which `cart_orders` bounded by `CartBuy::put`.
+/// Without the till, out of the households' purse as the lorry first landed.
+pub fn cart_pay(st: &mut State, P: &Params, b: &CartBuy, paid: &[f64]) {
+    if !(P.lorry.till && b.put.len() == paid.len() && st.tasks.cart_till.len() == paid.len()) {
+        for (t, &v) in paid.iter().enumerate() {
+            st.hh_cash[t] -= v;
+        }
+        return;
+    }
+    for (t, &v) in paid.iter().enumerate() {
+        let from_till = v.min(st.tasks.cart_till[t].max(0.0));
+        st.tasks.cart_till[t] -= from_till;
+        st.hh_cash[t] -= v - from_till;
+    }
+}
+
+/// The hauliers' till at the month's end (`econ::step_month`, once the month's
+/// incomes are known and before the purses are credited): of what each town's
+/// households were paid for carting this month (`cart_bill`), the lorries'
+/// part (`cart_split`) goes into the town's till and not into the households'
+/// income, never more than that income; then what the till holds beyond what
+/// it keeps back (`CartBuy::keep`) is paid into the households' income, the
+/// hauliers' pay for their lorries' return. A town no longer in play has its
+/// till paid out whole. Nothing without the till.
+pub fn cart_till_close(st: &mut State, P: &Params, b: Option<&CartBuy>, hh_inc: &mut [f64]) {
+    let T = hh_inc.len();
+    if !(P.lorry.till && st.tasks.cart_till.len() == T) {
+        return;
+    }
+    let labor = P.carting.labor;
+    for t in 0..T {
+        let s = &mut st.tasks;
+        if st.town_active[t] {
+            let x = (labor * st.cart_bill.get(t).copied().unwrap_or(0.0) * s.cart_split[t]).min(hh_inc[t].max(0.0)).max(0.0);
+            hh_inc[t] -= x;
+            s.cart_till[t] += x;
+        }
+        let keep = match b {
+            Some(b) if st.town_active[t] && b.keep.len() == T => b.keep[t],
+            _ => 0.0,
+        };
+        let out = (s.cart_till[t] - keep).max(0.0);
+        if out > 0.0 {
+            s.cart_till[t] -= out;
+            hh_inc[t] += out;
+        }
+    }
+}
+
+/// What the lorries' oil and plant cost each town this month, as paid at the
+/// month's prices (`got` all they got, `plant` the plant alone): watched only.
+pub fn note_cart_paid(st: &mut State, got: &Mat, plant: &Mat) {
+    let (T, G) = (got.rows, got.cols);
+    let s = &mut st.tasks;
+    s.cart_paid_run.resize(T, 0.0);
+    s.cart_paid_plant.resize(T, 0.0);
+    for t in 0..T {
+        let (mut run, mut pl) = (0.0, 0.0);
+        for g in 0..G {
+            run += (got[(t, g)] - plant[(t, g)]) * st.price[(t, g)];
+            pl += plant[(t, g)] * st.price[(t, g)];
+        }
+        s.cart_paid_run[t] = run;
+        s.cart_paid_plant[t] = pl;
     }
 }
 

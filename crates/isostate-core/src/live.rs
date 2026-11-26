@@ -551,8 +551,8 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         // crossings (docs/rules/crossings.md): nor is a road works or a bridge
         .filter(|pr| pr.way != crate::ways::CANAL && pr.way != crate::ways::ROAD)
         .map(|pr| {
-            let order: f64 = crate::util::pairwise_sum(&pr.order);
-            let need: f64 = crate::util::pairwise_sum(&pr.need);
+            let order: f64 = C.sum_goods_of(&pr.order);
+            let need: f64 = C.sum_goods_of(&pr.need);
             ProjectSnap { a: pr.a, b: pr.b, done: 1.0 - order / need.max(1e-9) }
         })
         .collect();

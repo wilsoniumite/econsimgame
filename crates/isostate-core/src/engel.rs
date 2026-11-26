@@ -50,7 +50,7 @@ use crate::content::Content;
 use crate::mat::Mat;
 use crate::observer::Series;
 use crate::state::State;
-use crate::util::{pairwise_sum, pairwise_sum_by};
+use crate::util::{pairwise_sum, pairwise_sum_by, pairwise_sum_from};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -199,9 +199,16 @@ pub fn les(budget_pc: &[f64], unit: &Mat, gamma: &[f64], beta: &[f64], rich: &[f
 /// A Fisher price index from (p0, q0) to (p1, q1): the geometric mean of the
 /// index on the old basket and the index on the new one. 1 if nothing was bought.
 pub fn fisher(p0: &[f64], q0: &[f64], p1: &[f64], q1: &[f64]) -> f64 {
+    fisher_from(p0.len(), p0, q0, p1, q1)
+}
+
+/// `fisher` over goods of which the first `base` are summed in numpy's order and
+/// the rest after them one at a time (`Content::sum_goods`, docs/rules/goods.md).
+pub fn fisher_from(base: usize, p0: &[f64], q0: &[f64], p1: &[f64], q1: &[f64]) -> f64 {
     let n = p0.len();
-    let old = pairwise_sum_by(n, |g| p1[g] * q0[g]) / pairwise_sum_by(n, |g| p0[g] * q0[g]);
-    let new = pairwise_sum_by(n, |g| p1[g] * q1[g]) / pairwise_sum_by(n, |g| p0[g] * q1[g]);
+    let sum = |f: &dyn Fn(usize) -> f64| pairwise_sum_from(base, n, f);
+    let old = sum(&|g| p1[g] * q0[g]) / sum(&|g| p0[g] * q0[g]);
+    let new = sum(&|g| p1[g] * q1[g]) / sum(&|g| p0[g] * q1[g]);
     match (old.is_finite() && old > 0.0, new.is_finite() && new > 0.0) {
         (true, true) => (old * new).sqrt(),
         (true, false) => old,
@@ -298,7 +305,7 @@ pub fn record_month(st: &mut State, C: &Content, s: &mut Series, t: usize, wage:
         e.acc_q = vec![0.0; G];
         e.months = 0;
     }
-    let cpi = e.chain * fisher(&e.base_p, &e.base_q, P_nat, &bought);
+    let cpi = e.chain * fisher_from(C.G_base, &e.base_p, &e.base_q, P_nat, &bought);
     s.set("cpi_chained", t, cpi);
     s.set("real_wage_chained", t, wage / cpi.max(1e-9) / st.wage_base);
     s.set("real_income", t, e.real_income);
@@ -315,7 +322,7 @@ pub fn record_month(st: &mut State, C: &Content, s: &mut Series, t: usize, wage:
     if e.months == 12 {
         let p: Vec<f64> = e.acc_p.iter().map(|v| v / 12.0).collect();
         let q: Vec<f64> = e.acc_q.iter().map(|v| v / 12.0).collect();
-        e.chain *= fisher(&e.base_p, &e.base_q, &p, &q);
+        e.chain *= fisher_from(C.G_base, &e.base_p, &e.base_q, &p, &q);
         e.base_p = p;
         e.base_q = q;
         e.acc_p.iter_mut().for_each(|v| *v = 0.0);

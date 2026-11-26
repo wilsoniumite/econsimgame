@@ -48,7 +48,6 @@ use crate::firms;
 use crate::mat::Mat;
 use crate::params::Params;
 use crate::state::{Event, State};
-use crate::util::pairwise_sum_by;
 
 /// The numbers of the life cycle. Each lettered part has its own number or
 /// switch, so `--set works.walk=0` (say) measures the rest without it.
@@ -402,7 +401,7 @@ pub fn new_year(st: &mut State, C: &Content, P: &Params, pbar: &Mat, alive: &mut
     }
     let mut r = vec![0.0; st.f_alive.len()];
     for &f in alive.iter() {
-        let unit_cap = pairwise_sum_by(C.G, |g| C.m_cap[(st.f_method[f], g)] * pbar[(st.f_town[f], g)]);
+        let unit_cap = C.sum_goods(|g| C.m_cap[(st.f_method[f], g)] * pbar[(st.f_town[f], g)]);
         r[f] = st.f_profit_acc[f] / (st.f_K[f].max(1e-9) * unit_cap).max(1e-9);
     }
     alive.sort_by(|&a, &b| r[b].total_cmp(&r[a]).then(a.cmp(&b)));
@@ -564,6 +563,6 @@ pub fn kept_for_order(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
         return machines;
     }
     let t = st.f_town[f];
-    let plant = pairwise_sum_by(C.G, |g| st.f_order[(f, g)] * st.price[(t, g)]);
+    let plant = C.sum_goods(|g| st.f_order[(f, g)] * st.price[(t, g)]);
     if machines > 0.0 { plant + machines } else { plant }
 }

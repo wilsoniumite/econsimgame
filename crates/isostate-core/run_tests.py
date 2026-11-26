@@ -200,6 +200,9 @@ QUICK_SKIPS = [
     'the_facts',
     'the_freight_waits_for_its_year',
 
+    # lorry (its island_7_to_1935 shares tending's name, below)
+    'the_hauliers_till_island_7_to_2050',
+
     # machines
     'machines_stand_for_years',
     'money_is_conserved_and_runs_are_deterministic_with_machines_on',
@@ -220,6 +223,11 @@ QUICK_SKIPS = [
     'the_rate_is_1_764_per_cent_a_year_on_every_island',
     'twice_the_money_at_the_start_is_twice_the_money_in_every_month',
     'what_the_player_does_moves_money_between_purses_and_makes_none',
+
+    # new_good
+    'a_good_of_1950_leaves_island_7_as_it_was_to_1949',
+    'idle_goods_leave_island_2_as_it_was_to_2050_under_the_game',
+    'idle_goods_leave_island_7_as_it_was_under_the_port',
 
     # owners
     'island_7_to_1850_holds_its_works_by_shares_that_add_up',

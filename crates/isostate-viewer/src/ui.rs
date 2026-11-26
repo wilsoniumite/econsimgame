@@ -1658,6 +1658,10 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         p.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: Val::Px(GOOD_ROW_GAP), ..default() }).with_children(|p| {
             for gi in group.goods {
                 let g = &r.header.goods[gi];
+                // a good that has not begun is not listed before its time (docs/rules/goods.md)
+                if !replay::begun(r, gi, month_now) {
+                    continue;
+                }
                 let name = format!("price_{}", g.name);
                 // a good first made after the first year is priced against the year (or the month) it was first
                 // made, not against a price nothing was sold at; and its change goes back no further than that
@@ -1946,7 +1950,7 @@ mod tests {
     }
 
     fn goods(kinds: &[Option<replay::GoodKind>]) -> Vec<replay::Good> {
-        kinds.iter().enumerate().map(|(i, &kind)| replay::Good { name: format!("g{i}"), label: format!("Good {i}"), kind, weight: None, price: None }).collect()
+        kinds.iter().enumerate().map(|(i, &kind)| replay::Good { name: format!("g{i}"), label: format!("Good {i}"), kind, weight: None, price: None, begins: None }).collect()
     }
 
     #[test]

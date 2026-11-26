@@ -27,7 +27,7 @@ use crate::names;
 use crate::params::{Params, RentRegime};
 use crate::rng::{Rng, integers, random};
 use crate::state::{Event, State};
-use crate::util::{pairwise_sum, pairwise_sum_by};
+use crate::util::pairwise_sum;
 use crate::works;
 
 // ---------------------------------------------------------------- types
@@ -322,7 +322,7 @@ pub(crate) fn wages(st: &State) -> &[f64] {
 /// Capital-goods cost of one unit of capacity of method m in town i.
 fn unit_capital_cost(st: &State, C: &Content, m: usize, i: usize) -> f64 {
     let p = prices(st);
-    pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * p[(i, g)])
+    C.sum_goods(|g| C.m_cap[(m, g)] * p[(i, g)])
 }
 
 /// A works at depreciated capital cost: its capacity, built and on order, at
@@ -907,7 +907,8 @@ pub struct SiteOption {
 /// capacity K: (output a month, town demand a month, town output a month,
 /// market share, price ratio). The price ratio is the good's price over its base
 /// price, relative to the same ratio for the town's typical good (the median over
-/// goods), so a general rise in prices does not count as scarcity.
+/// the goods every run has from the start, `Content::G_base`), so a general rise
+/// in prices does not count as scarcity.
 pub fn market_depth(st: &State, C: &Content, i: usize, m: usize, K: f64) -> (f64, f64, f64, f64, f64) {
     let g = C.method_out[m];
     let output = 0.85 * K;
@@ -915,7 +916,10 @@ pub fn market_depth(st: &State, C: &Content, i: usize, m: usize, K: f64) -> (f64
     let made = if st.town_prod_year.rows > 0 { st.town_prod_year[(i, g)] / 12.0 } else { 0.0 };
     let share = (output / demand.max(1e-9)).min(1e6);
     let p = prices(st);
-    let mut ratios: Vec<f64> = (0..C.G).map(|x| p[(i, x)] / C.base_price[x]).collect();
+    // the typical good is the median of the goods every run has from the start
+    // (docs/rules/goods.md): a good that begins later, at its anchor or its
+    // ceiling before anybody makes it, would move the median by its place alone
+    let mut ratios: Vec<f64> = (0..C.G_base).map(|x| p[(i, x)] / C.base_price[x]).collect();
     ratios.sort_by(|a, b| a.total_cmp(b));
     let typical = ratios[ratios.len() / 2].max(1e-9);
     (output, demand, made, share, p[(i, g)] / C.base_price[g] / typical)

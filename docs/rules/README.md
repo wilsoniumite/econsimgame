@@ -66,7 +66,8 @@ rules, invisible in a port run's files.
    disturbs none of the others), not `misc`, which the families draw from.
 4. **New state is empty while off**, as the family tables are; new goods or
    methods are added in `game_content()`, never in `data/content.toml`, which
-   is the Python's file.
+   is the Python's file. A new good says when it begins (`begins`, a year or
+   an idea), or it moves the run from 1750 ([goods.md](goods.md)).
 5. **It acts through the same prices and bids as everyone else.** Every flow
    of money is a transfer between purses that `econ::money_total` counts, so
    the monthly conservation check goes on holding.
@@ -1048,7 +1049,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   made of machinery and steel and run on oil), bought by each town's carting out of what it is paid; an hour
   of the carting's work then takes fewer hands, a load costs less where lorries run and most on a made road
   (`lorry.roads`), and from 1901 no made road or turnpike falls back for want of traffic (`lorry.keep`).
-  [lorry.md](lorry.md), `tasks.lorry`, `lorry.roads`, `lorry.keep`.
+  Since 26 November 2026 the lorries are paid for out of a till each town's carting is paid into, never
+  beyond it, so that no town's households pay for lorries with money they do not have (`lorry.till`).
+  [lorry.md](lorry.md), `tasks.lorry`, `lorry.roads`, `lorry.keep`, `lorry.till`.
 - **who works** (acts only from 1901, coming in over ten years): a town's hands are counted from its
   people by age, not half of them, so that children at school, the university's students and the old a
   pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.
@@ -1075,3 +1078,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   1920 it bypasses a town on one, or widens its high street, where the through traffic pays
   (`highways.bypass`). About 300 km of trunk road an island by 1970. [highways.md](highways.md),
   `highways.trunk`, `highways.bypass`.
+- **goods that begin later** (no switch; under both sets of rules): a good may say when it begins, a
+  year or the idea it comes with (`begins`), and then moves nothing of a run while nothing of it is
+  made, bought or held: every sum over the goods takes the goods of the start in numpy's order and a
+  later good after them, and the families' typical good is reckoned on the goods of the start. How to
+  add a good after 1900 is there in a few lines. [goods.md](goods.md).

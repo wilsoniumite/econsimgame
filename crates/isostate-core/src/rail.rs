@@ -15,7 +15,7 @@ use crate::params::Params;
 use crate::rng::Rng;
 use crate::state::{Event, Project, RailOpened, State};
 use crate::transport as tr;
-use crate::util::{argsort, fmt_pct, pairwise_sum, pairwise_sum_by};
+use crate::util::{argsort, fmt_pct, pairwise_sum};
 
 /// Path length in cells (1 per straight step, sqrt(2) per diagonal), summed as numpy does.
 fn path_length(path: &[usize], W: usize) -> f64 {
@@ -105,7 +105,7 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
         let benefit = P.rail_induced * flow * saving_per_w;
         let need = materials(C, P, n_new);
         let buy_town = if pbar[(a_, gr)] <= pbar[(b_, gr)] { a_ } else { b_ };
-        let cost = pairwise_sum_by(C.G, |g| need[g] * pbar[(buy_town, g)]) * 1.3;
+        let cost = C.sum_goods(|g| need[g] * pbar[(buy_town, g)]) * 1.3;
         let roi = benefit / cost.max(1e-9);
         if roi < P.rail_hurdle {
             st.rail_cooldown.insert((a_, b_), year + 4);
@@ -223,7 +223,7 @@ pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year:
         let saving = crate::longrun::freight(st, P) * (st.dcatch[c] - (tr::RAIL_COST * length + 0.5)).max(0.0);
         let benefit = P.rail_induced * flow[c] * saving;
         let need = materials(C, P, new_cells.len());
-        let cost = pairwise_sum_by(C.G, |g| need[g] * pbar[(i, g)]) * 1.3;
+        let cost = C.sum_goods(|g| need[g] * pbar[(i, g)]) * 1.3;
         let roi = benefit / cost.max(1e-9);
         st.spur_done.insert(c);
         if roi < P.rail_hurdle {
@@ -277,7 +277,7 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
                 pr.cash += top;
             }
         }
-        let done = pairwise_sum(&pr.order) <= 0.01 * pairwise_sum(&pr.need);
+        let done = C.sum_goods_of(&pr.order) <= 0.01 * C.sum_goods_of(&pr.need);
         if !done {
             keep.push(pr);
             continue;

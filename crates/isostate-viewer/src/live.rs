@@ -1683,7 +1683,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny, town_bytes: 0 },
         // (each good's bulk and price and each method's process are the run's own content's:
         // the works' site planner lays a works out from them; each good's kind is set by the caller)
-        goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), kind: None, weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
+        goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), kind: None, weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32), begins: crate::replay::Begins::of(content, g) }).collect(),
         methods: stat
             .methods
             .iter()
