@@ -598,4 +598,9 @@ pub struct State {
     // ---------------- who works (docs/rules/who-works.md; empty while `who_works.enabled` is off)
     /// Each town's share of its people in work this year, and each year's count by age.
     pub who_works: crate::who_works::WhoState,
+
+    // ---------------- haulage (docs/rules/haulage.md; empty while `haulage.handling` is off)
+    /// The year the cost graph was last made at the close of, and how each
+    /// cell was reached in each town's tree while the railway is a layer of its own.
+    pub hl: crate::haulage::HaulageState,
 }

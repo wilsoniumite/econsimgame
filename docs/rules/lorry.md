@@ -294,10 +294,12 @@ carting that frees as many hands as tending sends it.
   railway keeps every haul where its line runs and the road takes only what the line does not reach;
   in a real country the station's handling is what lost the railway its short hauls. With a charge the
   road's share would rise further. Not tried: it is the port's graph, and it moves the played century.
+  Mended from 1901 by the station's charge ([haulage.md](haulage.md), `haulage.handling`).
 - **The roads kept from 1901 are kept for ever**, and the made roads of 2050 (2,408 km) are nearly
   twice main's. The roads' wear still counts every mode, so a railway wears the roads beside it into
   turnpikes (the traffic record's fault, [traffic.md](traffic.md)), and with nothing unmade by quiet
-  those turnpikes now stand: 5,972 km in 2050 against 4,275.
+  those turnpikes now stand: 5,972 km in 2050 against 4,275. From 1901 a road is worn by its own
+  traffic alone ([haulage.md](haulage.md), `haulage.wear`).
 - **The motor vehicle is an idea, not a good** ("Why no motor works"), and the lorry is made of
   machinery and steel. No motor works stands on the island, and the households have no cars.
 - **The pace and the surface were set by hand** and not swept: nine per cent a year to a cap of 50,
