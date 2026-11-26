@@ -443,6 +443,20 @@ fn main() {
                 max.1 * 1000.0,
                 max.0
             );
+            let mut slow: Vec<(i64, f64)> = o.times.clone();
+            slow.sort_by(|a, b| b.1.total_cmp(&a.1));
+            let by_era = |a: i64, b: i64| {
+                let mut v: Vec<f64> = o.times.iter().filter(|t| t.0 >= a && t.0 <= b).map(|t| t.1 * 1000.0).collect();
+                v.sort_by(|x, y| x.total_cmp(y));
+                if v.is_empty() { 0.0 } else { v[v.len() / 2] }
+            };
+            println!(
+                "  the slowest years: {}; the median by era: 1750-1850 {:.2} ms, 1851-1950 {:.2} ms, 1951-2050 {:.2} ms",
+                slow.iter().take(6).map(|(y, s)| format!("{y} {:.1} ms", s * 1000.0)).collect::<Vec<_>>().join(", "),
+                by_era(1750, 1850),
+                by_era(1851, 1950),
+                by_era(1951, 2050)
+            );
         }
     }
     if let Some(dir) = out_dir {

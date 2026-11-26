@@ -82,7 +82,11 @@ The judge reckoned about 260,000 built squares by 2050, 186,000 of them works an
 
 Every year of that run, and of islands 1 to 8 to 2050 (`--seeds 1-8 --check`), `squares::check` held: each works' squares its ground within a square, each cell's works and pits theirs, a town cell's town ground the cell less its works and pits, its house blocks and park their counts, no square with two tenants, no holding in more pieces than its annexes allow, no derelict ground off a derelict cell, and every square that kept its tenant kept its year. With the switch on and off the game's golden hashes are the same, all seven (`tests/golden_game.rs`), and so are the months, the news and the record of island 5 to 1790 (`tests/squares.rs`).
 
-**What it costs.** The year's allotting, timed alone beside a run of island 7 to 2050 (`--time`): TIMING.
+On islands 1 to 8 in 2050 the built squares are 224,000 to 280,000 (252,000 on the mean), the works' 175,000 to 215,000 and the house blocks' 46,000 to 65,000; a tenth to a sixth of the works have an annex.
+
+**What it costs.** The year's allotting, timed alone beside a run of island 7 to 2050 (`--time`, the squares switched off in the run and `squares::close_year` called after each year on the same state, on a machine shared with other builds): 2.0 s in all, 1.5 per cent of the run; a year's median 6.3 ms (4.0 ms to 1850, 8.2 ms from 1851 to 1950, 6.0 ms after), the 99th of 301 years 12.6 ms, the slowest 17.9 ms (2039); the opening, once, 52 ms. A sweep of islands 1 to 8 to 2050 with the switch off and on side by side (`isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set squares.enabled=false,true`) took 108 and 109 processor seconds a run on the mean, and gave every one of its facts the same on every island.
+
+The book of 2050 holds about 1,200 tables in use, of about 4.4 kB each with the ground worked out under them (a table given up is kept, empty, for its cell), and the works' and workings' lists: some megabytes.
 
 ## What worries me
 
