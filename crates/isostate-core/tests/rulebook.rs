@@ -222,14 +222,15 @@ fn the_walk_of_the_games_rules_is_quick() {
     let P = game_params();
     let _ = rulebook(&P);
     // The quickest of up to twenty walks, each timed alone, stopping at the first under the limit:
-    // what the walk itself costs, not how long the machine kept it waiting (see the limit below).
+    // what the walk itself costs, as near as the wall clock can tell it (see the limit below).
+    let limit = 2000.0;
     let mut book = Vec::new();
     let mut ms = f64::INFINITY;
     for _ in 0..20 {
         let t0 = std::time::Instant::now();
         book = rulebook(&P);
         ms = ms.min(t0.elapsed().as_secs_f64() * 1e3);
-        if ms < 500.0 {
+        if ms < limit {
             break;
         }
     }
@@ -253,12 +254,14 @@ fn the_walk_of_the_games_rules_is_quick() {
     other.dedup();
     eprintln!("{} offers, {} refused ({} for the value it has already); the other refusals: {other:?}", offers.len(), refused.len(), refused.iter().filter(|w| w.ends_with("already")).count());
     // The Rules tab walks the rules when it is opened, so the walk must not be felt: it took
-    // 35 ms alone in the dev profile on 19 November 2026. It is held to half a second, not to
-    // 50 ms as it was, since the core's tests now run all at once (crates/isostate-core/run_tests.py)
-    // and the others beside it took it to 111 to 138 ms with nothing wrong; half a second still
-    // catches a walk grown ten times slower, which is what this is for. Since 26 November 2026 it
-    // is the quickest walk that is held to it, not the mean of five: with every program running
-    // at once on a machine busy with other builds the mean reached 532 to 901 ms and stopped two
-    // landings at the gate (timber's first run, the build-speed batch's), with nothing wrong.
-    assert!(ms < 500.0, "the walk took {ms:.1} ms");
+    // 35 ms alone in the dev profile on 19 November 2026, 66 ms on 26 November. It was held to
+    // half a second (50 ms before the core's tests ran all at once, crates/isostate-core/run_tests.py),
+    // but with every program running at once on a machine busy with other builds the walk is some
+    // ten times slower than alone: the mean of five reached 532 to 901 ms, and even the quickest of
+    // twenty 580 ms, and it stopped three landings at the gate (timber's first run, the build-speed
+    // batch's first two) with nothing wrong. So it is now the quickest of up to twenty walks that is
+    // held, to two seconds: that still catches a walk grown thirty times slower alone, or three
+    // times slower under the gate's load, which is the grossest of what this was for. A finer guard
+    // would time the walk by its thread's processor time, which std does not give.
+    assert!(ms < limit, "the quickest walk took {ms:.1} ms");
 }
