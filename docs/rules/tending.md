@@ -16,6 +16,13 @@ the lorry on: 2050 over 1970 reaches 1.20 (1.14 with the lorry alone; with pace 
 but the towns' share in 2050 is 0.493 against 0.550 with both off (with pace, 0.488 against 0.556), so
 tending still stands off; that page says what it waits on.
 
+**Where the hands go** (traced on 26 November 2026, below): the freed tenders go to the land, the pits
+and the carts because one wage clears each town for its works and its land, so hands follow pay bills,
+and the land's and the carts' pay bills are a fixed share of income once their own machines reach their
+caps. A second switch, `tasks.tending_wide`, lets the robot and the line that runs itself reach the land,
+the pits and the carts too; it narrows the towns' fall from eight points to four and lifts 2050 over 1970
+to 1.28, but the towns still fall, so both stand off.
+
 **Tending** is feeding and minding a process, fitting and driving: the largest
 class of the works' hours, 0.37 of them in 1900 and 0.44 in 2050 on main
 (islands 1 to 8), and the one no machine took in the works before this rule.
@@ -228,7 +235,150 @@ with the rule off and 0.32 with it on, and the rule adds 1.84 with the cap as
 it is and 0.66 with it lifted. The two are substitutes: both save hands in the
 works, and once machines hold the tending there are fewer to save.
 
+## Where the hands go
+
+Traced on 26 November 2026, on main with the lorry, pace and who works on, islands 1 to 8 to 2050 under
+the game's rules with six families, tending off and on. Every number is the mean of the eight islands
+over the five years about the mark, from the books (`examples/tending_trace.rs`, below).
+
+**Where a freed tender is found.** Of every hundred hands the works no longer want in 2050, 63 are on the
+land (38 of them at the pits: coal 19, clay 12, stone 8; 26 on the farms and pastures) and 32 carting;
+5 are for hire and not hired. The works' share of all hands is 0.678 off and 0.570 on; the land's 0.230
+and 0.298; the carters' 0.065 and 0.100. The count of townsfolk is a count of the works' hands
+(`towns.rs`: a town's people times 0.04 plus 0.8 of the share of its hands in works), so it falls with
+them, from 0.571 to 0.488. A hand goes to the land for want of a place in the works, never for its pay:
+one wage clears each town's market for its land and its works together, and pay a hand on the land over
+pay in the works is 0.98 to 1.00 in every decade of both arms.
+
+**Why: hands follow pay bills.** With one wage, a sector's share of the hands is its share of the pay
+bill, and its pay bill over income is what it sells over income times its pay over what it sells. In
+2050, tending off against on:
+
+| | sells, share of income | pay over what it sells | pay bill, share of income |
+|---|---|---|---|
+| mills and factories | 0.322 / 0.332 | 0.169 / 0.049 | 0.055 / 0.016 |
+| furnaces | 0.093 / 0.101 | 0.387 / 0.178 | 0.036 / 0.018 |
+| builders | 0.166 / 0.178 | 0.218 / 0.100 | 0.036 / 0.018 |
+| power stations, electrical, oil and nitrogen works | 0.101 / 0.150 | 0.469 / 0.222 | 0.047 / 0.033 |
+| offices | 0.352 / 0.334 | 0.678 / 0.587 | 0.239 / 0.196 |
+| the land (seven sectors) | 0.248 / 0.249 | 0.57 / 0.58 | 0.141 / 0.146 |
+| the carts | | | 0.046 / 0.057 |
+
+What each sector sells hardly moves: the households' needs are shares of what is left above
+subsistence, the same in both arms (comfort 0.38, food 0.105 in 2050), so a good made cheaper is bought
+more and the money spent on it stays. What moves is the works' pay over what they sell, which the
+machines cut by more than half. The land's is fixed by its Cobb-Douglas share once its own machines
+(the tractor, the combine, the cutter) reach their caps, as they have by 1970. So the land's and the
+carts' share of the island's pay bill rises from 0.31 to 0.41, and the hands with it. The machines'
+own needs feed it: they run on electricity made from coal (coal into the stations nearly doubles, 8.0 to
+15.4 million a year), and the island's building, where their plant stands and the owners' larger incomes
+go, grows by half, of stone, clay and lime dug at the pits and carted.
+
+The same runs with tending off, smaller: from 1990 to 2050 office computing and models cut the offices'
+pay over what they sell from 0.78 to 0.68 and the mills' from 0.22 to 0.17, while the land's pay bill
+holds, so the townsfolk fall from 0.603 to 0.571 there too. Machines in the works are the cause in both
+arms; tending is the largest of them.
+
+**The candidates**, each turned off and on (the data altered for an experiment, swept on islands 1 to 8
+with tending off and on):
+
+| | towns 2050, off / on | the gap |
+|---|---|---|
+| main | 0.570 / 0.488 | 0.082 |
+| the richer shilling leans further to comfort (0.58, from shelter and household goods) | 0.591 / 0.512 | 0.079 |
+| the owners spend as households do | 0.605 / 0.516 | 0.089 |
+| the four machines that tend reach the farms and pastures too | 0.577 / 0.496 | 0.081 |
+| ... every land sector | 0.570 / 0.516 | 0.054 |
+| ... every land sector and the carts | 0.566 / 0.520 | 0.046 |
+| the robot and the line that runs itself alone reach every land sector and the carts (`tending_wide`) | 0.570 / 0.532 | 0.038 |
+
+- *The budget is closed at the top*: true, a level and not the gap. The needs' shares are flat after
+  1970 in both arms, since the lean toward comfort ends in 1970 and real income a head falls after it
+  (17.0 subsistence bundles in 1970, 13.1 in 2050: fewer hands a head, and a rising rate on pay). More
+  comfort lifts the towns in both arms alike.
+- *The gains go to owners whose spending does not come back as work in towns*: the gains do go to owners
+  (dividends +0.059 of income, the rent of works' sites +0.047, the merchants +0.031), and owners spend
+  twice a household's share on shelter, which is building, dug and carted. But owners who spend as
+  households do lift the towns in both arms alike. Not the gap.
+- *The machines' savings do not reach prices*: with shares of spending fixed, a price that fell further
+  would leave the money spent, and so the hands, where they are. (Part of the saving stays with the works:
+  the mills' profit over what they sell is 0.20 off and 0.26 on.)
+- *The land takes any hand at some pay*: true, and it is the way the hands go; but not idleness in
+  disguise: for hire and not hired rises only from 0.027 to 0.032 of hands, and the land's extra hands
+  make grain that is eaten and brewed (43.9 to 49.9 a head a year) and dig coal and stone that is used.
+- *Services are made that nobody buys*: every sixth unit of services is lost in store (0.18 to 0.19 of
+  their value), in both arms and every decade alike: a standing waste, not the drift.
+- *The land has no machine of its own*: true, and the one candidate that narrows the gap, most where the
+  pits and the carts are reached as well.
+- *The towns are dear*: house rent is 0.12 of households' income from 1970 and falls with tending;
+  townsfolk a cell hold at 1,500. Not it.
+
+**The cure tried: `tasks.tending_wide`.** The robot and the line that runs itself reach the tending of
+every land sector and of the carts as well as the works' (`wide` in `data/tasks.toml`): the milking robot
+and the tractor that steers itself, the shearer at the coal face, the depot's robots, and from the 2030s
+the field, the pit and the lorry that run themselves, as the design's robots that walk. The moving line
+and the automatic machine stay in the works (the automatic machine on the land too narrowed the gap by
+another 0.004). The switch is off under both sets of rules and does nothing while `tasks.tending` is off:
+on islands 1 to 8 and 17 to 32 the run with it on and tending off is the run without it, none of 112,000
+facts different.
+
+| | islands 1 to 8: tending off | on | on with the cure | islands 17 to 32: off | on | on with the cure |
+|---|---|---|---|---|---|---|
+| townsfolk 2050 | 0.570 | 0.488 | 0.532 | 0.575 | 0.497 | 0.541 |
+| hands on the land 2050 | 0.140 | 0.164 | 0.146 | 0.130 | 0.162 | 0.146 |
+| 2050 over 1970 (the linked wage) | 1.18 | 1.16 | 1.28 | 1.20 | 1.22 | 1.36 |
+| per cent a year 1900 to 1970; the land's share 2050 less 1900 | 1.26; -0.107 | 1.35; -0.082 | 1.34; -0.100 | 1.30; -0.122 | 1.40; -0.091 | 1.40; -0.107 |
+| what is made (linked index, millions), 2050 | 107 | 148 | 175 | 112 | 159 | 184 |
+| work's share of income, 2050 | 0.62 | 0.50 | 0.50 | 0.63 | 0.50 | 0.50 |
+| a tender's pay over the mean, 2050 | 1.21 | 1.00 | 0.60 | 1.20 | 1.00 | 0.62 |
+| slumps in the news (verdicts) | 8.6 | 16.6 | 18.3 | 10.6 | 18.4 | 18.3 |
+| years of hunger in the news | 17.6 | 21.5 | 3.1 | 19.1 | 17.9 | 3.7 |
+
+The standing check is 12 of 12 inside in every arm. **It stands off, with tending.** The pass was: with
+tending on, the townsfolk no fewer than with it off, what is made a head higher, the three growth asks
+met, the twelve inside and the slumps no more. With the cure the towns still fall four points, and the
+slumps in the news double (as they do with tending alone), so the pass is missed on two counts.
+
+**Who gains and who loses** with the machines tending and the cure: the haulers' real pay in 2050 is 31.8
+times the wage of 1750 against 19.9, the judges' 20.4 against 13.1, the clerks' 14.0 against 11.0, and the
+tenders' 12.3 against 20.8, less than they had in 1970 (14.0); work's share of income falls from 0.62 to
+0.50, and the land's (rents) rises from 0.175 to 0.220 and the works' (profits) from 0.163 to 0.214. The
+land keeps more of the hands (0.258 against 0.230) and the towns fewer.
+
+**What it waits on.** The towns can hold their share under machines that tend only if the hands they free
+go to work in towns that richer households buy more of and no machine takes: what the design calls care,
+schools, travel and the other trades of presence. Today the island's one comfort is services, made by
+offices whose clerking and judging the machines take too, with no presence in them; and a new good cannot
+yet be added after 1900 without moving the played century (lorry.md). Until then the cure halves the fall
+and leaves it.
+
+**The hunger after 1990.** Under main as it plays (the lorry on), the news reports hunger in a town
+nearly every year from about 1994 (17.6 years of it a run on islands 1 to 8; 0.5 with the lorry off, on
+the lorry's own sweeps). It is not bread. On island 7 in 2029 to 2047 (`examples/hunger.rs`) every town
+that went hungry but one is a small town of 60 to 700 people with fifteen to seventy months' grain a head
+in store and every order filled; in its worst month its households bought no grain at all, because their
+purse had gone below nothing. The lorries' oil and plant are charged to a town's households after their
+month's spending, with no bound (`econ.rs`, the carting's goods paid out of the households' cash): in
+Brackhurst (92 people) in August 2046, the month the harvest is carted, the bill came to 113 a head
+against 17 in hand, the purse ended at -68 a head, and the next two months' budgets were nothing. On
+island 7 from the lorry's coming to 2046 the lorries' bill passed the households' purse in 887
+town-months, 154 of them by more than 5 a head. (The one other was the first city, Melness, in 2043, at
+80 per cent of its food: a true shortage, its merchants' grain at 1.6 months a head.) Tending does not change it
+(21.5 years); the cure cuts it to 3.1, by the robots holding the carts' tending, which was not traced
+further. The mend belongs to the lorry's accounting, not here.
+
 ## The probe
+
+`examples/tending_trace.rs` plays one island to 2050 under the game's rules with six families and any
+setting by name, and writes a long table of its books from 1900, a year at a time: the island's income
+account, each good, land sector and method summed over the towns, the towns' table summed, and the
+townsfolk, the hands and the tasks' year at each turn. `examples/hunger.rs` writes a row a month for every
+town whose households went short in the year, with its grain, its purse and its income:
+
+```bash
+cargo run --profile work -p isostate-core --example tending_trace -- 7 OUT.csv tasks.tending=true tasks.tending_wide=true
+cargo run --profile work -p isostate-core --example hunger -- 7 2029 2047 OUT.csv
+```
 
 `examples/tending.rs` plays one island to 2050 under the game's rules with six
 families and any setting by name, and writes a row a year from 1900 for each

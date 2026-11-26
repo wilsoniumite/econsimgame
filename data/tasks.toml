@@ -168,6 +168,9 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   waits on: it is found only at a year's turn after the island has found that idea, by
 #                   the tree's own rules; a use whose idea the content lacks is not laid
 #   needs           (may be left out) uses by name that must have been found before it
+#   wide            (may be left out) land sectors by name and "carting": places it reaches as well as
+#                   those `on` names, while `tasks.tending_wide` and its own switch are both on
+#                   (docs/rules/tending.md, "Where the hands go")
 #
 # A use whose `plant` is empty is rented: its whole cost is its run goods, bought each month. It has
 # nothing to wait for, so a works or a land sector holds what it means to from the first month; it orders
