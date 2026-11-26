@@ -899,6 +899,11 @@ impl PlanCache {
         self.plans.contains_key(&key)
     }
 
+    /// A plan already made, looked at without its being counted as asked for.
+    fn peek(&self, key: (usize, u64)) -> Option<std::sync::Arc<site::Plan>> {
+        self.plans.get(&key).map(|(plan, _)| plan.clone())
+    }
+
     fn keep(&mut self, key: (usize, u64), plan: std::sync::Arc<site::Plan>) {
         self.plans.insert(key, (plan, self.built));
     }
@@ -940,6 +945,15 @@ impl PlanCache {
 ///   in a yard changes in a year the record does not.
 pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Option<FirmSite> {
     Some(planned(r, slots, f, k, lk, &firm_facts(r, slots, f, k)?))
+}
+
+/// The ground works `f` has taken in by year `k` (`site::Plan::enclosed`), in
+/// its own frame, where the year's scenery has already made its plan: for the
+/// click and the pointer (pick.rs), which never make one.
+pub fn firm_yard(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Plot> {
+    let facts = firm_facts(r, slots, f, k)?;
+    let plan = slots.plans.lock().ok()?.peek((f, facts.mark))?;
+    Some(plan.enclosed.clone())
 }
 
 /// The plan of a works whose facts are in hand (found among those already made, or made and kept), and how it stands in year `k`.

@@ -452,10 +452,12 @@ fn cell(sim: &Sim, c: usize) -> Result<(String, Vec<Group>), String> {
     match market {
         Some(t) => {
             g.row("its market town", st.town_name[t].clone());
-            // the path's cost is in squares of open lowland with no road; a
-            // unit of a good pays `freight` times its bulk on each
+            // the path's cost is in cells of open lowland with no road (said
+            // in km, a cell being 2 km across); a unit of a good pays
+            // `freight` times its bulk on each
             let d = st.dcatch[c];
-            g.row("the way to market", if d < 0.05 { "none: the market is here".to_string() } else { format!("as costly as {d:.1} squares of open lowland") });
+            let km = d * crate::landform::CELL_M / 1000.0;
+            g.row("the way to market", if d < 0.05 { "none: the market is here".to_string() } else { format!("as costly as {km:.0} km of open lowland") });
             if let Some(&grain) = C.good_index.get("grain") {
                 g.row("carting grain there", format!("{} a unit", amount(P.freight * C.weight[grain] * d)));
             }

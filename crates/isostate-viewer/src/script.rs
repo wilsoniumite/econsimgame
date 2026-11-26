@@ -42,7 +42,13 @@
 //!                     is on screen is that; stops the run if it is not
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none;
 //!                     a sandbox's hand and rules, and families for its family tab)
-//!     pick:X,Z        click the map at this spot
+//!     pick:X,Z        click the map at this spot (pick.rs says what that picks);
+//!                     pick:town:NAME and pick:works:NAME pick a town or a
+//!                     standing works by the start of its name
+//!     hover:X,Z       rest the pointer on this spot of the map, which lights
+//!                     what is under it (cursor.rs); hover:none gives it back
+//!                     to the mouse. print says what it rests on and what
+//!                     asking cost
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
 //!     card:PIXELS     scroll the card of what was clicked down this far (a
@@ -132,7 +138,9 @@ enum Step {
     Print(String),
     Scenery(String),
     Tab(Option<ui::Tab>),
-    Pick(f32, f32),
+    Pick(PickAt),
+    /// the pointer rests on this spot of the map (cursor.rs), or goes back to the mouse
+    Hover(Option<(f32, f32)>),
     Look(f32, f32, f32),
     Scroll(f32),
     /// scroll the card of what was clicked down this far
@@ -160,6 +168,13 @@ enum Step {
     Stroke(Vec<(f32, f32)>),
     /// letters typed as the keyboard gives them, into the note's line (note.rs)
     Type(String),
+}
+
+/// What a `pick` step clicks: a spot on the map, or a town or works by its name (pick.rs).
+#[derive(Clone, Debug, PartialEq)]
+enum PickAt {
+    Spot(f32, f32),
+    Named(String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -295,9 +310,15 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             // a panel that is none of these is refused, and not taken for closing the panel
             "tab" if ui::Tab::parse(arg).is_some() || arg.eq_ignore_ascii_case("none") => Step::Tab(ui::Tab::parse(arg)),
             "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news, hand, rules, families and none")),
+            "pick" if arg.starts_with("town:") || arg.starts_with("works:") => Step::Pick(PickAt::Named(arg.to_string())),
             "pick" => match nums()?.as_slice() {
-                [x, z] => Step::Pick(*x, *z),
-                _ => return Err(format!("{part}: pick takes x,z")),
+                [x, z] => Step::Pick(PickAt::Spot(*x, *z)),
+                _ => return Err(format!("{part}: pick takes x,z, town:NAME or works:NAME")),
+            },
+            "hover" if arg.eq_ignore_ascii_case("none") => Step::Hover(None),
+            "hover" => match nums()?.as_slice() {
+                [x, z] => Step::Hover(Some((*x, *z))),
+                _ => return Err(format!("{part}: hover takes x,z or none")),
             },
             "look" => match nums()?.as_slice() {
                 [x, z, d] => Step::Look(*x, *z, *d),
@@ -585,6 +606,11 @@ fn print_state(world: &mut World, note: &str) {
     }
     if note.iter().any(|s| !s.trim().is_empty()) {
         println!("script:   the inspector says: {}", said_in_one_line(&note, usize::MAX));
+    }
+    // what the pointer rests on, and what asking cost (cursor.rs)
+    if let Some(p) = world.get_resource::<crate::cursor::ScriptPointer>().and_then(|p| p.0) {
+        let over = world.get_resource::<crate::cursor::Hovered>().and_then(|h| h.0);
+        println!("script:   the pointer rests at {:.2},{:.2}, over {:?}; {}", p.0, p.1, over, world.resource::<crate::cursor::HoverCost>().said());
     }
     // a sandbox's tray as it is laid out, and the hand's ticks on the timeline
     if world.contains_resource::<crate::sandbox::Sandbox>() {
@@ -1047,13 +1073,32 @@ fn step(world: &mut World, sc: &mut Script) {
                 world.resource_mut::<UiState>().tab = t;
                 frame = true;
             }
-            Step::Pick(x, z) => {
+            Step::Pick(at) => {
                 let (k, _) = clock_year(world);
                 let data = world.resource::<Data>();
-                let what = crate::choose(&data.r, &data.slots, &data.cen, Vec3::new(x, world::height_at(&data.g, x, z), z), k);
+                let (what, spot) = match at {
+                    // a spot on the map, as a click there (an old script's click on a square's middle is a spot)
+                    PickAt::Spot(x, z) => {
+                        let pits = crate::pick::pits_of(&data.r, &data.slots, k);
+                        (crate::pick::choose(&data.r, &data.g, &data.slots, &data.cen, &pits, x, z, k), Some((x, z)))
+                    }
+                    PickAt::Named(name) => match crate::pick::by_name(&data.r, k, &name) {
+                        Ok(p) => (Some(p), None),
+                        Err(why) => {
+                            println!("script: no pick: {why}");
+                            (None, None)
+                        }
+                    },
+                };
+                println!("script: picked {what:?}");
                 let mut picked = world.resource_mut::<Picked>();
                 picked.what = what;
+                picked.at = spot;
                 picked.stamp = picked.stamp.wrapping_add(1);
+                frame = true;
+            }
+            Step::Hover(at) => {
+                world.resource_mut::<crate::cursor::ScriptPointer>().0 = at;
                 frame = true;
             }
             // GROUND-BRUSH: the brush drawn through the spots, a square a frame (ground.rs)
@@ -1239,7 +1284,11 @@ mod tests {
         assert_eq!(steps[0], Step::Key(KeyCode::Space, false));
         assert_eq!(steps[2], Step::Click("Next year".into()));
         assert_eq!((&steps[6], &steps[7]), (&Step::Sample(5.0, false), &Step::Sample(10.0, true)));
-        assert_eq!(steps[10], Step::Pick(31.5, 27.5));
+        assert_eq!(steps[10], Step::Pick(PickAt::Spot(31.5, 27.5)));
+        // a town or a works by its name, and the pointer resting on a spot
+        let named = parse("pick:town:Oakbury;pick:works:Fairfax Mill;hover:43.5,37.2;hover:none").unwrap();
+        assert_eq!(named, vec![Step::Pick(PickAt::Named("town:Oakbury".into())), Step::Pick(PickAt::Named("works:Fairfax Mill".into())), Step::Hover(Some((43.5, 37.2))), Step::Hover(None)]);
+        assert!(parse("pick:31").is_err() && parse("hover:1").is_err());
         // the map views and the Markets panel
         let steps = parse("key:M;key:Shift+M;key:shift+g;chip:rent;chip:Plain;chip:pill;good:next;good:back;row:coal;half:island;half:goods;map;map:after;half:Work").unwrap();
         assert_eq!(steps.last(), Some(&Step::Half(MarketsShow::Work)));
