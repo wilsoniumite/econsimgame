@@ -54,7 +54,8 @@
 //!     point:NAME      in a sandbox's Making panel (town_flow.rs), rest the
 //!                     pointer on the box whose name starts so, or on the
 //!                     ribbon GOOD>BOX (point:coal>households); point:none
-//!                     gives the pointer back to the mouse
+//!                     gives the pointer back to the mouse; point:town:NAME
+//!                     picks the town by its name and opens its making
 //!
 //! and for the map views and the Markets panel:
 //!

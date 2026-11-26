@@ -3,13 +3,14 @@
 //! could have and has not, each good's balance, and how long the answer took.
 //!
 //!     cargo run --release -p isostate-core --example making -- [--seed 7] [--year 1800]
-//!         [--to 2050] (--town NAME | --largest | --list) [--said] [--all]
+//!         [--to 2050] (--town NAME | --largest | --list | --every) [--said] [--all]
 //!
 //! A game of six families under the game's rules is played to January of
 //! `--year` (`--to` the last year, 1900 unless said), as the viewer starts
 //! one, and the town's books of the year before are read. `--largest` takes
 //! the town with the most people; `--list` names the towns with their people
-//! and their hands on the land and in works. `--said` prints what each box
+//! and their hands on the land and in works; `--every` gives a line a town,
+//! its boxes of the land and the works by hands. `--said` prints what each box
 //! and ribbon says under the pointer; `--all` prints every ribbon.
 #![allow(non_snake_case)]
 use isostate_core::inspect::{self, Thing};
@@ -19,11 +20,11 @@ use isostate_core::save::Game;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seed, mut year, mut to) = (7u64, 1800i64, 1900i64);
-    let (mut towns, mut list, mut largest, mut said, mut all) = (Vec::<String>::new(), false, false, false, false);
+    let (mut towns, mut list, mut largest, mut said, mut all, mut every) = (Vec::<String>::new(), false, false, false, false, false);
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
-        let flag = matches!(args[i].as_str(), "--list" | "--largest" | "--said" | "--all");
+        let flag = matches!(args[i].as_str(), "--list" | "--largest" | "--said" | "--all" | "--every");
         match args[i].as_str() {
             "--seed" => seed = next().parse().expect("a seed"),
             "--year" => year = next().parse().expect("a year"),
@@ -33,6 +34,7 @@ fn main() {
             "--largest" => largest = true,
             "--said" => said = true,
             "--all" => all = true,
+            "--every" => every = true,
             other => panic!("unknown option {other}"),
         }
         i += if flag { 1 } else { 2 };
@@ -50,6 +52,21 @@ fn main() {
     if list {
         for &t in &active {
             println!("  {t:3}  {:<16} {:>9.0} people, {:>7.0} on the land, {:>7.0} in works", st.town_name[t], st.pop[t], st.ag_labor[t], st.ind_labor[t]);
+        }
+    }
+    // --every: a line a town, its boxes of the land and the works with their hands
+    if every {
+        for &t in &active {
+            match inspect::tell(&g.sim, Thing::Making(t)).map(|x| x.making) {
+                Ok(Some(m)) => {
+                    let mut kinds: Vec<(f64, String)> = m.nodes.iter().filter(|x| x.kind.makes()).map(|x| (x.hands, x.label.clone())).collect();
+                    kinds.sort_by(|a, b| b.0.total_cmp(&a.0));
+                    let words: Vec<String> = kinds.iter().map(|(h, l)| format!("{l} {h:.0}")).collect();
+                    println!("  {:<14} {:>7.0} people: {}", m.name, st.pop[t], words.join(", "));
+                }
+                Ok(None) => {}
+                Err(e) => println!("  {}: {e}", st.town_name[t]),
+            }
         }
     }
     if largest {

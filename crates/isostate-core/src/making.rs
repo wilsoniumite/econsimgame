@@ -42,8 +42,8 @@
 //!
 //! The columns are set from the town's own flows: the land and what came in
 //! from outside on the left, each kind of works one column to the right of the
-//! deepest kind that supplies it, and the households and the rest of the sinks
-//! on the right. A cycle (electricity into the colliery and coal into the
+//! deepest kind that supplies a tenth or more of what it takes in, and the
+//! households and the rest of the sinks on the right. A cycle (electricity into the colliery and coal into the
 //! power station) is cut at its smallest link, keeping the heavy ones; a link
 //! cut runs back, and the panel draws it as a thin loop. Kinds the town knows
 //! the idea of and has none of (`Faint`) stand in the column the tree's own
@@ -57,9 +57,13 @@ use crate::inspect::{KNOWS, amount, and_list, lower, qty, whole};
 use crate::sim::Sim;
 use crate::util::fmt_pct;
 
-/// At most this many boxes of the land and of works by name; past it the
-/// smallest by hands are gathered into "Other works" and "Other land".
-pub const MOST_KINDS: usize = 11;
+/// At most this many boxes of the land's uses and of kinds of works by name;
+/// past them the smallest by the value they made are gathered into "Other
+/// land" and "Other works". With the outside, the households, building and the store, a chart
+/// has at most twenty-one boxes, and the seven not of the land or the works
+/// are at its edges.
+pub const MOST_LAND: usize = 4;
+pub const MOST_WORKS: usize = 8;
 
 /// What a box stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -305,7 +309,7 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
     let G = C.G;
     let town_name = |o: usize| names.get(o).cloned().unwrap_or_else(|| format!("town {o}"));
 
-    // ---- the candidates for a box of their own, ranked by hands
+    // ---- the candidates for a box of their own, ranked by the value they made
     // (kinds of works by the good they make; the land by its use)
     let mut by_good: Vec<Vec<usize>> = vec![Vec::new(); G];
     for (i, mb) in tb.methods.iter().enumerate() {
@@ -324,10 +328,16 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
             cands.push((hands, value, Key::Works(g)));
         }
     }
-    cands.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.total_cmp(&a.1)).then(rank(a.2).cmp(&rank(b.2))));
-    // a gathering of one would only rename it
-    let keep = if cands.len() <= MOST_KINDS + 1 { cands.len() } else { MOST_KINDS };
-    let gathered: Vec<Key> = cands[keep..].iter().map(|c| c.2).collect();
+    // (by the value they made: a gasworks of sixty hands that lights a town is not a small kind)
+    cands.sort_by(|a, b| b.1.total_cmp(&a.1).then(b.0.total_cmp(&a.0)).then(rank(a.2).cmp(&rank(b.2))));
+    // the land and the works each in their own budget; a gathering of one would only rename it
+    let mut gathered: Vec<Key> = Vec::new();
+    for (land, most) in [(true, MOST_LAND), (false, MOST_WORKS)] {
+        let these: Vec<Key> = cands.iter().map(|c| c.2).filter(|k| matches!(k, Key::Land(_)) == land).collect();
+        if these.len() > most + 1 {
+            gathered.extend_from_slice(&these[most..]);
+        }
+    }
     let land_key = |s: usize| if gathered.contains(&Key::Land(s)) { Key::OtherLand } else { Key::Land(s) };
     let works_key = |g: usize| if gathered.contains(&Key::Works(g)) { Key::OtherWorks } else { Key::Works(g) };
 
@@ -405,17 +415,20 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
     let mut ribbons: Vec<Ribbon> = flows.iter().map(|&((a, b, g), q)| Ribbon { from: index[&a], to: index[&b], good: g, qty: q, value: q * price(g), back: false, said: Vec::new() }).collect();
 
     // ---- the columns: the land and the outside at 0; each kind of works one
-    // to the right of the deepest kind that supplies it, the links kept
-    // heaviest first and one that would close a cycle left out; the sinks
-    // in the last column, never before the third
+    // to the right of the deepest kind that supplies it with a tenth or more
+    // of what it takes in (so that a little fuel or plant does not push a
+    // kind along), the links kept heaviest first and one that would close a
+    // cycle left out; the sinks in the last column, never before the third
     let n = keys.len();
     let mut link: HashMap<(usize, usize), f64> = HashMap::new();
+    let mut taken = vec![0.0f64; n];
     for r in &ribbons {
+        taken[r.to] += r.value;
         if r.from != r.to && !keys[r.from].kind().sink() && !keys[r.to].kind().sink() && !keys[r.to].kind().source() {
             *link.entry((r.from, r.to)).or_default() += r.value;
         }
     }
-    let mut links: Vec<((usize, usize), f64)> = link.into_iter().collect();
+    let mut links: Vec<((usize, usize), f64)> = link.into_iter().filter(|&((_, b), v)| v >= 0.1 * taken[b]).collect();
     links.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     let mut kept: Vec<Vec<usize>> = vec![Vec::new(); n];
     let reaches = |kept: &Vec<Vec<usize>>, from: usize, to: usize| {
@@ -593,13 +606,13 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
         if let Key::Works(g) = keys[r.to] {
             let cart: f64 = by_good[g].iter().map(|&i| tb.methods[i].cart_in).sum();
             if cart > 0.0 && nodes[r.to].value_in > 0.0 {
-                r.said.push(format!("About {} to carry it to the works.", whole(cart * r.value / nodes[r.to].value_in)));
+                r.said.push(carried(cart * r.value / nodes[r.to].value_in, r.value, "to the works"));
             }
         }
         if let Key::Land(s) = keys[r.from] {
             let cart = tb.land[s].carting;
             if cart > 0.0 && nodes[r.from].value_out > 0.0 {
-                r.said.push(format!("About {} to carry it to market.", whole(cart * r.value / nodes[r.from].value_out)));
+                r.said.push(carried(cart * r.value / nodes[r.from].value_out, r.value, "to market"));
             }
         }
         if r.back {
@@ -626,7 +639,7 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
     }
 
     let hands = fig("hands_land") + fig("hands_works");
-    let said = format!("How {} made its living in {year}: a box for each kind of works and use of the land, as tall as the value through it and as wide as its hands; a ribbon for each good, as wide as its value at the town's prices. Each good is pooled in the town's market, so a ribbon is its maker's share of what the town had, times what its buyer took.", tb.name);
+    let said = "A box for each kind of works and use of the land, as tall as the value through it and as wide as its hands; a ribbon for each good, as wide as its value in the year at the town's prices. Each good is pooled in the town's market, so a ribbon is its maker's share of what the town had, times what its buyer took.".to_string();
     Making {
         town: tb.town,
         name: tb.name.clone(),
@@ -640,6 +653,16 @@ pub fn from_books(C: &Content, tb: &TownBooks, knows: &dyn Fn(usize) -> bool, na
         good_colour: C.good_color.clone(),
         hands,
         said,
+    }
+}
+
+/// What carrying a ribbon's good cost, in words: next to nothing where it is
+/// under a hundredth of what the good is worth (works by the market place).
+fn carried(cost: f64, value: f64, whither: &str) -> String {
+    if cost < 0.01 * value {
+        format!("Carrying it {whither} cost next to nothing.")
+    } else {
+        format!("About {} to carry it {whither}.", whole(cost))
     }
 }
 

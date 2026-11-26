@@ -34,15 +34,18 @@
 //! and what it sold for, each method's recipe, and the methods known here and
 //! used by none) and a ribbon says its good, its amount, its price here and
 //! what it cost to carry; the words are the core's (`Node::said`,
-//! `Ribbon::said`). A script points with `point:NAME` (script.rs).
+//! `Ribbon::said`). A script points with `point:NAME` (script.rs), and
+//! `point:town:NAME` picks a town by its name and opens its making.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
+use bevy::tasks::{futures::check_ready, AsyncComputeTaskPool, Task};
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use isostate_core::inspect::Thing;
 use isostate_core::making::{Kind, Making};
@@ -82,9 +85,14 @@ struct FlowTip;
 pub struct Flow {
     /// the town whose making is shown, while the panel is open
     town: Option<usize>,
-    plan: Option<Plan>,
+    plan: Option<Arc<Plan>>,
+    /// raised by one with every plan, so that a painting of an old one is let go
+    generation: u64,
     image: Option<Handle<Image>>,
     hit: Option<Hit>,
+    /// what the picture shows lit, once painted, and the painting under way
+    painted: Option<Option<Hit>>,
+    painting: Option<(u64, Option<Hit>, Task<Vec<u8>>, Instant)>,
     /// a script's pointer: a box by the start of its name, or a ribbon as
     /// GOOD>BOX (the good's name, and the start of the name of the box it
     /// goes to), in place of the mouse
@@ -94,7 +102,7 @@ pub struct Flow {
 pub fn plugin(app: &mut App) {
     app.init_resource::<Flow>().add_systems(Startup, spawn_panel).add_systems(
         Update,
-        (card_chip, open_close, ask, draw, hover).chain().after(game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
+        (card_chip, open_close, ask, draw, hover, painter).chain().after(game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
     );
 }
 
@@ -112,8 +120,12 @@ const SIDE: f32 = 6.0;
 const BOX_MAX: f32 = 34.0;
 const BOX_MIN: f32 = 5.0;
 const BOX_PLAIN: f32 = 10.0;
-/// A faint kind's height.
+/// A faint kind's height, and the most a column shows (a town founded late
+/// knows a score of ideas it has no works of).
 const FAINT_H: f32 = 9.0;
+const FAINT_MOST: usize = 4;
+/// A ribbon thinner than this is not drawn (it is counted in its boxes).
+const THINNEST: f32 = 0.5;
 /// The panel's place on the window: clear of the bar across the top, the
 /// timeline under it and the card on the right (main.rs's `INSPECT_W`).
 const PANEL_LEFT: f32 = 14.0;
@@ -313,7 +325,7 @@ pub fn plan(m: &Making, w: f32, h: f32) -> Plan {
     let mut faint: Vec<Option<Place>> = vec![None; m.faint.len()];
     for c in 0..cols {
         let mut y = in_col[c].iter().map(|&i| boxes[i].y + boxes[i].h).fold(TOP, f32::max) + GAP;
-        for (k, _) in m.faint.iter().enumerate().filter(|(_, f)| f.col == c) {
+        for (k, _) in m.faint.iter().enumerate().filter(|(_, f)| f.col == c).take(FAINT_MOST) {
             if y + LABEL + FAINT_H > h - BOTTOM {
                 break;
             }
@@ -365,7 +377,7 @@ pub fn hit(p: &Plan, at: Vec2) -> Option<Hit> {
     }
     p.bands
         .iter()
-        .filter(|b| b.t >= 0.3 && at.x >= b.x0.min(b.x1) && at.x <= b.x0.max(b.x1))
+        .filter(|b| b.t >= THINNEST && at.x >= b.x0.min(b.x1) && at.x <= b.x0.max(b.x1))
         .filter(|b| {
             let top = b.top(at.x);
             at.y >= top - 1.5 && at.y <= top + b.t.max(1.0) + 1.5
@@ -458,6 +470,21 @@ impl Canvas {
         }
     }
 
+    /// A ribbon's top and bottom edges, a pixel wide, so that the one under
+    /// the pointer stands out even in a pale good's colour.
+    fn edges(&mut self, b: &Band, col: [f32; 3]) {
+        let t = b.t.max(0.8);
+        let (xa, xb) = (b.x0.min(b.x1).floor().max(0.0) as usize, (b.x0.max(b.x1).ceil() as usize).min(self.w));
+        for x in xa..xb {
+            let top = b.top(x as f32 + 0.5);
+            for y in [top, top + t - 1.0] {
+                if y >= 0.0 {
+                    self.over(x, y.round() as usize, col, 0.9);
+                }
+            }
+        }
+    }
+
     /// A dashed rule round a rectangle.
     fn dashed(&mut self, p: &Place, col: [f32; 3], a: f32) {
         let (x0, y0, x1, y1) = (p.x.round() as usize, p.y.round() as usize, (p.x + p.w).round() as usize, (p.y + p.h).round() as usize);
@@ -488,13 +515,18 @@ pub fn paint(p: &Plan, lit: Option<Hit>) -> (usize, usize, Vec<u8>) {
         Some(Hit::Box(i)) => Some(m.ribbons[k].from == i || m.ribbons[k].to == i),
         Some(Hit::Faint(_)) => Some(false),
     };
-    for b in &p.bands {
+    for b in p.bands.iter().filter(|b| b.t >= THINNEST) {
         let a = match lit_ribbon(b.ribbon) {
             None => if b.back { 0.30 } else { 0.62 },
             Some(true) => 0.88,
             Some(false) => 0.16,
         };
         c.band(b, a);
+    }
+    if let Some(Hit::Ribbon(k)) = lit {
+        if let Some(b) = p.bands.iter().find(|b| b.ribbon == k) {
+            c.edges(b, [b.colour[0] * 0.55, b.colour[1] * 0.55, b.colour[2] * 0.55]);
+        }
     }
     for (i, b) in p.boxes.iter().enumerate() {
         let a = if matches!(lit, Some(Hit::Box(j)) if j == i) { 1.0 } else { 0.92 };
@@ -538,11 +570,12 @@ fn spawn_panel(mut commands: Commands) {
             border_radius: BorderRadius::all(Val::Px(16.0)),
             ..default()
         },
-        BackgroundColor(PAPER),
+        // (the paper of the cards, without their touch of see-through: the chart is read closely)
+        BackgroundColor(PAPER.with_alpha(1.0)),
         BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
         Interaction::default(),
         FocusPolicy::Block,
-        GlobalZIndex(9),
+        GlobalZIndex(12),
         Visibility::Hidden,
         FlowPanel,
     ));
@@ -582,7 +615,30 @@ fn card_chip(mut commands: Commands, font: Res<UiFont>, picked: Res<Picked>, tl:
 
 /// Open from the card's chip; follow the town picked; close with Close,
 /// Escape, or when no town is picked.
-fn open_close(open: Query<&Interaction, (Changed<Interaction>, With<OpenMaking>)>, close: Query<&Interaction, (Changed<Interaction>, With<CloseMaking>)>, keys: Res<ButtonInput<KeyCode>>, picked: Res<Picked>, mut flow: ResMut<Flow>) {
+#[allow(clippy::too_many_arguments)]
+fn open_close(
+    open: Query<&Interaction, (Changed<Interaction>, With<OpenMaking>)>,
+    close: Query<&Interaction, (Changed<Interaction>, With<CloseMaking>)>,
+    keys: Res<ButtonInput<KeyCode>>,
+    data: Res<Data>,
+    mut picked: ResMut<Picked>,
+    mut flow: ResMut<Flow>,
+) {
+    // a script's `point:town:NAME`: the town picked by its name and its making opened, as a
+    // click on the town and then on Making would (a town's square is not where a script can
+    // know it is, once works stand on its market place)
+    if let Some(name) = flow.point.as_deref().and_then(|p| p.strip_prefix("town:")).map(|n| n.trim().to_lowercase()) {
+        flow.point = None;
+        match data.r.header.towns.iter().position(|t| t.name.to_lowercase() == name) {
+            Some(t) => {
+                picked.what = Some(crate::Pick::Town(t));
+                picked.stamp += 1;
+                flow.town = Some(t);
+            }
+            None => println!("making: there is no town called {name}"),
+        }
+        return;
+    }
     let town = town_picked(&picked);
     if open.iter().any(|i| *i == Interaction::Pressed) {
         flow.town = town;
@@ -657,6 +713,8 @@ fn draw(
     flow.hit = None;
     flow.plan = None;
     flow.image = None;
+    flow.painted = None;
+    flow.painting = None;
     *vis = if now == Shown::Shut { Visibility::Hidden } else { Visibility::Inherited };
     let f = font.0.clone();
     match &now {
@@ -678,11 +736,11 @@ fn draw(
             let size = chart_size(win);
             let pl = plan(m, size.x, size.y);
             let t1 = Instant::now();
-            let (w, h, px) = paint(&pl, None);
-            let t2 = Instant::now();
-            let handle = images.add(image(w, h, px));
+            // a bare sheet of the chart's paper, until the painting comes (`painter`)
+            let (w, h) = (pl.w.round().max(1.0) as usize, pl.h.round().max(1.0) as usize);
+            let handle = images.add(image(w, h, [GROUND[0] as u8, GROUND[1] as u8, GROUND[2] as u8, 255].repeat(w * h)));
             println!(
-                "making: {} in {}: {} boxes, {} ribbons ({} back), {} faint kinds, {} columns; laid out in {:.1} ms, painted in {:.1} ms",
+                "making: {} in {}: {} boxes, {} ribbons ({} back), {} faint kinds, {} columns; laid out in {:.1} ms",
                 m.name,
                 m.year,
                 m.nodes.len(),
@@ -690,8 +748,7 @@ fn draw(
                 m.ribbons.iter().filter(|r| r.back).count(),
                 m.faint.len(),
                 m.cols,
-                1e3 * (t1 - t0).as_secs_f64(),
-                1e3 * (t2 - t1).as_secs_f64()
+                1e3 * (t1 - t0).as_secs_f64()
             );
             commands.entity(e).with_children(|p| {
                 head(p, &f, &format!("How {} made its living in {}", m.name, m.year), Some(*present));
@@ -706,7 +763,8 @@ fn draw(
                 .with_children(|c| labels(c, &f, &pl));
                 key(p, &f, m);
             });
-            flow.plan = Some(pl);
+            flow.plan = Some(Arc::new(pl));
+            flow.generation += 1;
             flow.image = Some(handle);
         }
     }
@@ -789,7 +847,7 @@ fn labels(c: &mut ChildSpawnerCommands, f: &Handle<Font>, p: &Plan) {
         BorderColor::all(RULE),
         FocusPolicy::Pass,
         Visibility::Hidden,
-        GlobalZIndex(11),
+        GlobalZIndex(13),
         FlowTip,
     ));
 }
@@ -819,20 +877,19 @@ fn key(p: &mut ChildSpawnerCommands, f: &Handle<Font>, m: &Making) {
 }
 
 /// What is under the pointer (or a script's pointer): its words beside it,
-/// and the chart painted again with it standing out, only when it changes.
-#[allow(clippy::too_many_arguments)]
+/// at once, and the chart painted again with it standing out (`painter`),
+/// only when it changes.
 fn hover(
     mut commands: Commands,
     font: Res<UiFont>,
     mut flow: ResMut<Flow>,
     chart: Query<(&RelativeCursorPosition, &ComputedNode), With<FlowChart>>,
     mut tip: Query<(Entity, &mut Node, &mut Visibility, Option<&Children>), With<FlowTip>>,
-    mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(pl) = flow.plan.as_ref() else { return };
+    let Some(pl) = flow.plan.clone() else { return };
     let (at, hit_now) = match flow.point.as_deref() {
-        Some(words) => match find(pl, words) {
-            Some(h) => (Some(spot(pl, h)), Some(h)),
+        Some(words) => match find(&pl, words) {
+            Some(h) => (Some(spot(&pl, h)), Some(h)),
             None => (None, None),
         },
         None => {
@@ -841,18 +898,13 @@ fn hover(
                 let size = node.size() * node.inverse_scale_factor();
                 Some((n + Vec2::splat(0.5)) * size)
             });
-            (at, at.and_then(|a| hit(pl, a)))
+            (at, at.and_then(|a| hit(&pl, a)))
         }
     };
     if hit_now == flow.hit {
         return;
     }
-    let t0 = Instant::now();
-    let (_, _, px) = paint(pl, hit_now);
-    if let Some(mut img) = flow.image.as_ref().and_then(|h| images.get_mut(h)) {
-        img.data = Some(px);
-    }
-    let painted = t0.elapsed().as_secs_f64() * 1e3;
+    flow.hit = hit_now;
     let Ok((e, mut node, mut vis, children)) = tip.single_mut() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
@@ -878,11 +930,37 @@ fn hover(
                 t.spawn(text(&f, l, if n == 0 { 13.0 } else { 11.5 }, if n == 0 { INK } else { MUTED }));
             }
         });
-        println!("making: under the pointer ({painted:.1} ms to paint): {}", lines.join(" | "));
+        println!("making: under the pointer: {}", lines.join(" | "));
     } else {
         *vis = Visibility::Hidden;
     }
-    flow.hit = hit_now;
+}
+
+/// The chart is painted off the main thread, so that the view never waits
+/// for it: a painting is begun when the picture does not show what is lit
+/// now and none is under way, and laid into the chart's image when it comes,
+/// if the plan it was made from is still the one drawn.
+fn painter(mut flow: ResMut<Flow>, mut images: ResMut<Assets<Image>>) {
+    if let Some((generation, lit, task, t0)) = flow.painting.as_mut() {
+        let Some(px) = check_ready(task) else { return };
+        let (generation, lit, ms) = (*generation, *lit, t0.elapsed().as_secs_f64() * 1e3);
+        flow.painting = None;
+        if generation != flow.generation {
+            return;
+        }
+        if let Some(mut img) = flow.image.as_ref().and_then(|h| images.get_mut(h)) {
+            img.data = Some(px);
+        }
+        flow.painted = Some(lit);
+        println!("making: painted in {ms:.1} ms, off the main thread");
+    }
+    let Some(pl) = flow.plan.clone() else { return };
+    if flow.painted == Some(flow.hit) {
+        return;
+    }
+    let lit = flow.hit;
+    let task = AsyncComputeTaskPool::get().spawn(async move { paint(&pl, lit).2 });
+    flow.painting = Some((flow.generation, lit, task, Instant::now()));
 }
 
 #[cfg(test)]
