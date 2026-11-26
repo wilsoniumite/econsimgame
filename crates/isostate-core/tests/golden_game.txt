@@ -301,6 +301,11 @@
 # Taken: the hauliers' till (lorry.till, docs/rules/lorry.md, 'The lorry's
 # bill'): the lorries are paid out of a till their carting is paid into, never
 # beyond it; it acts from the lorry's find, about 1925
+# Taken: taken again on the merged batch night/g-batch-mend-a (lorry-bill,
+# new-good): against main 78f01c7 the 1901-2050 economy, books, news and
+# run.bin moved by the hauliers' till (lorry.till), which acts from the
+# lorry's find; 1750-1900 held; the new good's mends move nothing, so none
+# moved against lorry-bill's own
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
