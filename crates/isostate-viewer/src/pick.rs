@@ -56,24 +56,40 @@ pub struct Near {
 }
 
 /// What a click may find near it in the year on the clock, worked out once a
-/// year (or once a run, a live year) and not every frame.
+/// year (or once a run, a live year) off the main thread, and not every frame:
+/// until a new year's comes, the last year's serves.
 #[derive(Resource, Default)]
 pub struct Pits {
     key: Option<(usize, usize, usize)>,
     pub near: Near,
+    making: Option<((usize, usize, usize), bevy::tasks::Task<(Near, f32)>)>,
+    /// how long the newest took to work out off the main thread, in ms
+    pub took_ms: f32,
 }
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Pits>().add_systems(Update, keep_pits.before(crate::pick));
 }
 
-/// The pits again when the year on the clock, the run or the slots change.
+/// The pits and works again when the year on the clock, the run or the slots change.
 fn keep_pits(data: Res<crate::Data>, tl: Res<crate::Timeline>, mut pits: ResMut<Pits>) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let key = (k, std::sync::Arc::as_ptr(&data.r) as usize, std::sync::Arc::as_ptr(&data.slots) as usize);
+    if let Some((made_for, task)) = pits.making.as_mut() {
+        if let Some((near, ms)) = bevy::tasks::futures::check_ready(task) {
+            let made_for = *made_for;
+            (pits.near, pits.took_ms, pits.key, pits.making) = (near, ms, Some(made_for), None);
+        }
+        return;
+    }
     if pits.key != Some(key) {
-        pits.near = near_of(&data.r, &data.slots, k);
-        pits.key = Some(key);
+        let (r, slots) = (data.r.clone(), data.slots.clone());
+        let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+            let t0 = std::time::Instant::now();
+            let near = near_of(&r, &slots, k);
+            (near, t0.elapsed().as_secs_f32() * 1e3)
+        });
+        pits.making = Some((key, task));
     }
 }
 

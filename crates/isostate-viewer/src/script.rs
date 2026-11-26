@@ -612,7 +612,8 @@ fn print_state(world: &mut World, note: &str) {
     // what the pointer rests on, and what asking cost (cursor.rs)
     if let Some(p) = world.get_resource::<crate::cursor::ScriptPointer>().and_then(|p| p.0) {
         let over = world.get_resource::<crate::cursor::Hovered>().and_then(|h| h.0);
-        println!("script:   the pointer rests at {:.2},{:.2}, over {:?}; {}", p.0, p.1, over, world.resource::<crate::cursor::HoverCost>().said());
+        let made = world.get_resource::<crate::pick::Pits>().map_or(0.0, |p| p.took_ms);
+        println!("script:   the pointer rests at {:.2},{:.2}, over {:?}; {}; the year's pits and works were listed for it in {made:.1} ms off the main thread", p.0, p.1, over, world.resource::<crate::cursor::HoverCost>().said());
     }
     // a sandbox's tray as it is laid out, and the hand's ticks on the timeline
     if world.contains_resource::<crate::sandbox::Sandbox>() {
