@@ -87,6 +87,8 @@ pub const FIXED_AT_START: &[&str] = &[
     "ages.watch",
     // (the state's purse: its treasury and its book are kept from the start; its chips may be set)
     "state.enabled",
+    // (the start, settled or landfall: the island's towns are placed when it is made)
+    "start",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where
@@ -119,6 +121,8 @@ pub const SWITCHES: &[&str] = &[
     "woods.enabled",
     "who_works.enabled",
     "pace.enabled",
+    "frontier.enabled",
+    "immigration.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -172,6 +176,8 @@ pub const SWITCHABLE: &[&str] = &[
     "woods.enabled",
     "who_works.enabled",
     "pace.enabled",
+    "frontier.enabled",
+    "immigration.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",

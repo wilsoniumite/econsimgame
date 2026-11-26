@@ -149,6 +149,8 @@ pub struct YearSums {
     pub births: f64,
     /// Those who took ship, and a shortfall taken as more of them.
     pub left: f64,
+    /// Settlers from abroad.
+    pub came: f64,
     /// The island's people after the year's step.
     pub after: f64,
     /// Towns whose remainder was less than nothing, and the people it lacked;
@@ -190,6 +192,10 @@ pub struct AgesState {
     pub ybar: Vec<f64>,
     /// This year's emigrants from each town (`peopling::growth`).
     pub left: Vec<f64>,
+    /// This year's settlers to each town from abroad (`immigration::year`), and
+    /// the years of school they bring.
+    pub came: Vec<f64>,
+    pub came_school: f64,
     /// The year in hand.
     pub now: Option<YearSums>,
     pub years: Vec<AgesYear>,
@@ -324,6 +330,16 @@ pub fn sailed(st: &mut State, P: &Params, left: &[f64]) {
     }
 }
 
+/// The settlers of the year to each town from abroad (`immigration::year`),
+/// and the years of school a living of `abroad_y` baskets a head buys, which
+/// those past fifteen bring.
+pub fn came(st: &mut State, P: &Params, came: &[f64], abroad_y: f64) {
+    if P.ages.watch {
+        st.ages.came = came.to_vec();
+        st.ages.came_school = school_years(abroad_y);
+    }
+}
+
 /// The year, town by town (`people::growth`, once the played rate has met
 /// `st.pop`, before the year's food and income are cleared): the leavers,
 /// the deaths, a fifth of each group up, and the births that make the played
@@ -339,6 +355,8 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
     let ap = &P.ages;
     let mut sums = YearSums::default();
     let left_now = std::mem::take(&mut st.ages.left);
+    let came_now = std::mem::take(&mut st.ages.came);
+    let came_school = st.ages.came_school;
     for t in 0..T {
         let n1 = if st.town_active[t] { st.pop[t].max(0.0) } else { 0.0 };
         let yt = y.get(t).copied().unwrap_or(0.0);
@@ -347,7 +365,7 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
             *yb += (yt - *yb) / SCHOOL_YEARS_BACK;
         }
         let mut r = st.ages.rows[t];
-        let s = st.ages.school[t];
+        let mut s = st.ages.school[t];
         let n0 = sum(&r);
         sums.after += n1;
         if n0 <= 0.0 {
@@ -366,6 +384,19 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
                 r[a] -= took[a];
             }
             sums.left += left;
+        }
+        // settlers from abroad (docs/rules/immigration.md), at their ages, as the year begins
+        let came = came_now.get(t).copied().unwrap_or(0.0).max(0.0);
+        if came > 0.0 {
+            for a in 0..GROUPS {
+                let m = came * crate::immigration::AGES[a];
+                if m > 0.0 {
+                    let school = if a >= WORKING.start { came_school } else { 0.0 };
+                    s[a] = (r[a] * s[a] + m * school) / (r[a] + m);
+                    r[a] += m;
+                }
+            }
+            sums.came += came;
         }
         // deaths by hazard, and the played dearth's, heavier on the frail
         let h = hazards(ap, P.people.y_still, yt, crowd(st, P, t, yt), year);
@@ -434,6 +465,7 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
         st.ages.school[t] = school;
     }
     st.ages.left = vec![0.0; T];
+    st.ages.came = vec![0.0; T];
     st.ages.now = Some(sums);
 }
 
