@@ -1467,9 +1467,13 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         if kinds.iter().skip(1).sum::<usize>() == 0 {
             return Err(format!("{year}: cell {c} keeps a table with nothing on it"));
         }
-        // the works' squares come to the cell's works share within a square
+        // the works' squares come to the cell's works share within a square, or
+        // as far over it as works keep squares while their ground ebbs
+        // (works.by_method, squares.keep)
         let share = ks[c].min(1.0);
-        if (works_on[c] as f64 - share * PER_CELL as f64).abs() > 1.0 && b.short == 0 {
+        let over = if P.works.enabled && P.works.by_method { (share * PER_CELL as f64 / P.squares.keep).min(PER_CELL as f64) } else { share * PER_CELL as f64 };
+        let n = works_on[c] as f64;
+        if (n < share * PER_CELL as f64 - 1.0 || n > over + 1.0) && b.short == 0 {
             return Err(format!("{year}: cell {c} has {} squares of works for {share:.4} of the cell", works_on[c]));
         }
         // a pit's squares come to its surface within a square
