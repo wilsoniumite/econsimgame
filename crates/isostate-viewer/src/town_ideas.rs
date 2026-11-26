@@ -13,21 +13,23 @@
 //! the ideas in groups as the tree groups them (the trades of the works, the
 //! ways of working, the machines for tasks), each a chip.
 //!
-//! A click on a chip only chooses it: the line over the groups then says what
-//! the simulation says of it (what it opened and how many works of it stand
-//! here now; where it is known; or what it waits on). Only an idea found
-//! nowhere yet has a second chip under that line, Discover it here, and only
-//! that chip changes the island: it sends the hand's edit for an idea
-//! (`sandbox::discover_edit`, the very edit the Idea tool makes) under the
-//! tray's guards, and its answer goes up as the Idea tool's does. So the card
-//! opened and read, and any chip chosen, issues no edit.
+//! A click on a chip chooses it: the line over the groups then says what the
+//! simulation says of it (what it opened and how many works of it stand here
+//! now; where it is known; or what it waits on). A click on an idea found
+//! nowhere yet (a faint chip) also discovers it here: it sends the hand's edit
+//! for an idea (`sandbox::discover_edit`, the very edit the Idea tool makes)
+//! under the tray's guards, and its answer goes up as the Idea tool's does.
+//! Until 25 November 2026 that took a second click, on Discover it here under
+//! the line, because nothing could be taken back; now that an edit can be
+//! (take_back.rs), the card's line after a discovery keeps what the idea
+//! waited on before the hand ("Before the hand: ...") and offers Take it
+//! back while the discovery is the last edit by hand, which is the tray's own
+//! order. So the card opened and read, and any chip of an idea known here or
+//! elsewhere chosen, issues no edit.
 //!
 //! An idea found by hand is carried out at once, between two months, as the
 //! Idea tool's is: it is in the Hand tab's list and on the timeline at once,
-//! and a kept session keeps it, since it is one more order in the log. It
-//! does not wait for the year's turn, and it cannot be taken back, any more
-//! than the Idea tool's can: the design takes back an edit carried out only at
-//! its stage 8, which is not built.
+//! and a kept session keeps it, since it is one more order in the log.
 //!
 //! The view never waits: the ideas come with the card's answer, which the
 //! thread makes between months (a few tenths of a millisecond more for a town
@@ -58,14 +60,13 @@ pub struct IdeasBlock;
 #[derive(Component)]
 struct IdeaChip(String);
 
-/// The chip that finds the idea chosen in the town by hand.
-#[derive(Component)]
-struct DiscoverHere;
-
 /// The idea chosen on a town's card, by the town and the idea's name.
 #[derive(Resource, Default)]
 pub struct Chosen {
     pick: Option<(usize, String)>,
+    /// an idea discovered from the card: the town, the idea, and its line as
+    /// it read before the hand (what it waited on)
+    before: Option<(usize, String, String)>,
     version: u64,
 }
 
@@ -73,28 +74,15 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Chosen>().add_systems(
         Update,
         // (after the answers of the frame are kept, as the inspector's own block is drawn)
-        (chips, discover, draw).chain().after(crate::game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
+        (chips, draw).chain().after(crate::game::pump).run_if(resource_exists::<Sandbox>).run_if(resource_exists::<Live>),
     );
 }
 
-/// What a press on a chip of the section does: a chip only chooses an idea
-/// (or lets it go, pressed again), and makes no edit; Discover it here makes
-/// the hand's edit for the idea chosen, if it may be found here, and nothing
-/// else ever does.
-#[derive(Clone, Debug, PartialEq)]
-enum Press {
-    Choose(String),
-    Discover,
-}
-
-fn edit_of(press: &Press, ideas: &Ideas, chosen: Option<&str>) -> Option<Edit> {
-    match press {
-        Press::Choose(_) => None,
-        Press::Discover => {
-            let idea = ideas.all().find(|i| Some(i.name.as_str()) == chosen)?;
-            idea.discover.then(|| sandbox::discover_edit(idea.name.clone(), ideas.town))
-        }
-    }
+/// The edit a click on an idea's chip makes: the hand's edit for an idea
+/// found nowhere yet, found in this town; none for any other.
+fn edit_of(ideas: &Ideas, name: &str) -> Option<Edit> {
+    let idea = ideas.all().find(|i| i.name == name)?;
+    idea.discover.then(|| sandbox::discover_edit(idea.name.clone(), ideas.town))
 }
 
 /// The town picked, and its ideas as last told, while the clock is at the present.
@@ -106,28 +94,14 @@ fn shown<'a>(picked: &Picked, answers: &'a Answers, tl: &Timeline, data: &Data, 
     answers.get(thing)?.as_ref().ok()?.ideas.as_ref()
 }
 
-fn chips(q: Query<(&Interaction, &IdeaChip), Changed<Interaction>>, picked: Res<Picked>, answers: Res<Answers>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, mut chosen: ResMut<Chosen>) {
-    let Some(ideas) = shown(&picked, &answers, &tl, &data, &live) else { return };
-    for (i, c) in &q {
-        if *i != Interaction::Pressed {
-            continue;
-        }
-        debug_assert!(edit_of(&Press::Choose(c.0.clone()), ideas, None).is_none());
-        let again = chosen.pick.as_ref().is_some_and(|(t, n)| *t == ideas.town && *n == c.0);
-        chosen.pick = if again { None } else { Some((ideas.town, c.0.clone())) };
-        chosen.version += 1;
-        if let Some(idea) = ideas.all().find(|x| x.name == c.0).filter(|_| !again) {
-            println!("ideas: {}", idea.said);
-        }
-    }
-}
-
+/// A chip pressed: it is chosen (or let go, pressed again), and an idea found
+/// nowhere yet is discovered here by hand, under the tray's guards.
 #[allow(clippy::too_many_arguments)]
-fn discover(
-    q: Query<&Interaction, (Changed<Interaction>, With<DiscoverHere>)>,
+fn chips(
+    q: Query<(&Interaction, &IdeaChip), Changed<Interaction>>,
     picked: Res<Picked>,
     answers: Res<Answers>,
-    chosen: Res<Chosen>,
+    mut chosen: ResMut<Chosen>,
     mut sb: ResMut<Sandbox>,
     tl: Res<Timeline>,
     data: Res<Data>,
@@ -136,14 +110,31 @@ fn discover(
     mut toasts: ResMut<Toasts>,
     time: Res<Time>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
-        return;
-    }
     let Some(ideas) = shown(&picked, &answers, &tl, &data, &live) else { return };
-    let name = chosen.pick.as_ref().filter(|(t, _)| *t == ideas.town).map(|(_, n)| n.as_str());
-    let Some(edit) = edit_of(&Press::Discover, ideas, name) else { return };
-    if let Err(why) = sandbox::send_as(Tool::Idea, edit, &mut sb, &tl, &data, &live, &mut game) {
-        toasts.say("orders_refused", why, "By hand", time.elapsed_secs());
+    for (i, c) in &q {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let Some(idea) = ideas.all().find(|x| x.name == c.0) else { continue };
+        if let Some(edit) = edit_of(ideas, &c.0) {
+            // found nowhere yet: discovered here, and its line as it stood kept for the card
+            chosen.pick = Some((ideas.town, c.0.clone()));
+            chosen.version += 1;
+            match sandbox::send_as(Tool::Idea, edit, &mut sb, &tl, &data, &live, &mut game) {
+                Ok(()) => {
+                    chosen.before = Some((ideas.town, c.0.clone(), card_words(&idea.said).to_string()));
+                    println!("ideas: discovered here by hand; before, {}", idea.said);
+                }
+                Err(why) => toasts.say("orders_refused", why, "By hand", time.elapsed_secs()),
+            }
+            continue;
+        }
+        let again = chosen.pick.as_ref().is_some_and(|(t, n)| *t == ideas.town && *n == c.0);
+        chosen.pick = if again { None } else { Some((ideas.town, c.0.clone())) };
+        chosen.version += 1;
+        if !again {
+            println!("ideas: {}", idea.said);
+        }
     }
 }
 
@@ -157,12 +148,16 @@ struct Look {
     /// where it stands, and for one known here the year it was learnt (none
     /// for one known before the history began) and how it was found here
     groups: Vec<(String, Vec<(String, String, Stands, Option<i64>, Found)>)>,
-    /// the idea chosen: its name, its line and whether it may be found here
-    chosen: Option<(String, String, bool)>,
+    /// the idea chosen: its name and its line
+    chosen: Option<(String, String)>,
+    /// while the idea chosen was found here by the last edit by hand: its line
+    /// as it read before the hand, where the card was the hand, and the month
+    /// the island would go back to
+    back: Option<(Option<String>, String)>,
 }
 
 impl Look {
-    fn of(ideas: &Ideas, chosen: Option<&str>) -> Look {
+    fn of(ideas: &Ideas, chosen: Option<&str>, back: Option<(Option<String>, String)>) -> Look {
         Look {
             from: ideas.from,
             to: ideas.to,
@@ -171,8 +166,30 @@ impl Look {
                 .iter()
                 .map(|g| (g.name.clone(), g.ideas.iter().map(|i| (i.name.clone(), chip_words(i), i.stands, learnt(i), Found::of(i))).collect()))
                 .collect(),
-            chosen: chosen.and_then(|n| ideas.all().find(|i| i.name == n)).map(|i| (i.name.clone(), i.said.clone(), i.discover)),
+            chosen: chosen.and_then(|n| ideas.all().find(|i| i.name == n)).map(|i| (i.name.clone(), card_words(&i.said).to_string())),
+            back,
         }
+    }
+}
+
+/// An idea's line as the card shows it: the core's line for an idea found
+/// nowhere ends by naming the second click the card asked for until 25
+/// November 2026 ("Discover it here finds it in Glenwick now, by hand."),
+/// which a click on the chip now is, and that sentence is left off.
+fn card_words(said: &str) -> &str {
+    said.split(" Discover it here").next().unwrap_or(said)
+}
+
+/// While the idea chosen in the town was found there by the last edit by
+/// hand, and that edit can be taken back: its line before the hand (if the
+/// card found it) and the month the island would go back to.
+fn taking_back(standing: &crate::live::Standing, chosen: &Chosen, town: usize, name: &str) -> Option<(Option<String>, String)> {
+    match crate::take_back::last_edit(standing)? {
+        Edit::Discover { tech, town: t } if *t == town && tech == name => {
+            let before = chosen.before.as_ref().filter(|(bt, bn, _)| *bt == town && bn == name).map(|b| b.2.clone());
+            Some((before, crate::take_back::date_of(standing.back?)))
+        }
+        _ => None,
     }
 }
 
@@ -228,7 +245,7 @@ fn draw(
 ) {
     let ideas = shown(&picked, &answers, &tl, &data, &live);
     let name = ideas.and_then(|x| chosen.pick.as_ref().filter(|(t, _)| *t == x.town)).map(|(_, n)| n.as_str());
-    let look = ideas.map(|x| Look::of(x, name));
+    let look = ideas.map(|x| Look::of(x, name, name.and_then(|n| taking_back(&live.standing, &chosen, x.town, n))));
     if drawn.as_ref() == Some(&look) {
         return;
     }
@@ -255,16 +272,23 @@ fn section(p: &mut ChildSpawnerCommands, f: &Handle<Font>, l: &Look) {
     p.spawn(text(f, &format!("{} known here, {} known elsewhere on the island (greyed), {} found nowhere yet (faint).", count(Stands::Here), count(Stands::Elsewhere), count(Stands::Nowhere)), 12.0, MUTED));
     strip(p, f, l);
     p.spawn(text(f, "A short tick for each idea learnt from the other towns, a tall one for each found here, in the hand's ink if by hand.", 11.0, MUTED));
-    // the line of the idea chosen, and the one chip that changes the island
+    // the line of the idea chosen; after a discovery here by hand, what it waited on before and the
+    // chip that takes it back
     match &l.chosen {
-        Some((_, said, may)) => {
+        Some((_, said, ..)) => {
             p.spawn((text(f, said, 12.5, INK), Node { margin: UiRect::top(Val::Px(4.0)), ..default() }));
-            if *may {
-                p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|row| crate::family::chip_button(row, f, "Discover it here", true, HAND_INK, DiscoverHere));
+            if let Some((before, date)) = &l.back {
+                if let Some(before) = before {
+                    p.spawn((text(f, &format!("Before the hand: {before}"), 11.5, MUTED), Node { margin: UiRect::top(Val::Px(3.0)), ..default() }));
+                }
+                p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), align_items: AlignItems::Center, column_gap: Val::Px(8.0), flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|row| {
+                    crate::family::chip_button(row, f, crate::take_back::CARD_CHIP, true, HAND_INK, crate::take_back::TakeBackChip);
+                    row.spawn(text(f, &format!("puts the island back to {date}, before it was found here"), 11.5, MUTED));
+                });
             }
         }
         None => {
-            p.spawn((text(f, "Click an idea to see what it opened, where it is known, or what it waits on; one found nowhere yet can then be discovered here by hand.", 11.5, MUTED), Node { margin: UiRect::top(Val::Px(4.0)), ..default() }));
+            p.spawn((text(f, "Click an idea to see what it opened, where it is known, or what it waits on. A click on one found nowhere yet (faint) discovers it here by hand, and the card then offers to take it back.", 11.5, MUTED), Node { margin: UiRect::top(Val::Px(4.0)), ..default() }));
         }
     }
     let chosen = l.chosen.as_ref().map(|c| c.0.as_str());
@@ -362,20 +386,38 @@ mod tests {
     }
 
     #[test]
-    fn a_chip_chosen_makes_no_edit_and_discover_makes_the_idea_tools_edit() {
+    fn a_click_on_an_idea_found_nowhere_makes_the_idea_tools_edit_and_on_any_other_none() {
         let ideas = ideas();
-        // choosing any chip, of any state, makes no edit
-        for i in ideas.all() {
-            assert_eq!(edit_of(&Press::Choose(i.name.clone()), &ideas, Some(&i.name)), None);
-        }
-        // Discover it here makes nothing with no idea chosen, or one that may not be found here
-        assert_eq!(edit_of(&Press::Discover, &ideas, None), None);
-        assert_eq!(edit_of(&Press::Discover, &ideas, Some("coke_furnace")), None);
-        assert_eq!(edit_of(&Press::Discover, &ideas, Some("bessemer")), None);
-        // and for one found nowhere, the very edit the Idea tool makes on a click in the same town
-        let card = edit_of(&Press::Discover, &ideas, Some("steel_rail")).expect("an idea found nowhere may be found here");
+        // an idea known here or elsewhere, or none at all, makes no edit
+        assert_eq!(edit_of(&ideas, "coke_furnace"), None);
+        assert_eq!(edit_of(&ideas, "bessemer"), None);
+        assert_eq!(edit_of(&ideas, "no_such_idea"), None);
+        // and one found nowhere, the very edit the Idea tool makes on a click in the same town
+        let card = edit_of(&ideas, "steel_rail").expect("an idea found nowhere may be found here");
         assert_eq!(card, sandbox::discover_edit("steel_rail".into(), 3));
         assert_eq!(card, sandbox::idea_tool_edit("steel_rail", 3));
+    }
+
+    #[test]
+    fn the_card_offers_to_take_back_only_its_own_discovery_while_it_is_the_last_edit() {
+        use crate::live::{Last, Standing};
+        let mut chosen = Chosen::default();
+        let mut s = Standing::default();
+        assert_eq!(taking_back(&s, &chosen, 3, "steel_rail"), None, "nothing to take back");
+        let last = |edit: Edit| Some(Last { edit, said: "By hand: steel rail found in Glenwick in 1821".into(), before: "steel rail was found in Glenwick by hand".into() });
+        s.last = last(sandbox::discover_edit("steel_rail".into(), 3));
+        assert_eq!(taking_back(&s, &chosen, 3, "steel_rail"), None, "no copy to go back to");
+        s.back = Some((1820, 0));
+        // found by the Idea tool: the chip, with no line from before
+        assert_eq!(taking_back(&s, &chosen, 3, "steel_rail"), Some((None, "January 1821".to_string())));
+        // found from the card: the line it read before the hand as well
+        chosen.before = Some((3, "steel_rail".into(), "steel rail: found nowhere yet. It waits on ...".into()));
+        assert_eq!(taking_back(&s, &chosen, 3, "steel_rail"), Some((Some("steel rail: found nowhere yet. It waits on ...".to_string()), "January 1821".to_string())));
+        // another town's card, another idea, or a later edit of another kind: none
+        assert_eq!(taking_back(&s, &chosen, 4, "steel_rail"), None);
+        assert_eq!(taking_back(&s, &chosen, 3, "bessemer"), None);
+        s.last = last(Edit::People { town: 3, factor: 0.5 });
+        assert_eq!(taking_back(&s, &chosen, 3, "steel_rail"), None);
     }
 
     #[test]
@@ -388,8 +430,11 @@ mod tests {
         assert_eq!(chip_words(&e), "Railways (5 towns)");
         assert_eq!(chip_words(&idea("steel_rail", Stands::Nowhere, None, true)), "steel rail");
         // what the section shows knows the idea chosen by its name
-        let look = Look::of(&ideas(), Some("steel_rail"));
-        assert_eq!(look.chosen, Some(("steel_rail".to_string(), "steel rail: ...".to_string(), true)));
-        assert_eq!(Look::of(&ideas(), Some("no_such_idea")).chosen, None);
+        let look = Look::of(&ideas(), Some("steel_rail"), None);
+        assert_eq!(look.chosen, Some(("steel_rail".to_string(), "steel rail: ...".to_string())));
+        assert_eq!(Look::of(&ideas(), Some("no_such_idea"), None).chosen, None);
+        // the core's line for an idea found nowhere names the second click the card no longer asks
+        assert_eq!(card_words("Hot-blast furnace: found nowhere yet. It waits on coal. Discover it here finds it in Glenwick now, by hand."), "Hot-blast furnace: found nowhere yet. It waits on coal.");
+        assert_eq!(card_words("Railways: known here since 1824."), "Railways: known here since 1824.");
     }
 }

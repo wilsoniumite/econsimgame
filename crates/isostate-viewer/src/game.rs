@@ -346,6 +346,26 @@ pub(crate) struct Arrived {
     months: bool,
 }
 
+/// Write a year into the run and lay out the works' ground. The universities
+/// stand after the simulation's works (`replay::stand_universities`): when the
+/// year's new works come before them they move along the list, and their
+/// ground moves with them (`Slots::shift_after`), so that each stands where it
+/// stood; the new works are laid out in the places opened before them.
+fn take_year(r: &mut Replay, g: &world::Ground, slots: &mut scatter::Slots, end: &live::YearEnd) {
+    let unis = crate::replay::universities_standing(r);
+    let before = r.header.firms.len() - unis;
+    end.apply(r);
+    let after = r.header.firms.len() - crate::replay::universities_standing(r);
+    if after != before {
+        if unis > 0 && slots.firm_pos.len() == before + unis {
+            slots.shift_after(before, after - before);
+        } else {
+            slots.forget(before);
+        }
+    }
+    scatter::place_new_firms(r, g, slots);
+}
+
 /// Off the main thread: copy the run, write in the months that waited and the
 /// year, and lay out the works' ground on the island as it now stands.
 fn arrive(r: &Replay, g: &world::Ground, slots: &scatter::Slots, held: Vec<Box<isostate_core::LiveMonth>>, end: Box<live::YearEnd>) -> Arrived {
@@ -356,10 +376,9 @@ fn arrive(r: &Replay, g: &world::Ground, slots: &scatter::Slots, held: Vec<Box<i
     for m in &held {
         live::apply_month(&mut r, m);
     }
-    end.apply(&mut r);
     let t2 = t0.elapsed().as_secs_f32();
     let mut slots = slots.clone();
-    scatter::place_new_firms(&r, g, &mut slots);
+    take_year(&mut r, g, &mut slots, &end);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!(
             "year {} arrives, off the main thread: {:.0} ms ({:.0} copying the run, {:.0} writing in {} months and the year, {:.0} standing its new works)",
@@ -470,8 +489,7 @@ pub(crate) fn pump(
                         months_into_run(&mut game, &mut data, &mut ui);
                         let Data { r, g, slots, .. } = &mut *data;
                         let r = std::sync::Arc::make_mut(r);
-                        end.apply(r);
-                        scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
+                        take_year(r, g, std::sync::Arc::make_mut(slots), &end);
                     } else {
                         let (r, g, slots) = (data.r.clone(), data.g.clone(), data.slots.clone());
                         let held = std::mem::take(&mut game.held);

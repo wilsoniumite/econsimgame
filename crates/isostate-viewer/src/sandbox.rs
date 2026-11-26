@@ -881,8 +881,15 @@ fn run_on(mut sb: ResMut<Sandbox>, mut game: ResMut<Game>, mut tl: ResMut<Timeli
     }
 }
 
-/// The tray, drawn again when a tool or a choice changes or a run on begins or ends.
-fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, icons: Res<Icons>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>) {
+/// The tray, drawn again when a tool or a choice changes, a run on begins or
+/// ends, or what there is to take back changes.
+#[allow(clippy::too_many_arguments)]
+fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, icons: Res<Icons>, live: Res<Live>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>, mut back: Local<Option<String>>) {
+    let line = crate::take_back::tray_line(&live.standing);
+    if *back != line {
+        *back = line;
+        sb.version += 1;
+    }
     if sb.drawn == Some(sb.version) {
         return;
     }
@@ -895,8 +902,9 @@ fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>,
     }
     let f = font.0.clone();
     let sb = &*sb;
+    let back = back.clone();
     commands.entity(root).with_children(|p| {
-        tray(p, &f, &icons, sb);
+        tray(p, &f, &icons, sb, back.as_deref());
         if sb.tool != Tool::Look {
             choices(p, &f, sb);
         }
@@ -953,8 +961,10 @@ fn tool_chip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, tool
     });
 }
 
-/// The first card: the tools, and Run on.
-fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sandbox) {
+/// The first card: the tools, and Run on; while there is an edit to take
+/// back, Take back the last edit after Run on's chips, and a muted line under
+/// them saying where the island would go back to (take_back.rs).
+fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sandbox, back: Option<&str>) {
     p.spawn((
         card(Node {
             flex_direction: FlexDirection::Column,
@@ -978,7 +988,13 @@ fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sand
                 let on = sb.run.is_some_and(|r| r.chip == Some(n));
                 chip_button(row, f, if n == 1 { "1 year".to_string() } else { format!("{n} years") }.as_str(), on, HAND_INK, RunOnChip(n));
             }
+            if back.is_some() {
+                chip_button(row, f, crate::take_back::TRAY_CHIP, false, HAND_INK, crate::take_back::TakeBackChip);
+            }
         });
+        if let Some(line) = back {
+            c.spawn(text(f, line, 11.5, MUTED));
+        }
     });
 }
 

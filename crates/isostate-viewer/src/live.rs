@@ -81,12 +81,25 @@ struct Back {
     cursor: LiveCursor,
     learnt: iso::inspect::Learnt,
     begun: Vec<usize>,
+    /// the edit given after the copy was taken, once it was carried out or set to wait
+    last: Option<Last>,
+}
+
+/// The last edit by hand, the one a take back would take back: the edit, the
+/// line its answer said ("By hand: Melbourne's people, 19,380 to 9,690"), and
+/// what it did in words that follow "before" ("Melbourne's people were
+/// halved"), for the tray's chip, the cards' and the toast (take_back.rs).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Last {
+    pub edit: isostate_core::edits::Edit,
+    pub said: String,
+    pub before: String,
 }
 
 impl Back {
     /// The game as it stands, copied (on the thread, before an edit is given).
     fn copy(game: &Game, cursor: &LiveCursor, learnt: &iso::inspect::Learnt, begun: &[usize]) -> Back {
-        Back { game: game.clone(), cursor: cursor.clone(), learnt: learnt.clone(), begun: begun.to_vec() }
+        Back { game: game.clone(), cursor: cursor.clone(), learnt: learnt.clone(), begun: begun.to_vec(), last: None }
     }
 
     /// Where the copy stands: the last year played, and the months of the
@@ -127,6 +140,8 @@ pub struct TakenBack {
     pub family: Option<FamilyReport>,
     pub prospects: Vec<[Prospect; N_GROUPS]>,
     pub standing: Standing,
+    /// the universities as they stood (`universities`), stood again at the end of the works cut back
+    pub unis: Vec<replay::UniRecord>,
     /// how long the thread took to put the copy back, in ms
     pub took: f32,
 }
@@ -154,9 +169,40 @@ impl TakenBack {
             prospects: all_prospects(s),
             // (nothing is left to take back once it has been)
             standing: standing(&back.game, &back.begun, None),
+            unis: universities(s),
             took,
         }
     }
+}
+
+/// The universities of the simulation (the core's docs/rules/state.md, "The
+/// university"), as a recorded run's header gives them, for a live game to
+/// stand them as works as a recorded run does (`replay::stand_universities`).
+/// None while the university is off.
+pub fn universities(s: &iso::Sim) -> Vec<replay::UniRecord> {
+    if !iso::university::on(&s.params) {
+        return Vec::new();
+    }
+    s.st.purse
+        .uni
+        .unis
+        .iter()
+        .map(|u| replay::UniRecord {
+            town: u.town as i32,
+            cell: u.cell,
+            founded: u.founded as i32,
+            closed: u.closed.map(|y| y as i32),
+            name: format!("The University of {}", s.st.town_name.get(u.town).map_or("", |n| n.as_str())),
+            students: u.history.iter().map(|&(y, n)| (y as i32, n as f32)).collect(),
+        })
+        .collect()
+}
+
+/// The squares of the universities founded by hand at the turn just made:
+/// a university stands from the end of its first year, and until then a stake
+/// marks its square, as one marks a works built by hand.
+fn universities_begun(game: &Game) -> Vec<usize> {
+    game.sim.st.purse.uni.unis.iter().filter(|u| u.by_hand && u.open() && u.founded == game.sim.year).map(|u| u.cell).collect()
 }
 
 /// The rules of the game on the thread as they stand, and the ideas not yet
@@ -184,6 +230,8 @@ pub struct Standing {
     /// (`Cmd::TakeBack`): the last year played then, and the months of the
     /// next that had been. None when there is nothing to take back
     pub back: Option<(i64, usize)>,
+    /// the edit that would be taken back, while there is one
+    pub last: Option<Last>,
 }
 
 /// A year's end as the thread sends it.
@@ -199,14 +247,20 @@ pub struct YearEnd {
     pub standing: Standing,
     /// what the ground holds and what each town made in the year (`holds_year`)
     pub holds: replay::HoldsYear,
+    /// the universities as they stand (`universities`)
+    pub unis: Vec<replay::UniRecord>,
 }
 
 impl YearEnd {
-    /// Write the year into the run: its arrays (`apply_year`) and what the ground holds.
+    /// Write the year into the run: its arrays (`apply_year`), what the ground
+    /// holds, and the universities, which stand after the simulation's works.
     pub fn apply(&self, r: &mut Replay) {
+        replay::sit_universities(r);
         apply_year(r, &self.year);
         let (ny, n, ng) = (r.ny, r.n, r.header.goods.len());
         r.holds.take_year(self.year.index, ny, n, ng, &self.holds);
+        let filled = r.filled;
+        replay::stand_universities(r, &self.unis, filled);
     }
 }
 
@@ -690,8 +744,14 @@ impl Played {
     /// Island `seed` under the game's rules with six families, to 2050,
     /// played to the turn into `year` and `months` months of it.
     pub fn to(seed: u64, year: i64, months: usize) -> Played {
+        Played::to_within(seed, year, months, iso::save::content_last_year(iso::params::Rules::Game))
+    }
+
+    /// The same, in a game whose last year is `last` (`content_last_year`
+    /// says 1900 for the game's rules, a game begun with nothing asked).
+    pub fn to_within(seed: u64, year: i64, months: usize, last: i64) -> Played {
         let rules = iso::params::Rules::Game;
-        let mut game = Game::under_to(rules, seed, 6, 0, iso::save::content_last_year(rules)).expect("a game to its last year");
+        let mut game = Game::under_to(rules, seed, 6, 0, last).expect("a game to its last year");
         let mut board = Board::new(&game.sim);
         while game.last_year() + 1 < year {
             game.year().expect("a year");
@@ -754,9 +814,13 @@ impl Board {
         self.learnt.year_end(sim);
         self.months(sim, 12);
         let y = iso::live_year(&mut self.cursor, &sim.st, &sim.content, &sim.params, &sim.events);
+        // (as the thread's year does: `YearEnd::apply`)
+        replay::sit_universities(&mut self.r);
         apply_year(&mut self.r, &y);
         let (ny, n, ng) = (self.r.ny, self.r.n, self.r.header.goods.len());
         self.r.holds.take_year(y.index, ny, n, ng, &holds_year(sim));
+        let filled = self.r.filled;
+        replay::stand_universities(&mut self.r, &universities(sim), filled);
         crate::game::year_families(&mut self.view, &y.families, y.year as i32);
     }
 
@@ -771,14 +835,14 @@ impl Board {
 }
 
 /// What waits for the year's end in a game, for the interface.
-fn standing(game: &Game, begun: &[usize], back: Option<(i64, usize)>) -> Standing {
+fn standing(game: &Game, begun: &[usize], back: Option<&Back>) -> Standing {
     let s = &game.sim;
     let promised = match (game.foreseen(), iso::family_report(&s.st, &s.content, &s.params, PLAYER)) {
         (Some(seen), Ok(now)) => (now.cash - seen.cash).max(0.0),
         _ => 0.0,
     };
     let waiting_works = game.waiting.iter().filter_map(works_square);
-    Standing { waiting: game.waiting.clone(), promised, pegs: begun.iter().copied().chain(waiting_works).collect(), back }
+    Standing { waiting: game.waiting.clone(), promised, pegs: begun.iter().copied().chain(waiting_works).collect(), back: back.map(Back::at), last: back.and_then(|b| b.last.clone()) }
 }
 
 /// The square a works is to stand on by this order: a family's works, or one
@@ -816,7 +880,10 @@ fn family_now(game: &Game) -> Option<FamilyReport> {
 /// carried out there (a family's, or a works built by hand), which the year's
 /// own picture does not show yet.
 fn begun_at_turn(game: &Game) -> Vec<usize> {
-    game.orders.iter().filter(|g| g.year == game.last_year() && g.month == 0).filter_map(|g| works_square(&g.order)).collect()
+    let mut begun: Vec<usize> = game.orders.iter().filter(|g| g.year == game.last_year() && g.month == 0).filter_map(|g| works_square(&g.order)).collect();
+    // (and a university founded by hand there, whose stake stands until it does)
+    begun.extend(universities_begun(game));
+    begun
 }
 
 /// What an order is, in a few words, for the list of those that wait.
@@ -1409,9 +1476,11 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                                 learnt.year_end(s);
                                 let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
                                 let holds = holds_year(s);
+                                let unis = universities(s);
                                 let news = game.sim.events.len();
                                 let done = game.turn();
                                 begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| works_square(&o.order)).collect();
+                                begun.extend(universities_begun(&game));
                                 let s = &game.sim;
                                 // an edit carried out at the turn is told in the line it wrote in the news
                                 let mut by_hand = s.events.get(news..).unwrap_or_default().iter().filter(|e| e.kind == "hand").map(|e| e.title.clone());
@@ -1423,7 +1492,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                                     })
                                     .collect();
                                 let family = if done.is_empty() { None } else { family_now(&game) };
-                                Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun, back.as_ref().map(Back::at)), holds }))
+                                Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun, back.as_ref()), holds, unis }))
                             }
                         }
                         Err(e) => Msg::Failed(e),
@@ -1459,7 +1528,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
             }
             Cmd::Cancel(i) => {
                 let r = game.cancel(i).map(|_| String::new());
-                done(&game, &begun, back.as_ref().map(Back::at), r)
+                done(&game, &begun, back.as_ref(), r)
             }
             // the game, its cursor, the watch of the ideas and the squares begun become the copy's: the
             // log is cut where it was taken, and what waited then waits again
@@ -1467,7 +1536,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                 Some(copy) => {
                     let t0 = std::time::Instant::now();
                     let mut answer = TakenBack::of(&copy, 0.0);
-                    let Back { game: g, cursor: c, learnt: l, begun: b } = copy;
+                    let Back { game: g, cursor: c, learnt: l, begun: b, .. } = copy;
                     // (the island after the edit is let go of here, on the thread)
                     (game, cursor, learnt, begun) = (g, c, l, b);
                     answer.took = t0.elapsed().as_secs_f32() * 1e3;
@@ -1489,11 +1558,16 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                 // back; a refused edit leaves the copy there was before it
                 let before = timing.then(crate::back::private_bytes).flatten();
                 let t0 = std::time::Instant::now();
-                let copy = matches!(order, Cmd::ByHand(_)).then(|| Back::copy(&game, &cursor, &learnt, &begun));
+                let edit = match &order {
+                    Cmd::ByHand(e) => Some(e.clone()),
+                    _ => None,
+                };
+                let copy = edit.is_some().then(|| Back::copy(&game, &cursor, &learnt, &begun));
                 let copied = t0.elapsed().as_secs_f32() * 1e3;
                 let after = timing.then(crate::back::private_bytes).flatten();
                 // carried out, and kept in the log if it was; or kept to wait for the year's end
                 let r = order_of(&game.sim, order).and_then(|o| game.give(o.clone()).map(|d| (o, d)));
+                let fresh = copy.is_some() && r.is_ok();
                 if let (Some(copy), true) = (copy, r.is_ok()) {
                     let (year, months) = copy.at();
                     back = Some(copy);
@@ -1512,6 +1586,10 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                 // (a works ordered at a turn is begun at once; one ordered later waits, and is pegged there)
                 if let Ok((o, Done::Founded(_) | Done::Done)) = &r {
                     begun.extend(works_square(o));
+                    // (a university founded at a turn stands from the year's end: its stake until then)
+                    if matches!(o, Order::ByHand { edit: isostate_core::edits::Edit::FoundUniversity { .. } }) {
+                        begun.extend(universities_begun(&game));
+                    }
                 }
                 let s = &game.sim;
                 let text = r.map(|(o, d)| match d {
@@ -1522,7 +1600,11 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::
                     Done::Done => String::new(),
                     Done::Waits => waits_words(&game, &o),
                 });
-                done(&game, &begun, back.as_ref().map(Back::at), text)
+                // the copy now stands before this edit: what it did, for the take back's chips and toast
+                if let (true, Some(b), Some(edit), Ok(said)) = (fresh, back.as_mut(), edit, &text) {
+                    b.last = Some(Last { before: crate::take_back::before_words(&game.sim, &edit), edit, said: said.clone() });
+                }
+                done(&game, &begun, back.as_ref(), text)
             }
         };
         // the game is kept saved: after every year, and after every order carried out or kept to wait,
@@ -1573,7 +1655,7 @@ fn order_line(game: &Game, order: &Order) -> String {
     }
 }
 
-fn done(game: &Game, begun: &[usize], back: Option<(i64, usize)>, r: Result<String, String>) -> Msg {
+fn done(game: &Game, begun: &[usize], back: Option<&Back>, r: Result<String, String>) -> Msg {
     let family = family_now(game);
     let standing = standing(game, begun, back);
     match r {

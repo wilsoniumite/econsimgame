@@ -51,9 +51,9 @@
 //!     rule:NAME=WORD  in a sandbox, press the chip WORD on the Rules tab's row
 //!                     NAME (rule:money.growth=None), opening the tab and the
 //!                     rule first if it must: many rows share None and Double
-//!     back            take the last edit by hand back (back.rs), with the
-//!                     clock stopped; settle waits for the answer. For checks
-//!                     and pictures: on screen it is the sandbox's to offer
+//!     takeback        press the tray's Take back the last edit (take_back.rs),
+//!                     or say why there is none; settle waits for the answer
+//!                     and for the island to be forgotten. `back` is the same
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -249,7 +249,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "wait" => Step::Wait(num("the seconds")?),
             "frames" => Step::Frames(num("the frames")? as u32),
             "settle" => Step::Settle,
-            "back" => Step::Back,
+            "takeback" | "back" => Step::Back,
             "sample" => Step::Sample(num("the seconds")?, false),
             "run" => Step::Sample(num("the seconds")?, true),
             "until" => match num("how far through the year")? {
@@ -927,7 +927,9 @@ fn step(world: &mut World, sc: &mut Script) {
                 let running = world.get_resource::<crate::sandbox::Sandbox>().is_some_and(|s| s.running());
                 // (and the Rules tab's question answered)
                 let asking = world.get_resource::<crate::rulebook::Known>().is_some_and(|k| k.out());
-                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && game.marks_built() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                // (and a take back pressed, until its answer has come and been taken in)
+                let undoing = world.get_resource::<crate::take_back::Undo>().is_some_and(|u| u.out());
+                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && !undoing && game.marks_built() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }
@@ -968,13 +970,16 @@ fn step(world: &mut World, sc: &mut Script) {
                 frame = true;
             }
             Step::Back => {
-                if stepping(world) || world.resource::<Game>().busy {
-                    println!("script: no take back: a month or an order is out (settle first)");
+                // the tray's chip, as a player presses it (take_back.rs: it stops the clock and sends the
+                // order once no month is on its way); with nothing to take back the tray has no chip
+                let has = world.get_resource::<Live>().is_some_and(|l| crate::take_back::tray_line(&l.standing).is_some());
+                if !has {
+                    println!("script: no take back: the tray has no {} chip, since there is nothing to take back (no edit since the window opened, or the last was taken back already)", crate::take_back::TRAY_CHIP);
                 } else {
-                    // (the clock stops first: a month asked for after the take back would be played on the island taken back)
-                    world.resource_mut::<Timeline>().playing = false;
-                    world.resource::<Live>().send(crate::live::Cmd::TakeBack);
-                    world.resource_mut::<Game>().busy = true;
+                    match find_button(world, crate::take_back::TRAY_CHIP) {
+                        Ok(e) => press(world, sc, e),
+                        Err(why) => println!("script: no take back: {why}"),
+                    }
                 }
                 frame = true;
             }
@@ -1184,6 +1189,12 @@ mod tests {
         }
         assert!(check("wait:6;goto:1800;settle").is_ok());
         assert!(check("goto:next").is_err());
+    }
+
+    #[test]
+    fn takeback_is_a_step_and_back_its_other_name() {
+        assert_eq!(parse("takeback;settle;back").unwrap(), [Step::Back, Step::Settle, Step::Back]);
+        assert!(check("wait:6;takeback;settle;print").is_ok());
     }
 
     #[test]
