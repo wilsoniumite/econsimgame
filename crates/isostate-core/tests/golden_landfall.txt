@@ -27,10 +27,17 @@
 # (works-ground on main 24be1cc, two starts in it): works.by_method acts from
 # 1901 on both starts, so the four hashes of 1901-2050 move and the three of
 # 1750-1900 hold
-1750-1900 economy  0xc6436b97bd9f2045
-1750-1900 books    0x7270d31b6d38601f
-1750-1900 news     0x9e37de29e9388cf2
-1901-2050 economy  0xf0cdf70da51cdca4
-1901-2050 books    0x16f930ab136ed768
-1901-2050 news     0x75e3bdcefbffdac4
-1901-2050 run.bin  0xa5b8ac4c442f0d4b
+# Taken: The landfall start with carriage on prices from 1750, pits at the
+# size of their market (mines.glut), land that stays taken (frontier.claimed),
+# no settlers to a hungry port (immigration.shun_hungry) and ideas by sea
+# (abroad.ideas), taken on the merged tree of the batch landfall-b (carriage,
+# pits, land-taken, ideas-by-sea) with main's works' ground by method
+# (ground-a) merged in; all five are part of the landfall start alone, so the
+# settled island's seven do not move.
+1750-1900 economy  0x534ad2f7fd8080a0
+1750-1900 books    0xe79caea8871aea13
+1750-1900 news     0xc9b3fafbfebf779e
+1901-2050 economy  0x33612e23417ae5c8
+1901-2050 books    0x6cf51361ce5844a0
+1901-2050 news     0xcc9fb10716818ed0
+1901-2050 run.bin  0x082388d7d24853d3

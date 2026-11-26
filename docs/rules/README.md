@@ -1199,10 +1199,21 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
 
 - **frontier**: a town's births less deaths rise by up to 1.8 points a year where the land within 40 km
   of it is free and its hands work the land, and a district whose land is half free may be made a town
-  at 500 people. [frontier.md](frontier.md), `frontier.enabled`, `frontier.hamlets`.
+  at 500 people; land once taken stays taken, so a farm the machines empty is not free again, and only
+  land gone back to the wild is forgotten, in a generation. [frontier.md](frontier.md),
+  `frontier.enabled`, `frontier.hamlets`, `frontier.claimed`.
 - **immigration**: settlers come by ship to the ports as far as the living there stands above that
-  abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money.
-  [immigration.md](immigration.md), `immigration.enabled`.
+  abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money, and
+  no ship brings them to a port that went hungry that year or the four before.
+  [immigration.md](immigration.md), `immigration.enabled`, `immigration.shun_hungry`.
 - **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
   wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
   "The trap", `hands.short_rise`.
+- **pits at the size of their market**: the merchants take a quarry's, clay pit's, iron mine's or
+  colliery's make only as far as the town asks for the good and their shelves have room, the working
+  hires for what they take, and no town sinks a working into a glut. Off on the settled island for now:
+  a marked difference between the starts. [mines.md](mines.md), G, `mines.glut`.
+- **ideas by sea**: every port has one more neighbour in the spreading of ideas, abroad, across a sea
+  of cost 105, which knows each idea from the year `data/abroad.toml` gives (history's year where the
+  content has one, else the settled island's); the tasks' uses come five years after abroad. Off, the
+  island is alone: the isolated state. [abroad.md](abroad.md), `abroad.ideas`.

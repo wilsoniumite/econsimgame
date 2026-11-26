@@ -119,10 +119,20 @@ pub fn discovery(st: &mut State, C: &Content, P: &Params, tech_rng: &mut Rng, ye
 }
 
 pub fn diffusion(st: &mut State, C: &Content, P: &Params) {
+    diffusion_with(st, C, P, None);
+}
+
+/// The spreading of ideas with what the sea brings (abroad, docs/rules/abroad.md;
+/// not in the Python): each port has abroad as one more neighbour, its weight
+/// shared out with the towns' own, and an idea abroad knows counts as found.
+/// With no sea it is the Python's spreading, to the bit.
+pub fn diffusion_with(st: &mut State, C: &Content, P: &Params, sea: Option<&crate::abroad::Sea>) {
     let T = st.T_max;
     let act = &st.town_active;
     let c = &st.town_cost;
     let mut Wn = vec![0.0; T * T];
+    // abroad: its share of each town's contact
+    let mut Wa = vec![0.0; if sea.is_some() { T } else { 0 }];
     for i in 0..T {
         let mut row = vec![0.0; T];
         for j in 0..T {
@@ -130,18 +140,26 @@ pub fn diffusion(st: &mut State, C: &Content, P: &Params) {
                 row[j] = (-c[(i, j)] / P.diffusion_dist).exp();
             }
         }
-        let rs = crate::util::pairwise_sum(&row);
+        let mut rs = crate::util::pairwise_sum(&row);
+        if let Some(s) = sea {
+            let wa = if act[i] { s.weight[i] } else { 0.0 };
+            rs += wa;
+            Wa[i] = if rs > 0.0 { wa / rs.max(1e-12) * rs.min(1.0) } else { 0.0 };
+        }
         for j in 0..T {
             Wn[i * T + j] = (if rs > 0.0 { row[j] / rs.max(1e-12) } else { 0.0 }) * rs.min(1.0);
         }
     }
     let k = st.know.clone();
-    let discovered: Vec<bool> = (0..C.NT).map(|t| st.tech_year[t] >= 0 || C.tech_known[t]).collect();
+    let discovered: Vec<bool> = (0..C.NT).map(|t| st.tech_year[t] >= 0 || C.tech_known[t] || sea.is_some_and(|s| s.know[t] > 0.0)).collect();
     for i in 0..T {
         for t in 0..C.NT {
             let mut contact = 0.0;
             for j in 0..T {
                 contact += Wn[i * T + j] * k[(j, t)];
+            }
+            if let Some(s) = sea {
+                contact += Wa[i] * s.know[t];
             }
             let kv = k[(i, t)];
             let dk = P.diffusion_rate * (1.0 - kv) * (kv + 0.7 * contact);

@@ -45,6 +45,11 @@
 //! - F. the surface it takes is by its hands (`hands_per_cell` fill a cell, as
 //!   the works' land is counted), taken out of the pit head's cell before the
 //!   farms, pastures and woods share the rest.
+//! - G. under `mines.glut`, it works at the size of its market. The merchants
+//!   take a working's make only as far as the town's buyers ask for the good
+//!   and their shelves have room (`merchants_take`), and a working hires the
+//!   hands for what they take; and no town sinks a working, its first of the
+//!   year included, while its shelves hold a glut of the good.
 //!
 //! Every payment here is one the monthly loop already makes: the sinkers' wages go
 //! to the town's households with the other wages, and the royalty goes through
@@ -98,6 +103,13 @@ pub struct MineParams {
     pub reserve: f64,
     /// F. Hands that fill a cell with pit heads, yards and spoil.
     pub hands_per_cell: f64,
+    /// G. The merchants take a working's make only as far as its market asks
+    /// (`merchants_take`), and a town sinks no working into a glut of its
+    /// good. Needs `prices.enabled`. On at landfall, off on the settled start
+    /// for now (docs/rules/mines.md, "G. At the size of the market"). Not
+    /// written out while off, so that the game's parameters read as they did.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub glut: bool,
 }
 
 /// F. The most of a cell its workings' surface may take. A setting until
@@ -120,6 +132,7 @@ impl Default for MineParams {
             year_room: 0.15,
             reserve: 2.0e7,
             hands_per_cell: 8000.0,
+            glut: false,
         }
     }
 }
@@ -459,8 +472,10 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
         // D, is the same thought); one may always open. A run starts with the
         // best sites that would pay anything at all, whatever they would pay:
         // its first prices are guesses, and the workings nobody then needs stand
-        // idle at no cost.
+        // idle at no cost. G: under `mines.glut` none opens, the first of the
+        // year included, in a town whose shelves hold a glut of the good.
         let far = (2.0 * m.reach) * (2.0 * m.reach);
+        let long: Vec<bool> = (0..T).map(|t| !initial && glutted(st, P, t, g)).collect();
         let mut added = vec![0.0; T];
         let mut new_heads: Vec<usize> = Vec::new();
         for round in 0..(if initial { FIRST_ROUNDS } else { 1 }) {
@@ -484,7 +499,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
             for &(_, h, out) in &prospects {
                 let t = st.catch[h] as usize;
                 let room = if initial || !(m.year_room > 0.0) { f64::INFINITY } else { m.year_room * st.outflow[(t, g)] };
-                if added[t] > 0.0 && added[t] + out > room {
+                if (added[t] > 0.0 && added[t] + out > room) || long[t] {
                     continue;
                 }
                 let (hy, hxx) = ((h / W) as f64, (h % W) as f64);
@@ -645,6 +660,68 @@ fn at_work(st: &State, r: usize, c: usize) -> bool {
 }
 
 // ---------------------------------------------------------------- the month (econ::step_month)
+
+/// G. What town t's buyers ask of good g in a month: the larger of what they
+/// asked last month, whether or not they got it (`st.requests`), and the
+/// merchants' smoothed sales and shipments (`st.outflow`). So a good nobody
+/// could buy, for want of a working, is still asked for, and a town that ships
+/// the good counts what it ships.
+fn asked(st: &State, t: usize, g: usize) -> f64 {
+    let r = if st.requests.rows > t && st.requests.cols > g { st.requests[(t, g)] } else { 0.0 };
+    st.outflow[(t, g)].max(r).max(0.0)
+}
+
+/// G. Whether town t's shelves hold a glut of good g, more than the merchants'
+/// `glut_months` of what is asked: then under `mines.glut` the town sinks no
+/// new working of it (`review`). Never while the rule is off.
+pub fn glutted(st: &State, P: &Params, t: usize, g: usize) -> bool {
+    P.mines.glut
+        && P.prices.enabled
+        && P.prices.glut_months > 0.0
+        && st.town_active.get(t).copied().unwrap_or(false)
+        && st.inv[(t, g)] > P.prices.glut_months * asked(st, t, g)
+}
+
+/// G. The share of its make at full time each of the land's units may raise
+/// this month, under `mines.glut`: 1 for every unit that is not a working,
+/// and for a working the share of its town's workings' make of the good that
+/// the merchants will take. They take what the buyers ask in a month, less as
+/// their shelves pass `glut_months` of that and nothing at `glut_stop_months`
+/// (`prices::take_at`, the works' brake), and on top what fills their shelves
+/// to `glut_months`. A town whose buyers ask for nothing is given nothing; one
+/// whose shelves are empty takes five months of asking, so a first working
+/// opens into a small market and works small.
+///
+/// `make` is each unit's make at full time, at the hands it would want at last
+/// month's wage; units are given their town's share in proportion. The works'
+/// crumb is not needed here: what is asked counts what was asked and not got,
+/// so a market whose shelves ran out never reads as one where nothing sells.
+/// None while the rule is off.
+pub fn merchants_take(st: &State, C: &Content, P: &Params, et: &[usize], sec: &[usize], make: &[f64]) -> Option<Vec<f64>> {
+    let pp = &P.prices;
+    if !(P.mines.enabled && P.mines.glut && pp.enabled && pp.glut_months > 0.0) || st.mine_sectors.is_empty() {
+        return None;
+    }
+    let (T, G) = (st.T_max, C.G);
+    let is_working: Vec<bool> = sec.iter().map(|&s| row(st, s).is_some()).collect();
+    let mut full = vec![0.0; T * G];
+    for u in 0..make.len() {
+        if is_working[u] {
+            full[et[u] * G + C.sector_good[sec[u]]] += make[u];
+        }
+    }
+    let share = |t: usize, g: usize| -> f64 {
+        let x = full[t * G + g];
+        if !(x > 0.0) {
+            return 1.0;
+        }
+        let a = asked(st, t, g);
+        let stock = st.inv[(t, g)].max(0.0);
+        let want = a * crate::prices::take_at(pp, stock, a) + (pp.glut_months * a - stock).max(0.0);
+        (want / x).clamp(0.0, 1.0)
+    };
+    Some((0..make.len()).map(|u| if is_working[u] { share(et[u], C.sector_good[sec[u]]) } else { 1.0 }).collect())
+}
 
 /// Whether unit u is a working being sunk: one the last review opened.
 fn sinking(st: &State, u: usize) -> bool {

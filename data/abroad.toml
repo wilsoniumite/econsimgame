@@ -1,0 +1,65 @@
+# The year abroad knows each idea of the tree and each use of the tasks rule
+# (docs/rules/abroad.md): history's year, the content's `target`, where it gives one
+# (never before its `found_after`), else the median of the years the settled island
+# found it under the game's rules with six families on islands 1, 2, 3, 4, 5, 6, 7, 8 to 2050.
+# An idea that median leaves at "never" is not known abroad and has no line.
+# Made by examples/abroad_table.rs; tests/abroad.rs says when it has gone stale.
+
+[idea]
+coke_furnace = 1778  # the settled island: 1778 1773 1778 1782 1781 1775 1767 1785
+textile_mill = 1785  # the settled island: 1814 1781 1757 1786 1783 1780 1791 1813
+engine_works = 1782  # the settled island: 1778 1779 1777 1784 1784 1793 1787 1780
+crucible_steel = 1766  # the settled island: 1787 1762 1772 1765 1766 1763 1763 1773
+bessemer = 1856  # target 1856
+rolling_mill = 1788  # the settled island: 1790 1782 1804 1808 1786 1784 1796 1782
+steel_rolling = 1866  # target 1866
+contract_builders = 1862  # target 1862
+steam_sawmill = 1825  # target 1825
+cement_works = 1850  # target 1850
+steam_brewery = 1785  # target 1785
+pottery_works = 1770  # target 1770
+gasworks = 1815  # target 1815
+edge_tool_works = 1778  # target 1778
+tool_factory = 1864  # target 1864
+hot_blast = 1830  # target 1830
+machine_shop = 1838  # target 1838
+engineering_works = 1870  # target 1870
+continuous_kiln = 1856  # target 1856
+emporium = 1860  # target 1860
+alkali_works = 1815  # target 1815
+ammonia_soda = 1872  # target 1872
+sheet_glass = 1835  # target 1835
+tank_furnace = 1870  # target 1870
+machine_paper = 1815  # target 1815
+electrical_works = 1885  # target 1885
+coal_power_station = 1888  # target 1888
+oil_from_coal = 1925  # target 1925
+nitrogen_works = 1915  # target 1915
+offices = 1906  # target 1906
+steel_frame = 1906  # target 1906
+care_homes = 1911  # target 1911
+railway = 1825  # target 1825
+improved_husbandry = 1777  # the settled island: 1774 1763 1782 1780 1779 1768 1785 1769
+farm_machinery = 1850  # target 1850
+breeding = 1950  # target 1950
+managed_woodland = 1902  # target 1902
+moving_line = 1913  # target 1913
+automatic_machine = 1958  # target 1958
+industrial_robot = 1982  # target 1982
+lights_out_line = 2035  # target 2035
+motor_vehicle = 1905  # target 1905
+
+[use]
+hoist = 1901  # target 1850, found after 1901
+electric_drive = 1901  # target 1901
+tractor = 1915  # target 1915
+cutter = 1920  # target 1920
+combine = 1935  # target 1935
+office_machines = 1901  # the settled island: 1911 1902 1901 1901 1901 1901 1901 1915
+office_computing = 1960  # target 1960
+models = 2022  # target 2022
+moving_line = 1913  # target 1913
+automatic_machine = 1958  # target 1958
+robot = 1982  # target 1982
+lights_out_line = 2035  # target 2035
+lorry = 1910  # target 1910

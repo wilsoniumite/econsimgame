@@ -53,6 +53,11 @@ impl Default for StartParams {
 /// 1.06 a month is twice in a year (`hands.short_rise`).
 pub const SHORT_RISE: f64 = 1.06;
 
+/// The first year whose freight follows the price level on the landfall start:
+/// the first year of the run, so a colony whose money cannot keep up with its
+/// people does not cart at the coin price of 1750 (`longrun.freight_from`).
+pub const FREIGHT_FROM: i64 = 1750;
+
 /// The names of the two starts, as the command line takes them.
 pub const STARTS: [&str; 2] = ["settled", "landfall"];
 
@@ -70,13 +75,23 @@ pub fn set_start(P: &mut Params, word: &str) -> Result<(), String> {
 }
 
 /// The landfall start and the rules that come with it: births that answer to
-/// free land, hamlets, and settlers from abroad.
+/// free land, hamlets, settlers from abroad, the guard on a short town's wage,
+/// carriage that follows prices from 1750, pits at the size of their market,
+/// land that stays taken, no settlers to a hungry port and ideas by sea.
 pub fn landfall(P: &mut Params) {
     P.start.landfall = true;
     P.frontier = crate::frontier::FrontierParams::game();
     P.immigration = crate::immigration::ImmigrationParams::game();
     // the trap (docs/rules/landfall.md): a short town's wage at most doubles in a year
     P.hands.short_rise = SHORT_RISE;
+    // carriage that follows prices from 1750, a stopgap (docs/rules/landfall.md,
+    // "Carriage that follows prices"); `--set longrun.freight_from=1900` puts it back
+    P.longrun.freight_from = FREIGHT_FROM;
+    // pits and quarries that work at the size of their market (docs/rules/mines.md,
+    // "G. At the size of the market"); `--set mines.glut=false` puts it back
+    P.mines.glut = true;
+    // ideas by sea (docs/rules/abroad.md): every port has abroad for a neighbour
+    P.abroad = crate::abroad::AbroadParams::game();
 }
 
 /// The people the start shares among its towns.
