@@ -713,8 +713,11 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
         app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None });
         app.add_systems(Update, shoot.after(go));
     }
-    app.run();
-    0
+    // (a picture that was not written, or a game that did not take its own, ends the program with 1)
+    match app.run() {
+        AppExit::Success => 0,
+        AppExit::Error(code) => code.get() as i32,
+    }
 }
 
 #[derive(Resource)]
