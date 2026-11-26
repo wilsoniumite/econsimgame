@@ -198,6 +198,8 @@ enum Shown {
     /// asked, and nothing has come yet
     Asking,
     Told { told: Result<Told, String>, lines: Option<Lines> },
+    /// a works': its rows are on its card (firm_card.rs), and only the last edit's line is drawn here
+    OnCard,
 }
 
 #[derive(Default)]
@@ -298,7 +300,9 @@ fn draw(
     }
     let f = font.0.clone();
     let round_here = matches!(thing, Some(Thing::Cell(_)));
-    commands.entity(e).with_children(|p| block(p, &f, &mut images, data.r.y0, &now.0, now.1.as_deref(), round_here));
+    // a works' rows are laid out on its card as terms and figures (firm_card.rs): here only the last edit's line
+    let shown = if matches!(thing, Some(Thing::Works(_))) && !matches!(now.0, Shown::Told { told: Err(_), .. }) { &Shown::OnCard } else { &now.0 };
+    commands.entity(e).with_children(|p| block(p, &f, &mut images, data.r.y0, shown, now.1.as_deref(), round_here));
     drawn.shown = Some(now);
     drawn.at = Some(Instant::now());
 }
@@ -313,6 +317,7 @@ pub const PAST: &str = "What the simulation knows is of the present: come back t
 fn block(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, y0: i32, shown: &Shown, edit: Option<&str>, round_here: bool) {
     match shown {
         Shown::Nothing => return,
+        Shown::OnCard => {}
         Shown::Past => {
             rule(p);
             p.spawn(text(f, PAST, 13.0, MUTED));

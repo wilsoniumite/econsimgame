@@ -48,6 +48,16 @@ The first build compiles Bevy and takes a while. On Linux you need `pkg-config`,
 
 **What a click picks** (`src/pick.rs`). A click picks a thing, never a square: first a works, by the yard it is drawn on; then a quarry, a clay pit or a mine at work, within 140 m of its pit; then a town, by any of its ground, within 700 m of its market place, or by its name on the map; and anywhere else on land, the country round the market town whose district it is. That card, "The country round Oakbury", gives the district's people and ends with "Round here": the land's uses at the spot, and where it lies from the market place and from the island's north-west corner. In a sandbox the simulation's rows for the ground under the spot follow, as "Round here, as it stands"; in the family game, the land agent's. The thing under the pointer is lit with a thin line (a works' yard, a town's ground, a ring round a pit or a spot) and the thing clicked more boldly; with the Ground tool in hand the pointer is a ring as wide as the brush paints. A tool that takes a place (Town, Build a works, Found a university) takes the spot clicked, and the edit names the simulation's 2 km cell under it, as before.
 
+**A firm's card and its tooltips** (`src/firm_card.rs`, `src/tips.rs`, `src/words.rs`; the rules are `docs/designs/words.md`). A click on a works opens a card of terms and numbers: its method, town and year; capacity and size, the return its founders expected, a unit's price, costs and margin, the ground rent it bid and the use it outbid, its owner; in a live sandbox the simulation's rows under the months they are of. Every sentence is in a tooltip. Rest the pointer on a row or a link for 0.3 s and its tooltip opens; at 0.9 s it locks (the ring in its corner fills, then shows a dot), and the pointer can go into it, where a blue link opens a term's tooltip, a brown one goes to a town or opens a good on the Markets panel, and a plum one opens Wikipedia. A middle click locks at once; Esc or a click outside closes them all. The sentences are the glossary's, `data/words.toml`.
+
+To give a piece of interface a tooltip:
+
+- a whole node: insert `tips::Tip::new(label, body)`, where `body` is a `TipBody` (`TipBody::term(words::glossary(), "ground_rent", Some(value), rows)` for a term of the glossary);
+- words with links in them: `words::glossary().pieces(text, None)` finds the terms in a text, and `tips::spawn_pieces` lays the pieces out as one text whose links are its spans;
+- a new term goes into `data/words.toml`, and `cargo test -p isostate-viewer words` holds it to the rules.
+
+The body is built when the card is drawn, from what the view holds; a tooltip never asks the simulation. A script rests the pointer on a piece by its words: `tip:Ground rent;wait:1;tip:bid rent`.
+
 While the opening card, a decision or the card at the century's end is up, the clock stands still and the other keys wait. Any key or a click closes the opening card without starting the clock (Alt, Shift, Ctrl and Print Screen do not).
 
 ### The start page

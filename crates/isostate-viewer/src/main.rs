@@ -32,6 +32,7 @@ mod handover;
 mod icons;
 // IDEAS-PLATE: the island's ideas as a timeline (ideas_plate.rs)
 mod ideas_plate;
+mod firm_card;
 mod inspector;
 mod lab;
 mod live;
@@ -60,6 +61,7 @@ mod shots;
 mod start_page;
 mod take_back;
 mod terrain;
+mod tips;
 mod town_ideas;
 // MAKING: a town's making as a panel (town_flow.rs)
 mod town_flow;
@@ -69,6 +71,7 @@ mod ui;
 // what's new, read from docs/DEVLOG.md (H, then What's new)
 mod whats_new;
 mod work_charts;
+mod words;
 mod world;
 mod year;
 
@@ -1146,6 +1149,8 @@ fn main() {
         .add_plugins(sandbox::plugin)
         .add_plugins(hand_tab::plugin)
         .add_plugins(inspector::plugin)
+        .add_plugins(tips::plugin)
+        .add_plugins(firm_card::plugin)
         .add_plugins(town_ideas::plugin)
         .add_plugins(town_flow::plugin)
         .add_plugins(ideas_plate::plugin)
@@ -1992,6 +1997,8 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                 p.spawn((text(f, "", 20.0, INK), InspectTitle));
                 ui::scroll_list(p, card, Node::default(), Node { row_gap: Val::Px(4.0), padding: UiRect::right(Val::Px(ui::THUMB_ROOM)), ..default() }, InspectBody, |p| {
                     p.spawn((text(f, "", 14.0, MUTED), InspectText));
+                    // a firm's card, as terms and numbers (firm_card.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() }, firm_card::FirmCard));
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
                     // in a sandbox, what the simulation knows of the thing (inspector.rs)
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
@@ -2549,7 +2556,7 @@ fn inspect_panel(
     months: Res<live::Months>,
     fam: Option<Res<family::FamilyView>>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
-    mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
+    mut txt: Query<(&mut Text, &mut Node), (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
     mut body: Query<&mut bevy::ui::ScrollPosition, With<InspectBody>>,
     mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>, Option<overlay::trend::Span>)>>,
@@ -2569,6 +2576,17 @@ fn inspect_panel(
     for mut v in &mut panel {
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
+    // a firm's card is its name here, and terms and numbers under it (firm_card.rs), the map view's line among them
+    if let Some(Pick::Firm(f)) = picked.what {
+        for mut t in &mut title {
+            t.0 = data.r.header.firms.get(f).map_or(String::new(), |x| x.name.clone());
+        }
+        for (mut t, mut n) in &mut txt {
+            t.0.clear();
+            n.display = Display::None;
+        }
+        return;
+    }
     if let Some(w) = picked.what {
         let mut s = describe(&data.r, &data.cen, w, k, fam.as_ref().map_or(&[][..], |f| f.method_group.as_slice()));
         // with a map overlay on, what it says of the cell the thing stands on
@@ -2580,8 +2598,9 @@ fn inspect_panel(
         for mut t in &mut title {
             t.0 = head.to_string();
         }
-        for mut t in &mut txt {
+        for (mut t, mut n) in &mut txt {
             t.0 = body.to_string();
+            n.display = Display::Flex;
         }
     }
 }
