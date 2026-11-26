@@ -23,6 +23,10 @@
 # Taken: the batch starts-a (two-starts on one-town and the squares): the
 # landfall start's hashes taken again on the merged tree, where the squares
 # (squares.enabled, on under the game's rules) keep their log in the record
+# Taken: Taken again on the merged tree of night/g-batch-ground-a
+# (works-ground on main 24be1cc, two starts in it): works.by_method acts from
+# 1901 on both starts, so the four hashes of 1901-2050 move and the three of
+# 1750-1900 hold
 # Taken: Taken again on the merged tree of night/g-batch-ground-b
 # (works-in-blocks on main 24be1cc, the landfall start): the works of a street
 # let floor in the blocks of houses (works.in_blocks, works.md part J) with

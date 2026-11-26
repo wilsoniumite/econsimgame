@@ -693,6 +693,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 c.spawn(Node { margin: UiRect::top(Val::Px(8.0)), column_gap: Val::Px(8.0), ..default() }).with_children(|row| {
                     small_button(row, f, "What's new", crate::whats_new::OpenWhatsNew);
                     small_button(row, f, "The backlog and your notes of today", crate::backlog_seen::OpenBacklog);
+                    // the way back to the start page (start_page.rs): the game is saved as it closes
+                    small_button(row, f, "Start page", crate::start_page::OpenStartPage);
                 });
                 c.spawn((text(f, "Press H again to close this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
@@ -804,7 +806,7 @@ fn panel_visibility(ui: Res<UiState>, mut panel: Query<&mut Visibility, With<Sid
 }
 
 /// Rows that can be clicked show it under the pointer, and are otherwise bare.
-fn row_colours(mut q: Query<(&Interaction, &RowHover, &mut BackgroundColor), Changed<Interaction>>) {
+pub fn row_colours(mut q: Query<(&Interaction, &RowHover, &mut BackgroundColor), Changed<Interaction>>) {
     for (i, row, mut bg) in &mut q {
         bg.0 = match i {
             Interaction::Pressed => BTN_HOVER,
@@ -846,7 +848,7 @@ fn markets_clicks(
     }
 }
 
-fn button_colours(mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<Hoverable>)>) {
+pub fn button_colours(mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<Hoverable>)>) {
     for (i, mut bg) in &mut q {
         bg.0 = match i {
             Interaction::Pressed => BTN_DOWN,
@@ -1218,7 +1220,7 @@ pub fn scroll_panel(s: &mut ScrollPosition, c: &ComputedNode, dy: f32) {
 }
 
 /// The wheel turns a list while the pointer is over its card and the card shows.
-fn wheel_lists(scroll: Res<AccumulatedMouseScroll>, cards: Query<(&RelativeCursorPosition, &InheritedVisibility)>, mut lists: Query<(&WheelList, &mut ScrollPosition, &ComputedNode)>) {
+pub fn wheel_lists(scroll: Res<AccumulatedMouseScroll>, cards: Query<(&RelativeCursorPosition, &InheritedVisibility)>, mut lists: Query<(&WheelList, &mut ScrollPosition, &ComputedNode)>) {
     let dy = match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y * 36.0,
         MouseScrollUnit::Pixel => scroll.delta.y,
@@ -1234,7 +1236,7 @@ fn wheel_lists(scroll: Res<AccumulatedMouseScroll>, cards: Query<(&RelativeCurso
 }
 
 /// Each list's thumb stands where the list is scrolled to, and shows only while there is more of the list than its room.
-fn scroll_thumbs(lists: Query<&ComputedNode, With<WheelList>>, mut thumbs: Query<(&ScrollThumb, &mut Node, &mut Visibility)>) {
+pub fn scroll_thumbs(lists: Query<&ComputedNode, With<WheelList>>, mut thumbs: Query<(&ScrollThumb, &mut Node, &mut Visibility)>) {
     for (thumb, mut node, mut vis) in &mut thumbs {
         let span = lists.get(thumb.0).ok().and_then(|c| thumb_span(c.size().y, c.content_size().y, c.scroll_position.y));
         vis.set_if_neq(if span.is_some() { Visibility::Inherited } else { Visibility::Hidden });

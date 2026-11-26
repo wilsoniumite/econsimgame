@@ -347,7 +347,7 @@ pub struct Diff {
     pub visible: f64,
 }
 
-fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
+pub(crate) fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let img = Image::from_buffer(&bytes, ImageType::Extension("png"), CompressedImageFormats::NONE, true, ImageSampler::Default, RenderAssetUsages::default())
         .map_err(|e| format!("cannot decode {}: {e}", path.display()))?;

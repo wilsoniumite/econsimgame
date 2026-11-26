@@ -58,6 +58,8 @@ mod saves;
 mod scatter;
 mod script;
 mod shots;
+// the page a start with nothing on the command line opens (start_page.rs)
+mod start_page;
 mod take_back;
 mod terrain;
 mod tips;
@@ -203,9 +205,14 @@ const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
 
   isostate-viewer [RUN.bin] [options]
 
+With nothing at all on the command line, the start page opens: the saved games to go on with,
+a new island, and the command line each choice runs. Any option skips it.
+
 With no run named, the game is a sandbox: nobody plays a family, and the island is watched
 and changed by hand. With nothing else asked for, the island's session is gone on with where
 it was left, behind a short card (Go on, or Begin again). --family plays the family game instead.
+
+  --start-page         open the start page (with --size WxH, its window's size)
 
   --family             the family game: one family among six, its orders, its cards, the
                        ranking at the end. With nothing else asked for, the island's saved
@@ -270,6 +277,10 @@ Pictures and checks with no window:
   --ground-debug       draw the ground as flat class colours and nothing else
   --class-map          write the CPU's land class under every pixel of each view, and stop
   --script STEPS       play keys and clicks and print what happens (see src/script.rs)
+  --page-shot PATH[,more][,family][,start:WORD][,tip:NAME][,begin]
+                       a picture of the start page, with More open, with the family game
+                       chosen, and then Begin pressed: the game it starts takes a picture
+                       of its own (PATH-island.png)
 
 The standard shots (src/shots.rs) and the lab (src/lab.rs):
 
@@ -865,6 +876,16 @@ enum Pick {
 static FREDOKA: &[u8] = include_bytes!("../assets/fonts/Fredoka.ttf");
 
 fn main() {
+    let t_start = std::time::Instant::now();
+    // nothing on the command line: the start page, which starts the program again with what is chosen
+    match start_page::asked() {
+        Ok(Some(asked)) => std::process::exit(start_page::run(asked, t_start)),
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("{e}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+    }
     let args = parse_args();
     if let Some((a, b)) = &args.compare_shots {
         // no island and no window: two sets of pictures, compared
@@ -1158,6 +1179,7 @@ fn main() {
         .add_plugins(note::plugin)
         .add_plugins(backlog_seen::plugin)
         .add_plugins(whats_new::plugin)
+        .add_plugins(start_page::game_plugin)
         .insert_resource(about)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
     year_systems(&mut app);
@@ -3074,7 +3096,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--version", "--help"] {
+        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--version", "--help", "--start-page", "--page-shot"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

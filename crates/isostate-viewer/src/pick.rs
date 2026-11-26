@@ -93,18 +93,14 @@ fn keep_pits(data: Res<crate::Data>, tl: Res<crate::Timeline>, mut pits: ResMut<
     }
 }
 
-/// Where the pits of year `k` are drawn: each working at work gets one pit, on
-/// the first spot of its cell that no works' yard covers, as the scenery
-/// places them (`scatter::build_year`). The scenery also keeps a pit off a
-/// churchyard and the railway's banks, which this does not ask, so now and
-/// then a pit is found a spot or two from where it is drawn.
+/// Where the pits of year `k` are drawn: each working at work where it was
+/// placed the year it opened (`scatter::pits`), as the scenery draws them,
+/// less those a works' yard covers this year. The scenery also hides a pit
+/// on a churchyard or the railway's banks, which this does not ask, so now
+/// and then a pit is found here that is not drawn.
 pub fn pits_of(r: &Replay, slots: &Slots, k: usize) -> Vec<PitSpot> {
-    let Some(list) = r.workings.get(k).filter(|w| !w.is_empty()) else { return Vec::new() };
-    let mut waiting: HashMap<u32, Vec<u8>> = HashMap::new();
-    for w in list.iter().filter(|w| w.opened != 0 && w.hands >= 1.0 && (world::QUARRY..=world::COALMINE).contains(&w.class)) {
-        waiting.entry(w.cell).or_default().push(w.class);
-    }
-    if waiting.is_empty() {
+    let standing = crate::scatter::pits::standing(r, slots, k);
+    if standing.is_empty() {
         return Vec::new();
     }
     // the works standing this year, by the cell each stands in, whose yards a pit keeps clear of
@@ -114,20 +110,11 @@ pub fn pits_of(r: &Replay, slots: &Slots, k: usize) -> Vec<PitSpot> {
             yards.entry(r.header.firms[f].cell).or_default().push(f);
         }
     }
-    let mut out = Vec::new();
-    for s in &slots.mines {
-        let Some(kinds) = waiting.get_mut(&s.wcell) else { continue };
-        if kinds.is_empty() {
-            continue;
-        }
-        if yards.get(&cell_at(r, s.x, s.z)).is_some_and(|fs| fs.iter().any(|&f| on_plot(slots, f, &slots.firm_plot[f], s.x, s.z, 0.02))) {
-            continue;
-        }
-        if let Some(class) = kinds.pop() {
-            out.push(PitSpot { x: s.x, z: s.z, cell: s.wcell as usize, class });
-        }
-    }
-    out
+    standing
+        .into_iter()
+        .filter(|p| !yards.get(&cell_at(r, p.at.x, p.at.z)).is_some_and(|fs| fs.iter().any(|&f| on_plot(slots, f, &slots.firm_plot[f], p.at.x, p.at.z, 0.02))))
+        .map(|p| PitSpot { x: p.at.x, z: p.at.z, cell: p.cell, class: p.class })
+        .collect()
 }
 
 /// What a click may find near it in year `k`: the pits, and the works
@@ -175,7 +162,7 @@ fn on_map(slots: &Slots, f: usize, (lx, lz): (f32, f32)) -> (f32, f32) {
 }
 
 /// Whether a point of the map lies on `plot` of works `f`, or within `margin` of it.
-fn on_plot(slots: &Slots, f: usize, plot: &Plot, x: f32, z: f32, margin: f32) -> bool {
+pub(crate) fn on_plot(slots: &Slots, f: usize, plot: &Plot, x: f32, z: f32, margin: f32) -> bool {
     let (lx, lz) = local(slots, f, x, z);
     let (x0, x1, z0, z1) = plot.bounds();
     if lx < x0 - margin || lx > x1 + margin || lz < z0 - margin || lz > z1 + margin {

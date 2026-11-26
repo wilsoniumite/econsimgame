@@ -438,15 +438,15 @@ fn candidates(
 }
 
 /// What a source opens: its own body, or one built now for the link it is.
-fn body_of(c: &Cand, g: &Glossary, data: &Data, k: usize, fam: Option<&crate::family::FamilyView>) -> Option<TipBody> {
+fn body_of(c: &Cand, g: &Glossary, island: Option<(&Data, usize)>, fam: Option<&crate::family::FamilyView>) -> Option<TipBody> {
     if let Some(t) = &c.tip {
         return Some((**t).clone());
     }
     match c.link.as_ref()? {
         Link::Term(key) => Some(TipBody::term(g, key, None, Vec::new())),
-        Link::Method(m) => crate::firm_card::method_tip(&data.r, *m, fam),
-        Link::Town(t) => crate::firm_card::town_tip(&data.r, *t, k),
-        Link::Good(gd) => crate::firm_card::good_tip(&data.r, *gd, k),
+        Link::Method(m) => crate::firm_card::method_tip(&island?.0.r, *m, fam),
+        Link::Town(t) => island.and_then(|(data, k)| crate::firm_card::town_tip(&data.r, *t, k)),
+        Link::Good(gd) => island.and_then(|(data, k)| crate::firm_card::good_tip(&data.r, *gd, k)),
         Link::Wiki(_) => None,
     }
 }
@@ -651,7 +651,8 @@ fn update(
     mut commands: Commands,
     mut tips: ResMut<Tips>,
     time: Res<Time<Real>>,
-    (font, data, tl, fam, icons): (Res<UiFont>, Res<Data>, Res<Timeline>, Option<Res<crate::family::FamilyView>>, Option<Res<crate::icons::Icons>>),
+    // (the start page has no island: its tooltips are its own and the glossary's, and a link to a thing is none of them)
+    (font, data, tl, fam, icons): (Res<UiFont>, Option<Res<Data>>, Option<Res<Timeline>>, Option<Res<crate::family::FamilyView>>, Option<Res<crate::icons::Icons>>),
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cams: Query<&Camera, With<MainCam>>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -662,7 +663,7 @@ fn update(
     mut dots: Query<(&RingDot, &ChildOf, &mut BackgroundColor), Without<TipCard>>,
     mut lock_dots: Query<(&ChildOf, &mut Visibility), (With<LockDot>, Without<TipCard>)>,
     parents: Query<&ChildOf>,
-    (mut picked, mut orbit, mut ui, mut ov): (ResMut<Picked>, ResMut<Orbit>, ResMut<UiState>, ResMut<crate::overlay::MapOverlay>),
+    (picked, orbit, ui, ov): (Option<ResMut<Picked>>, Option<ResMut<Orbit>>, Option<ResMut<UiState>>, Option<ResMut<crate::overlay::MapOverlay>>),
 ) {
     let t0 = Instant::now();
     let now = time.elapsed_secs();
@@ -726,8 +727,8 @@ fn update(
         let at_once = middle || (left && matches!(c.link, Some(Link::Term(_)) | Some(Link::Method(_))));
         let is_open = tips.stack.get(slot).is_some_and(|o| o.source == c.src);
         if parent_ok && !is_open && (rested >= OPEN_AFTER || at_once) {
-            let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-            if let Some(body) = body_of(c, words::glossary(), &data, k, fam.as_deref()) {
+            let island = data.as_deref().zip(tl.as_deref()).map(|(data, tl)| (data, (tl.t.floor() as usize).min(data.r.ny - 1)));
+            if let Some(body) = body_of(c, words::glossary(), island, fam.as_deref()) {
                 let from = slot.min(tips.stack.len());
                 tips.close_from(&mut commands, from);
                 let card = spawn_card(&mut commands, &font.0, icons.as_ref().map(|i| &i.out), &body, slot);
@@ -745,7 +746,13 @@ fn update(
                 if matches!(l, Link::Town(_) | Link::Good(_)) {
                     tips.close_from(&mut commands, 0);
                 }
-                follow(l, &data, &mut picked, &mut orbit, &mut ui, &mut ov, window.is_some());
+                if let (Some(data), Some(mut picked), Some(mut orbit), Some(mut ui), Some(mut ov)) = (data.as_deref(), picked, orbit, ui, ov) {
+                    follow(l, data, &mut picked, &mut orbit, &mut ui, &mut ov, window.is_some());
+                } else if let Link::Wiki(title) = l {
+                    if window.is_some() {
+                        open_wiki(title);
+                    }
+                }
             }
         }
     }
