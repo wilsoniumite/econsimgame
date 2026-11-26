@@ -678,6 +678,9 @@ pub(super) struct Layout {
     lanes: Vec<(Vec<Vec2>, f32)>,
     /// for each of them, the street it is a length of (`LaneOf`)
     lane_of: Vec<LaneOf>,
+    /// the lengths of the roads through that run over a town's built-up
+    /// ground straight, once tarred, to draw again as its main streets
+    roads: Vec<(Vec<Vec2>, f32, LaneOf)>,
     /// the year's estates, by their cells (`estates.rs`)
     estates: HashMap<u32, estates::Estate>,
     /// the length of each road through town ground laid this year on each
@@ -708,6 +711,10 @@ pub(crate) struct LaneOf {
     pub year: i32,
     pub estate: Option<(estates::Pattern, i32)>,
     pub circle: bool,
+    /// its rank (`estates::Rank`), and whether it lies in its town's middle
+    /// (`lots::in_middle`): what its surface follows
+    pub rank: estates::Rank,
+    pub middle: bool,
 }
 
 /// A street that may be laid, and what has been asked of it so far.
@@ -1497,10 +1504,23 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     };
     let mut lanes: Vec<(Vec<Vec2>, f32)> = Vec::new();
     let mut lane_of: Vec<LaneOf> = Vec::new();
+    let mut roads: Vec<(Vec<Vec2>, f32, LaneOf)> = Vec::new();
+    let now = r.y0 + k as i32;
     for (i, st) in lay.streets.iter().enumerate() {
         let s = &st.way;
-        let of = LaneOf { source: s.source(), year: r.y0 + s.since as i32, estate: s.estate.map(|e| (e.pattern, e.year)), circle: false };
+        let mid = (s.a + s.b) * 0.5;
+        let middle = lots::in_middle(r, k, (mid.y.floor().clamp(0.0, (r.h - 1) as f32) as usize) * r.w + mid.x.floor().clamp(0.0, (r.w - 1) as f32) as usize);
+        let rank = estates::Rank::of(s.kind, s.width, s.estate.is_some(), s.estate.is_some_and(|e| e.circle));
+        let of = LaneOf { source: s.source(), year: r.y0 + s.since as i32, estate: s.estate.map(|e| (e.pattern, e.year)), circle: false, rank, middle };
         if s.road {
+            // a road through is drawn by the ways between squares (`network`); on a town's
+            // built-up ground, from the year main streets are tarred, it is drawn again over that
+            // as a town's main street, where it runs straight
+            if estates::surface(rank, of.year, s.width, None, middle, true, now).is_some() && crate::network::route(g, s.a, s.b, r.round()).straight() {
+                let mut got = Vec::new();
+                lay.lengths(i, 0.0, 1.0, true, &mut got);
+                roads.extend(got.into_iter().map(|(line, w)| (line, w, of)));
+            }
             continue;
         }
         let half = 0.03 / st.len;
@@ -1587,7 +1607,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     drop(lay);
     let stories: HashMap<u32, Story> = stories.into_iter().map(|(c, (story, _))| (c, story)).collect();
     let whats = what_stands(r, k, &sq, &standing, &stories);
-    Layout { lanes, lane_of, estates, laid, standing, whats, stories, ms: [ms(t0, t1), ms(t1, t2), ms(t2, t3)], why }
+    Layout { lanes, lane_of, roads, estates, laid, standing, whats, stories, ms: [ms(t0, t1), ms(t1, t2), ms(t2, t3)], why }
 }
 
 /// Put the houses in order, street by street and along each, and say of each
@@ -1724,7 +1744,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     let town = &land.town;
     let layout = lay_out(r, g, cen, k, parishes, near_plot, yards, land);
     steadiness(r, k, &layout);
-    let Layout { lanes, lane_of, estates, laid, standing, whats, ms: laying, .. } = layout;
+    let Layout { lanes, lane_of, roads, estates, laid, standing, whats, ms: laying, .. } = layout;
     let t3 = std::time::Instant::now();
     // after 1900: which plots are built as forms of their year, and which whole blocks stand (`lots.rs`)
     let lots::Lots { drawn, mut blocks } = lots::drawn_on(r, g, k, &standing, near_plot);
@@ -1757,7 +1777,16 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
             into.houses.ribbon(&run, width, colour);
         }
     };
+    let now = r.y0 + k as i32;
+    // (for ISOSTATE_LOTS: each street drawn after 1900 and its surface)
+    let mut surfaced: Vec<(&[Vec2], estates::Surface)> = Vec::new();
     for ((line, width), of) in lanes.iter().zip(&lane_of) {
+        // a street made up in the way of its age and rank (`estates::surface`), with its edges
+        if let Some(s) = estates::surface(of.rank, of.year, *width, of.estate.map(|e| e.0), of.middle, false, now) {
+            paint(&mut ribbon, lk, line, &s, 0.0);
+            surfaced.push((line, s));
+            continue;
+        }
         match of.estate {
             None => ribbon(line, *width, colour, 0.006),
             Some((pattern, year)) => {
@@ -1768,6 +1797,13 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
                 ribbon(line, *width + 2.0 * wide, edge, 0.0056);
                 ribbon(line, *width, surface, 0.0063);
             }
+        }
+    }
+    // the roads through, tarred, as the town's main streets, over the ways' own ribbon
+    for (line, width, of) in &roads {
+        if let Some(s) = estates::surface(of.rank, of.year, *width, None, of.middle, true, now) {
+            paint(&mut ribbon, lk, line, &s, crate::network::ROAD_LIFT - 0.0056 + 0.0006);
+            surfaced.push((line, s));
         }
     }
 
@@ -1814,6 +1850,9 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     // (for ISOSTATE_LOTS: the ground every building drawn stands on)
     let telling = std::env::var_os("ISOSTATE_LOTS").is_some();
     let mut rects: Vec<lots::Footprint> = Vec::new();
+    // (and every building's middle, its storeys, and whether it fronts a main street)
+    let mut heights: Vec<(Vec2, u8, bool)> = Vec::new();
+    let mut others: Vec<(Vec2, f32, u8, u32)> = Vec::new();
     if telling {
         lots::tell(r, k, &standing, &whats.iter().map(What::storeys).collect::<Vec<u8>>(), &drawn);
         // the forms of five storeys or more on the lots, each where it stands and facing as its plot does
@@ -1828,7 +1867,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
                 }
             }
         }
-        lots::tell_square(r, k, &tall, &lanes, &blocks, &shapes);
+        others = lots::tell_square(r, k, &tall, &lanes, &blocks, &shapes);
     }
     for (i, (s, what)) in standing.iter().zip(&whats).enumerate() {
         let pl = &s.lot.pl;
@@ -1842,6 +1881,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
             lots::Drawn::Form(b, plots) => {
                 let drawn = lots::draw(g, &standing, i, plots, &b, lk, into);
                 if telling {
+                    heights.extend(drawn.iter().map(|f| (f.at, b.storeys, s.lot.road || s.lot.kind == 9)));
                     rects.extend(drawn);
                 }
                 census.forms += 1;
@@ -1864,6 +1904,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
             };
             if length > 0.0 {
                 rects.push(lots::Footprint { at: mid, along: Vec2::new(front.y, -front.x), front, half: (length * 0.48, pl.depth * 0.5) });
+                heights.push((mid, what.storeys(), s.lot.road || s.lot.kind == 9));
             }
         }
         match *what {
@@ -1921,12 +1962,54 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         }
     }
     if telling {
+        // (the offices and the closes built over by themselves, noted as they were drawn)
+        heights.extend(others.iter().map(|o| (o.0, o.2, false)));
         estates::tell(r, g, k, land, &estates, &laid, &lanes, &lane_of, &standing, &drawn, &rects, &infill, near_plot);
+        estates::tell_heights(r, k, &heights, &surfaced, &estates);
     }
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("timing kept towns: streets {:.0} ms, plots {:.0} ms, turns {:.0} ms, houses {:.0} ms", laying[0], laying[1], laying[2], t3.elapsed().as_secs_f64() * 1000.0);
     }
     census
+}
+
+/// Draw a street's line in its surface (`estates::surface`): its edges
+/// under it, its carriageway, and down a main street's middle a broken white
+/// line, dashes of 0.02 every 0.045. `raise` lifts it all (over a road's own
+/// ribbon).
+fn paint(ribbon: &mut dyn FnMut(&[Vec2], f32, isostate_gen::colour::Rgba, f32), lk: &Look, line: &[Vec2], s: &estates::Surface, raise: f32) {
+    let gr = &lk.ground;
+    let made = match s.made {
+        estates::Made::Earth => *gr.street_earth,
+        estates::Made::Setts => *gr.yard_setts,
+        estates::Made::Macadam => *gr.road_gravel,
+        estates::Made::Worn => *gr.tarmac_worn,
+        estates::Made::Tarmac => *gr.tarmac,
+    };
+    match s.edge {
+        estates::Edge::None => {}
+        estates::Edge::Footway => ribbon(line, s.width + 2.0 * s.edge_width, *gr.shop_pavement, 0.0056 + raise),
+        estates::Edge::Verge => ribbon(line, s.width + 2.0 * s.edge_width, *gr.churchyard_grass, 0.0056 + raise),
+    }
+    ribbon(line, s.width, made, if s.made == estates::Made::Earth && s.edge == estates::Edge::None { 0.006 } else { 0.0063 } + raise);
+    if s.line {
+        // the dashes, measured along the whole line so that they run on over its bends
+        let (dash, every) = (0.02, 0.045);
+        let mut at = 0.0f32;
+        for w in line.windows(2) {
+            let len = w[0].distance(w[1]);
+            if len < 1e-5 {
+                continue;
+            }
+            let mut t = (at / every).ceil() * every - at;
+            while t < len {
+                let end = (t + dash).min(len);
+                ribbon(&[w[0].lerp(w[1], t / len), w[0].lerp(w[1], end / len)], 0.0012, *gr.road_line, 0.0067 + raise);
+                t += every;
+            }
+            at += len;
+        }
+    }
 }
 
 /// The surface of an estate's street of a pattern laid out in a year, the

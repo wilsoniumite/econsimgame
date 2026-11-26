@@ -162,6 +162,152 @@ thread_local! {
     pub(crate) static OLD_IN_TEST: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
 }
 
+/// `ISOSTATE_STREETS=estates` (or `old`): the estates as they were laid out
+/// on 25 November 2026, before streets had surfaces of their own and height
+/// followed the street (`surface`, `lots::MIDDLE_STOREYS`), for pictures
+/// side by side.
+pub(crate) fn bare() -> bool {
+    static BARE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *BARE.get_or_init(|| std::env::var("ISOSTATE_STREETS").as_deref() == Ok("estates")) || old()
+}
+
+/// A street's rank, which sets how wide it is drawn and how early it is
+/// made up: a main street, a street, a lane, a close.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Rank {
+    /// a road through town, the way to the square a square grew from, a
+    /// station road, an estate's distributor
+    Main,
+    /// the back lane behind a way, an estate's street along its way
+    Street,
+    /// the outer lanes and cross streets behind a way, an estate's street out from its way
+    Lane,
+    /// a cul-de-sac, its stub and its turning circle
+    Close,
+}
+
+impl Rank {
+    /// The rank of a street of kind `kind` (`Way::kind`), `width` wide, of
+    /// an estate's or not, ending in a turning circle or not.
+    pub(crate) fn of(kind: u8, width: f32, estate: bool, circle: bool) -> Rank {
+        match kind {
+            _ if circle => Rank::Close,
+            0 | 5 => Rank::Main,
+            6 if estate && width >= 0.022 => Rank::Main,
+            1 | 6 => Rank::Street,
+            _ => Rank::Lane,
+        }
+    }
+
+    /// How wide a street of this rank laid before the estates is drawn,
+    /// from the motor age: never wider than its plots leave room for (they
+    /// stand 0.012 clear of a lane's edge, `kept`'s test of back yards).
+    pub(crate) fn width(self, laid: f32) -> f32 {
+        match self {
+            Rank::Main => laid.max(0.02),
+            Rank::Street => laid.max(0.015),
+            Rank::Lane => laid.min(0.012),
+            Rank::Close => laid.min(0.011),
+        }
+    }
+
+    /// The first year a street of this rank is tarred, where it was laid
+    /// before: the main streets first, as the motor bus and the lorry came.
+    pub(crate) fn tarred(self) -> i32 {
+        match self {
+            Rank::Main => 1920,
+            Rank::Street => 1925,
+            Rank::Lane | Rank::Close => 1930,
+        }
+    }
+}
+
+/// What a street's ground is made of in a year.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Made {
+    /// packed earth, as every back street was to 1900
+    Earth,
+    /// stone setts
+    Setts,
+    /// broken stone rolled in, the made road of the nineteenth century
+    Macadam,
+    /// tarmac worn pale
+    Worn,
+    /// tarmac
+    Tarmac,
+}
+
+impl Made {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Made::Earth => "earth",
+            Made::Setts => "setts",
+            Made::Macadam => "macadam",
+            Made::Worn => "worn tarmac",
+            Made::Tarmac => "tarmac",
+        }
+    }
+}
+
+/// What lies along a street's edges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Edge {
+    None,
+    /// a paler footway each side, where buildings front it
+    Footway,
+    /// grass verges, the garden suburb's
+    Verge,
+}
+
+/// How a street is drawn in a year: what it is made of, how wide, its
+/// edges and how wide each, and a broken white line down its middle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Surface {
+    pub made: Made,
+    pub width: f32,
+    pub edge: Edge,
+    pub edge_width: f32,
+    pub line: bool,
+}
+
+/// The surface of a street in year `now`: of rank `rank`, laid in year
+/// `laid` `width` wide, of an estate of `pattern` if it is one, in its
+/// town's middle or not. None to 1900, and under `ISOSTATE_STREETS=estates`
+/// (and for the roads through, before they are tarred): drawn as before.
+///
+/// The rule, in two lines: a street is made up in the way of its age and
+/// rank, earth for a lane, setts in a town's middle and on the by-law
+/// estates, macadam for the rest, until its rank is tarred (the main streets
+/// from 1920, streets 1925, lanes and closes 1930), with a paler footway each
+/// side from then, and a broken white line down a main street from 1930.
+pub(crate) fn surface(rank: Rank, laid: i32, width: f32, pattern: Option<Pattern>, middle: bool, road: bool, now: i32) -> Option<Surface> {
+    if now <= lots::FROM || bare() {
+        return None;
+    }
+    let tarred = now >= rank.tarred().max(laid);
+    if road && !tarred {
+        return None;
+    }
+    let drawn = if pattern.is_some() || road { width } else { rank.width(width) };
+    let footway = |w: f32| Some(Surface { made: Made::Tarmac, width: drawn, edge: Edge::Footway, edge_width: w, line: rank == Rank::Main && now >= 1930 });
+    match pattern {
+        // the estates' streets as they were laid, and tarred with the rest
+        Some(Pattern::ByLaw) if now < 1935 => Some(Surface { made: Made::Setts, width: drawn, edge: Edge::Footway, edge_width: 0.004, line: false }),
+        Some(Pattern::Blocks) if laid <= 1918 && now < 1935 => Some(Surface { made: Made::Setts, width: drawn, edge: Edge::Footway, edge_width: 0.005, line: false }),
+        Some(Pattern::Garden) => Some(Surface { made: if now < 1950 { Made::Worn } else { Made::Tarmac }, width: drawn, edge: Edge::Verge, edge_width: 0.006, line: false }),
+        Some(Pattern::ByLaw) => footway(0.004),
+        Some(Pattern::Blocks) => footway(0.005),
+        Some(Pattern::Loop) => footway(0.004),
+        Some(Pattern::Closes) => footway(0.003),
+        None if tarred => footway(if rank == Rank::Lane || rank == Rank::Close { 0.003 } else { 0.004 }),
+        None => Some(match rank {
+            Rank::Main | Rank::Street if middle => Surface { made: Made::Setts, width: drawn, edge: Edge::Footway, edge_width: 0.003, line: false },
+            Rank::Main | Rank::Street => Surface { made: Made::Macadam, width: drawn, edge: Edge::None, edge_width: 0.0, line: false },
+            _ => Surface { made: Made::Earth, width: width, edge: Edge::None, edge_width: 0.0, line: false },
+        }),
+    }
+}
+
 /// The estates of year `k`: every square of town ground that joined its town
 /// after 1900 and has been filled whole in some year since, with the first
 /// such year. It reads the record's years up to `k` only, so a square is an
@@ -511,6 +657,88 @@ fn slot_of(reach: &std::collections::BTreeMap<(i32, i8), (usize, f32, f32, f32)>
     ids.iter().position(|&s| s == id).unwrap_or(0)
 }
 
+/// The fewest storeys of a tall building, for `tell_heights`: seven, above
+/// what a mansion block stands (`lots::MIDDLE_STOREYS`).
+const TALL: u8 = 7;
+
+/// How near another building must stand to be a tall building's neighbour,
+/// for `tell_heights`: 0.15 of a square, some 300 m of the map.
+const NEIGHBOURS: f32 = 0.15;
+
+/// `ISOSTATE_LOTS=NAME`: say of the town of that name in year `k` how tall
+/// its buildings stand by its streets, and what its streets are made of
+/// (the brief of `streets-surface`, the outcome). `heights` is every
+/// building drawn, its middle, its storeys and whether it fronts a main
+/// street (a road through or a market place); `surfaced` each street drawn
+/// after 1900 and its surface. Of the buildings of `TALL` storeys or more
+/// (and of five or more): how many front a main street, how many stand in
+/// the middle, and how many have no neighbour of four storeys or more within
+/// `NEIGHBOURS` (only low neighbours, or none). Of the streets: the
+/// kilometres made of each surface, and with footways.
+pub(super) fn tell_heights(r: &Replay, k: usize, heights: &[(Vec2, u8, bool)], surfaced: &[(&[Vec2], Surface)], estates: &HashMap<u32, Estate>) {
+    let Ok(name) = std::env::var("ISOSTATE_LOTS") else { return };
+    let Some(t) = r.header.towns.iter().position(|t| t.name == name) else { return };
+    let year = r.y0 + k as i32;
+    let cell_of = |p: Vec2| ((p.y.floor().max(0.0) as usize).min(r.h - 1) * r.w + (p.x.floor().max(0.0) as usize).min(r.w - 1)) as u32;
+    let ours = |c: u32| r.catch.get(k * r.n + c as usize).copied() == Some(t as u8 + 1);
+    let mut grid: HashMap<(i32, i32), Vec<u32>> = HashMap::default();
+    for (i, h) in heights.iter().enumerate() {
+        grid.entry(((h.0.x / NEIGHBOURS).floor() as i32, (h.0.y / NEIGHBOURS).floor() as i32)).or_default().push(i as u32);
+    }
+    let highest_near = |i: usize| -> u8 {
+        let p = heights[i].0;
+        let (gx, gz) = ((p.x / NEIGHBOURS).floor() as i32, (p.y / NEIGHBOURS).floor() as i32);
+        let mut most = 0;
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                for &j in grid.get(&(gx + dx, gz + dz)).map_or(&[][..], |v| &v[..]) {
+                    if j as usize != i && heights[j as usize].0.distance(p) <= NEIGHBOURS {
+                        most = most.max(heights[j as usize].1);
+                    }
+                }
+            }
+        }
+        most
+    };
+    for least in [TALL, 5] {
+        let tall: Vec<usize> = (0..heights.len()).filter(|&i| heights[i].1 >= least && ours(cell_of(heights[i].0))).collect();
+        let main = tall.iter().filter(|&&i| heights[i].2).count();
+        let middle = tall.iter().filter(|&&i| lots::in_middle(r, k, cell_of(heights[i].0) as usize)).count();
+        let lonely: Vec<usize> = tall.iter().copied().filter(|&i| highest_near(i) < 4).collect();
+        let on_estates = tall.iter().filter(|&&i| estates.contains_key(&cell_of(heights[i].0))).count();
+        let where_: Vec<String> = lonely.iter().take(6).map(|&i| format!("{:.2},{:.2} ({})", heights[i].0.x, heights[i].0.y, heights[i].1)).collect();
+        eprintln!(
+            "heights {year}: {name}: {} buildings of {least} storeys or more: {main} front a main street ({:.0} per cent), {middle} stand in the middle, {on_estates} on estates; {} with only low neighbours (no building of four storeys or more within {NEIGHBOURS}): {:.0} per cent; such as {}",
+            tall.len(),
+            100.0 * main as f32 / tall.len().max(1) as f32,
+            lonely.len(),
+            100.0 * lonely.len() as f32 / tall.len().max(1) as f32,
+            where_.join("; ")
+        );
+    }
+    // what the streets drawn on its ground are made of (km: a square is 2 km)
+    let mut made: std::collections::BTreeMap<&str, f32> = Default::default();
+    let (mut footway, mut verge, mut lined, mut all) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    for (line, s) in surfaced {
+        for w in line.windows(2) {
+            if !ours(cell_of((w[0] + w[1]) * 0.5)) {
+                continue;
+            }
+            let km = w[0].distance(w[1]) * 2.0;
+            *made.entry(s.made.name()).or_default() += km;
+            all += km;
+            match s.edge {
+                Edge::Footway => footway += km,
+                Edge::Verge => verge += km,
+                Edge::None => {}
+            }
+            lined += km * s.line as u8 as f32;
+        }
+    }
+    let list: Vec<String> = made.iter().map(|(m, km)| format!("{m} {km:.1} km ({:.0} per cent)", 100.0 * km / all.max(1e-6))).collect();
+    eprintln!("surfaces {year}: {name}: {all:.1} km of street drawn with a surface: {}; with footways {footway:.1} km, verges {verge:.1} km, a white line down the middle {lined:.1} km", list.join(", "));
+}
+
 /// `ISOSTATE_LOTS=NAME`: say of the town of that name in year `k` how its
 /// streets stand (`town-streets` notes, the outcome): how many of its filled
 /// squares have streets of their own, its estates by pattern and by the year
@@ -711,7 +939,12 @@ pub(super) fn tell(r: &Replay, g: &Ground, k: usize, land: &world::YearLand, est
     let dear = |c: u32| r.builds.value(r.n, k, c as usize).is_some_and(|v| v >= lots::BLOCK_VALUE);
     let walls = |c: u32| estates.get(&c).is_some_and(|e| e.walls);
     let dear_estates = |c: u32| estates.contains_key(&c) && dear(c);
+    let of_pattern = |p: Pattern| move |c: u32| estates.get(&c).is_some_and(|e| e.pattern == p);
     for (what, (squares, sides, built)) in [
+        ("by-law estates", front(&of_pattern(Pattern::ByLaw))),
+        ("garden suburbs", front(&of_pattern(Pattern::Garden))),
+        ("estates with a loop", front(&of_pattern(Pattern::Loop))),
+        ("estates of culs-de-sac", front(&of_pattern(Pattern::Closes))),
         ("estates on blocks", front(&blocks_ground)),
         ("estates whose fronts are walls", front(&walls)),
         ("estates worth three times their town's of 1900 this year", front(&dear_estates)),
