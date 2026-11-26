@@ -183,6 +183,13 @@ an answer was leaned on.
   works' plant on a trade households had left, held long by the smithies' room), and which goods
   swing most and why; more than a dozen cures tried, none kept. Example
   `examples/trace_cycles.rs`.
+- `tr-timber.md` (at e7763a5, islands 1 to 16 to 2050, arms on 1 to 8): the timber-and-brick
+  cycle after 1900 is the works' orders for plant, asked for a quarter a month, landing on
+  markets the households have left (plant without timber or bricks takes four fifths off both
+  swings; no arm on the merchants or the woods takes a fifth); the woodmen's slow answer is the
+  second part. The cure on trial, `pace` (off), asks for plant over a builder's year: timber's
+  swing 0.53 to 0.40, bricks' 0.49 to 0.28, on every island of sixteen, the played century
+  untouched. Example `examples/timber_trace.rs`.
 - `tr-urban.md` (at a6ff0ec): why the towns stop at four people in ten (the share is 0.04 plus
   0.8 of the works' share of the hands, the port's count; the quarrymen and the food bill hold
   it), why founding stops in the 1840s (carting saved at a freight fixed in money, weighed

@@ -1028,3 +1028,7 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   people by age, not half of them, so that children at school, the university's students and the old a
   pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.
   The island's share in work falls to 0.42 by 2050. [who-works.md](who-works.md), `who_works.enabled`.
+- **pace** (off under both sets of rules: a cure on trial; acts only from 1901): a works asks
+  for its plant over a builder's year, a twelfth of what is to come each month and not a
+  quarter, which takes a quarter off timber's swing and nearly half off bricks' after 1900
+  ([tr-timber.md](../probes/tr-timber.md)). [pace.md](pace.md), `pace.enabled`.

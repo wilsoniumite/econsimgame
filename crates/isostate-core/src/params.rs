@@ -398,6 +398,11 @@ pub struct Params {
     /// Python; see docs/rules/who-works.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub who_works: crate::who_works::WhoWorksParams,
+    /// Works that ask for their plant over a builder's year, not a quarter of
+    /// it a month (not in the Python; off under both sets of rules, a cure on
+    /// trial; see docs/rules/pace.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pace: crate::pace::PaceParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -623,6 +628,7 @@ pub fn default_params() -> Params {
         // traffic (docs/rules/traffic.md): off
         traffic: crate::traffic::TrafficParams::default(),
         who_works: crate::who_works::WhoWorksParams::default(),
+        pace: crate::pace::PaceParams::default(),
     }
 }
 
@@ -698,6 +704,8 @@ pub fn game_params() -> Params {
     // who works (docs/rules/who-works.md): from 1901 the hands are counted by age,
     // so that school, the university and the pension take hands out of work
     P.who_works = crate::who_works::WhoWorksParams::game();
+    // pace (docs/rules/pace.md): left off, a cure on trial for the timber-and-brick
+    // cycle (docs/probes/tr-timber.md); `--set pace.enabled=true` tries it
     P
 }
 
