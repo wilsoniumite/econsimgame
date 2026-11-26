@@ -1,0 +1,231 @@
+# The game's terms: one entry to a term. The rules for this text are in docs/designs/words.md.
+#
+#   name  the label as it is shown
+#   says  one to three sentences: what the thing is, then what moves it or what it decides
+#   also  other spellings that link to this term, and that a label may use
+#   see   related terms, shown as links under the sentences
+#   wiki  titles of English Wikipedia articles (checked to exist on 26 November 2026)
+#
+# Every sentence must be true of the simulation's code under the game's rules. The viewer
+# reads this file when it is built (words.rs), finds the links in the sentences itself, and a
+# test holds every entry to the rules (words.rs, `the_glossary_keeps_the_rules`).
+
+[term.firm]
+name = "Firm"
+says = "A business that makes one good at one site. A firm hires workers, buys materials and sells in its town's market."
+also = ["firms"]
+see = ["capacity", "worker", "owner"]
+wiki = ["Theory of the firm"]
+
+[term.capacity]
+name = "Capacity"
+says = "The most a firm can make in a month with its equipment."
+see = ["size", "utilisation", "equipment"]
+wiki = ["Productive capacity"]
+
+[term.size]
+name = "Size"
+says = "Capacity as a multiple of the standard firm of its kind."
+see = ["capacity", "method"]
+
+[term.utilisation]
+name = "Utilisation"
+says = "The share of its capacity a firm is using."
+see = ["capacity"]
+wiki = ["Capacity utilization"]
+
+[term.equipment]
+name = "Equipment"
+says = "The machines and buildings a firm makes its output with. More equipment gives more capacity."
+see = ["capacity", "value"]
+wiki = ["Fixed capital"]
+
+[term.on_order]
+name = "On order"
+says = "Capacity a firm has ordered and not yet received."
+see = ["capacity", "equipment"]
+
+[term.value]
+name = "Value"
+says = "What a firm's equipment, built and on order, would cost to build at today's prices."
+see = ["equipment", "on_order"]
+wiki = ["Replacement value"]
+
+[term.return]
+name = "Return"
+says = "A year of margin at 85% of capacity, less ground rent, over the cost to build. Investors build where the expected return is highest."
+also = ["expected return"]
+see = ["margin", "ground_rent", "profit"]
+wiki = ["Rate of return"]
+
+[term.price]
+name = "Price"
+says = "What one unit sells for in a town's market. A firm gets the market's price less transport and the merchant's cut."
+also = ["prices"]
+see = ["market_town", "transport"]
+wiki = ["Price"]
+
+[term.margin]
+name = "Margin"
+says = "Price minus the cost of materials, heat and labour, for one unit. Ground rent is paid out of the margin."
+see = ["price", "materials", "labour", "ground_rent"]
+wiki = ["Gross margin"]
+
+[term.materials]
+name = "Materials"
+says = "The goods a firm uses up to make its output."
+see = ["output", "supplied"]
+wiki = ["Raw material"]
+
+[term.supplied]
+name = "Supplied"
+says = "The share of the materials a firm asks for that it receives."
+see = ["materials", "utilisation"]
+
+[term.heat]
+name = "Heat"
+says = "Fuel burned in kilns, furnaces and boilers, counted in units of heat. Its price mixes the fuels' prices, the cheaper weighing more."
+see = ["materials"]
+
+[term.labour]
+name = "Labour"
+says = "Months of work needed for one unit, paid at the town's wage."
+see = ["wage", "worker"]
+wiki = ["Labour economics"]
+
+[term.worker]
+name = "Worker"
+says = "A person employed by a firm or on the land."
+also = ["workers"]
+see = ["wage", "labour"]
+wiki = ["Employment"]
+
+[term.wage]
+name = "Wage"
+says = "What one month of work pays in a town."
+also = ["wages"]
+see = ["real_wage", "labour"]
+wiki = ["Wage"]
+
+[term.real_wage]
+name = "Real wage"
+says = "The wage measured in goods. It shows what a month of work buys, with 1750 as 1."
+see = ["wage", "price"]
+wiki = ["Real wages"]
+
+[term.output]
+name = "Output"
+says = "What a firm makes, counted in units of its good."
+see = ["capacity", "revenue"]
+wiki = ["Production (economics)"]
+
+[term.revenue]
+name = "Revenue"
+says = "What a firm's output sold for."
+see = ["output", "profit"]
+wiki = ["Revenue"]
+
+[term.profit]
+name = "Profit"
+says = "A firm's income from sales minus its costs."
+see = ["dividend", "return", "cash"]
+wiki = ["Profit (economics)"]
+
+[term.cash]
+name = "Cash"
+says = "Money a firm holds to pay its costs."
+see = ["profit"]
+
+[term.dividend]
+name = "Dividend"
+says = "Profit a firm pays to its owners."
+also = ["dividends"]
+see = ["profit", "owner"]
+wiki = ["Dividend"]
+
+[term.owner]
+name = "Owner"
+says = "Who holds the firm and receives its dividends. An owner is a family or the savers of a town."
+also = ["owners"]
+see = ["dividend"]
+
+[term.ground_rent]
+name = "Ground rent"
+says = "What a firm pays each month for its site. Its first bid is a quarter above the bid rent of the site's present use. It rises when the firm takes more ground."
+see = ["bid_rent", "site"]
+wiki = ["Economic rent"]
+
+[term.bid_rent]
+name = "Bid rent"
+says = "The most a land use can pay for a site and still cover its costs. A site's land is shared among uses, the higher bids taking more. Bids fall with distance to market, so uses sort into rings around a town."
+also = ["bid rents", "bids"]
+see = ["ground_rent", "distance_to_market"]
+wiki = ["Bid rent theory", "Johann Heinrich von Thünen"]
+
+[term.site]
+name = "Site"
+says = "The ground a firm, a mine or a block of houses occupies."
+also = ["sites"]
+see = ["ground_rent"]
+
+[term.town_housing]
+name = "Town housing"
+says = "Land taken by houses and shops as a town grows."
+see = ["bid_rent"]
+
+[term.farmland]
+name = "Farmland"
+says = "Land that grows grain."
+see = ["bid_rent"]
+
+[term.pasture]
+name = "Pasture"
+says = "Land that grazes sheep for wool."
+see = ["bid_rent"]
+
+[term.woodland]
+name = "Woodland"
+says = "Land under trees, felled for timber."
+see = ["bid_rent"]
+
+[term.wild_land]
+name = "Wild land"
+says = "Land not worth the cost of working it."
+see = ["bid_rent"]
+
+[term.distance_to_market]
+name = "Distance to market"
+says = "The cost of carrying goods to market, counted as kilometres of flat open country. Roads, rivers, railways and the sea shorten it. Hills and woods lengthen it."
+see = ["transport", "market_area"]
+wiki = ["Location theory"]
+
+[term.market_area]
+name = "Market area"
+says = "The land that buys and sells in one town's market."
+see = ["market_town", "distance_to_market"]
+wiki = ["Market area"]
+
+[term.market_town]
+name = "Market town"
+says = "A town with a market, where its market area buys and sells."
+see = ["market_area", "price"]
+wiki = ["Market town"]
+
+[term.transport]
+name = "Transport"
+says = "Moving goods between sites and markets. Its cost rises with the good's weight and the distance to market."
+see = ["distance_to_market"]
+wiki = ["Transport economics"]
+
+[term.technology]
+name = "Technology"
+says = "What a town knows how to make and do. A technology spreads from town to town, fastest where transport between them is cheap."
+also = ["technologies"]
+see = ["method"]
+wiki = ["Technology"]
+
+[term.method]
+name = "Method"
+says = "One way to make one good, with its own materials and equipment."
+also = ["methods"]
+see = ["technology", "firm"]

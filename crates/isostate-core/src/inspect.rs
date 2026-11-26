@@ -176,13 +176,15 @@ fn pct(x: f64) -> String {
     fmt_pct(x, 0)
 }
 
+/// A sum of money as a works' card shows it (docs/designs/words.md, Labels 6):
+/// the pound sign, then `amount`'s figure, a minus sign before a loss.
+pub fn money(x: f64) -> String {
+    if x < 0.0 { format!("\u{2212}\u{a3}{}", amount(-x)) } else { format!("\u{a3}{}", amount(x)) }
+}
+
 /// A year that may be before the run began.
 fn since(sim: &Sim, year: i64) -> String {
     if year < sim.content.start_year { format!("before {}", sim.content.start_year) } else { year.to_string() }
-}
-
-fn months(n: usize) -> String {
-    if n == 1 { "1 month".to_string() } else { format!("{n} months") }
 }
 
 /// A list of words as a sentence would put it: "a", "a and b", "a, b and c".
@@ -343,45 +345,50 @@ fn works(sim: &Sim, f: usize) -> Result<(String, Vec<Group>), String> {
     let W = st.world.W;
     let mut groups = Vec::new();
 
-    let mut g = Group::new("Who and what");
-    g.row("method", C.method_label[m].clone());
-    g.row("makes", good.clone());
-    g.row("since", since(sim, st.f_born[f]));
-    g.row("owner", match families::owner_of_firm(st, f) {
-        Some(k) => family_name(sim, k),
-        None => format!("the savers of {}, no family", st.town_name[t]),
+    // A works' card is laid out by the viewer as rows of a term and a figure
+    // (docs/designs/words.md): every row's name is a label of the glossary,
+    // `data/words.toml` (a term's `name` or one of its `also`), and every
+    // figure is a number with its unit. The groups are named by when their
+    // figures are of: the month about to be played, the months of this year
+    // played so far, and last year's books.
+    let mut g = Group::new(as_of(sim));
+    g.row("Owner", match families::owner_of_firm(st, f) {
+        Some(k) => family_name(sim, k).trim_start_matches("the ").to_string(),
+        None => format!("Savers of {}", st.town_name[t]),
     });
-    g.row("market town", st.town_name[t].clone());
-    // where its cell lies, from the middle of the cell (2 km across), as the viewer's cards say a place
+    g.row("Market town", st.town_name[t].clone());
+    // where its cell lies, from the middle of the cell (2 km across), from the island's north-west corner
     let km = crate::landform::CELL_M / 1000.0;
-    g.row("where", format!("about {:.0} km east and {:.0} km south of the island's north-west corner", ((c % W) as f64 + 0.5) * km, ((c / W) as f64 + 0.5) * km));
+    g.row("Site", format!("{:.0} km E \u{b7} {:.0} km S", ((c % W) as f64 + 0.5) * km, ((c / W) as f64 + 0.5) * km));
+    g.row("Capacity", format!("{} {good}/mo", qty(st.f_K[f])));
+    g.row("On order", format!("{} {good}/mo", qty(st.f_order_K[f])));
+    g.row("Utilisation", pct(st.f_u[f]));
+    g.row("Supplied", pct(st.f_fill[f]));
+    g.row("Value", money(families::works_value(st, C, f)));
+    g.row("Workers", whole(st.f_labor[f]));
+    g.row("Cash", money(st.f_cash[f]));
+    g.row("Ground rent", format!("{}/mo", money(st.f_rent[f])));
     groups.push(g);
 
-    let mut g = Group::new("Plant and hands");
-    g.row("plant", format!("makes up to {} {good} a month", qty(st.f_K[f])));
-    g.row("plant on order", format!("{} a month more", qty(st.f_order_K[f])));
-    g.row("worth, at today's prices", whole(families::works_value(st, C, f)));
-    g.row("hands", whole(st.f_labor[f]));
-    g.row("how full it runs", format!("{} of its plant", pct(st.f_u[f])));
-    g.row("materials to hand", format!("{} of what it asks for", pct(st.f_fill[f])));
-    groups.push(g);
-
-    let mut g = Group::new("Money");
-    g.row("cash", whole(st.f_cash[f]));
-    g.row("ground rent", format!("{} a month", amount(st.f_rent[f])));
+    // the year's profit so far, when a month of it has been played
     let played = sim.t % 12;
-    g.row(
-        "profit so far this year",
-        if played == 0 { "none yet: no month of the year played".to_string() } else { format!("{} in {}", whole(st.f_profit_acc[f]), months(played)) },
-    );
+    if played > 0 {
+        let year = sim.content.start_year + (sim.t / 12) as i64;
+        let span = if played == 1 { format!("January {year}") } else { format!("January to {} {year}", MONTHS[played - 1]) };
+        let mut g = Group::new(span);
+        g.row("Profit", money(st.f_profit_acc[f]));
+        groups.push(g);
+    }
     // last year's, from the books (`accounts::works_books`), when they kept it
     let last = sim.year - 1;
     if let Some(y) = accounts::works_books(st, C, f).and_then(|wb| wb.years.into_iter().find(|y| y.year == last)) {
-        g.row(format!("made in {last}"), format!("{} {good}, worth {}", qty(y.out), whole(y.value)));
-        g.row(format!("profit in {last}"), whole(y.profit));
-        g.row(format!("paid out in {last}"), whole(y.dividends));
+        let mut g = Group::new(last.to_string());
+        g.row("Output", format!("{} {good}", qty(y.out)));
+        g.row("Revenue", money(y.value));
+        g.row("Profit", money(y.profit));
+        g.row("Dividends", money(y.dividends));
+        groups.push(g);
     }
-    groups.push(g);
     Ok((st.f_name[f].clone(), groups))
 }
 
