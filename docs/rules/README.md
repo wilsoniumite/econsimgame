@@ -1048,7 +1048,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   made of machinery and steel and run on oil), bought by each town's carting out of what it is paid; an hour
   of the carting's work then takes fewer hands, a load costs less where lorries run and most on a made road
   (`lorry.roads`), and from 1901 no made road or turnpike falls back for want of traffic (`lorry.keep`).
-  [lorry.md](lorry.md), `tasks.lorry`, `lorry.roads`, `lorry.keep`.
+  Since 26 November 2026 the lorries are paid for out of a till each town's carting is paid into, never
+  beyond it, so that no town's households pay for lorries with money they do not have (`lorry.till`).
+  [lorry.md](lorry.md), `tasks.lorry`, `lorry.roads`, `lorry.keep`, `lorry.till`.
 - **who works** (acts only from 1901, coming in over ten years): a town's hands are counted from its
   people by age, not half of them, so that children at school, the university's students and the old a
   pension reaches are out of work; the working ages' rate is fitted so that the count is the half in 1900.

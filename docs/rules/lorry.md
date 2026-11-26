@@ -1,22 +1,24 @@
 # The lorry: a machine that hauls, and roads that matter again
 
 Not in the Python. The third stage of the ways' design page ([../designs/ways.md](../designs/ways.md),
-part 6 and part 8, stage 3), in three rules, each behind a switch of its own:
+part 6 and part 8, stage 3), in three rules and a mend of their accounts, each behind a switch of its own:
 
 | switch | what it does | code |
 |---|---|---|
 | `tasks.lorry` | the motor lorry: a machine for the carters' hauling, a use of the tasks on the carting, bought by each town's carting where it pays; an hour of the carting's work then takes fewer hands, and the cost graph's land squares are cheaper by what that hour has come to cost | `data/tasks.toml` (`lorry`), `tasks.rs` ("the carters"), `carting::take_carters`, `lorry::road_mult` |
 | `lorry.roads` | a lorry wants a made road: its saving is had in full on a made road or a turnpike, a quarter of it on a track and none on open ground | `lorry.rs` |
 | `lorry.keep` | nothing unmade by quiet: from 1901 a made road or a turnpike no longer falls back for want of traffic | `lorry.rs`, `sim::update_roads` |
+| `lorry.till` | the hauliers' till: each town's carting is paid the lorries' part of its carting pay into a till of its own, the lorries are paid for out of it, and their order is cut to what it holds, so that no town's households pay for lorries with money they do not have ("The lorry's bill", below; since 26 November 2026) | `tasks::cart_orders`, `tasks::cart_pay`, `tasks::cart_till_close` |
 
-All three are off under the port's rules and left out of its files. Nothing of them acts before
+All four are off under the port's rules and left out of its files. Nothing of them acts before
 1901: the motor vehicle is not sought before 1905, and the road is kept only from 1901. So the
 played century stands by construction, and it was proved: with the three off, islands 1 to 16 to
 2050 differ from main in none of the 4,312 facts both have; with the lorry on, the twelve standing
 facts are 12 of 12 inside and every fact to 1900 is main's to the digit (`tests/lorry.rs` holds
 island 7 to the end of 1904).
 
-**On under the game's rules, all three.** The lorry is found in 1923 on the mean of islands 1 to 8
+**On under the game's rules, all four** (the till since 26 November 2026, when it ended the hunger the
+lorry's bill had brought the small towns after 1990: "The lorry's bill", below). The lorry is found in 1923 on the mean of islands 1 to 8
 (1909 to 1933), and the hands a load takes by road are half what they were by hand 43 years later
 (41 to 45 on every island of sixteen; 41.5 on main with pace, below), past the forty the pass asks:
 that one number is missed, and every other part of the pass is met ("The decision", below). Machines that tend
@@ -62,10 +64,12 @@ the hauling, from the easiest task. Each month, in each town:
   the last digit;
 - **the lorries' goods**: the town's carting asks for the oil of its lorries in place for the month's
   work with the day's trade, and for a quarter of what its plant lacks for the share it means to hold
-  beside the works' orders for plant; the town's households pay for both out of the carting they are
-  paid (the hauliers own their lorries, as the farms' machines are the farms'), and the books count them
-  among the households' purchases. The return on the plant is never paid to anyone: it stays with the
-  households, as the land machines' stays in the rent.
+  beside the works' orders for plant; the town's hauliers pay for both out of their till, which is paid
+  the lorries' part of the carting the town is paid, and the order is cut to what the till and the
+  households' savings can pay (`lorry.till`, "The lorry's bill", below; before 26 November 2026 the
+  households paid for both out of their purse after the month's spending, with no bound). The hauliers
+  are the town's households (they own their lorries, as the farms' machines are the farms'), and the
+  books count the lorries' goods among the households' purchases and the tills among their money.
 
 **The freight falls where the lorry is found.** At each year's end the island's cost of an hour of the
 carting's work over the wage, `kappa` (each town's `h + m / wage`, weighted by its bill), is kept, and
@@ -277,6 +281,91 @@ it: the hands tending frees still go to the carts (carters 0.080 of the hands in
 design's new goods and needs after 1950: motor and appliance works, travel, care and schooling), and
 carting that frees as many hands as tending sends it.
 
+## The lorry's bill (`lorry.till`, 26 November 2026)
+
+**What was wrong.** Since the lorry landed the island's small towns went hungry after 1990: on main of 26
+November 2026, 21.3 years a run with hunger in the news from 1990 on islands 1 to 8 (21.2 on islands 17 to
+32), against 0.4 (0.5) with the lorry off. It was the accounts, not the harvest. The lorries' oil and plant
+were paid out of the town's households' purse after the month's spending, with no bound, and a lorry's plant
+is 34 months' wages: the carting's order for a quarter of what its fleet lacked could be several times what
+the town held. On islands 1 to 8 (`examples/lorry_bill.rs`) 391 town-months ended with the households
+below nothing, every one with a lorries' bill that month: the median town had 108 people, the bill was 92
+per cent plant, 0.77 of the households' cash at the month's start and 2.5 times what they were paid for
+carting that month, in every month of the year alike. Their next months' budgets were nothing, and 389 of
+the 423 hungry town-months were the month after one that ended below nothing. The pay for those loads was
+not elsewhere: every carting payment goes to the paying town's households in the month it is carted (the
+works' at the works' town, the land's at the land's, the trade's at the sending town), and the bill was
+simply bigger than it.
+
+**The mend: a till.** The hauliers are the town's households, as before, but their carting keeps a till of
+its own, as a works keeps its cash (`tasks::cart_orders`, `cart_pay`, `cart_till_close`):
+
+1. **Paid where and when the load is paid.** Once the month's carting is all on the town's bill, the
+   lorries' part of what the town was paid for it goes into the till and not into the households' income:
+   `cart_cost / (cart_hands * wage + cart_cost)` of it, the part of an hour of the carting's work that is
+   the lorries' return, wear and oil, at the cost the carters were hired at (never more than the month's
+   income).
+2. **The till pays for the lorries' oil and plant**, and their order is cut, before the market, to what the
+   till holds and what the town's households may put in from their savings: the cash they will not spend
+   this month, up to the share of it they put into a new works of the town (`invest_frac_hh`, 0.08). The oil
+   comes first, the plant from what is left. What is cut is never bought: it stays in the merchants' store,
+   and the order's fill slows the share the carting means to hold, as any works short of money is slowed.
+   The households' put is also what buys a town's first lorries, when the till is empty.
+3. **What is left is the hauliers' pay.** Whatever the till holds at the month's end beyond what it keeps
+   back (what the fleet still lacks for the share the carting means to hold, and the month's oil) is paid
+   into the households' income.
+
+Why a till of its own and not a part of the households' purse: a lorry is bought in lumps that no month's
+pay covers, so its money must be carried from the months it is earned to the month it is spent, and the
+households' purse is read every month by a dozen takers (the month's budget, the works' pool, subscriptions,
+the movers' cash), each of which would have to learn to leave a part of it alone. No money is made or lost:
+the tills are in `econ::money_total`, among the households' money in the books, and in the run's check for
+numbers that are not finite. The books' flows are as they were (the carting is the households' pay, the
+lorries' goods their purchases), so income still equals spending. With `lorry.till=false` the run is the
+run before it, to the bit: both golden tests held all their hashes with the switch turned off, and the
+probe's islands gave main's numbers exactly.
+
+**Every path below nothing.** By the code, a town's households' cash can end a month below nothing by two
+paths: the lorries' bill (before the till) and a last call on the subscribers of a line or bridge that opens
+with its cash below nothing (`ways::repay`); every other taker takes a share of what the purse holds, or is
+held to the budget. The station's handling ([haulage.md](haulage.md)) is a charge in the cost graph, carting
+the town's carters are paid; the treasury's road-making ([highways.md](highways.md)) is paid out of the
+treasury; there is no keep of carts and horses to pay. Measured, every month from 1750 to 2050 on islands 1
+to 8 and 17 to 32: before the till, 49 town-months a run (53 on 17 to 32) ended below nothing, every one with
+a lorries' bill that month, and none by any other path; with it, none at all. `tests/lorry.rs` holds island
+7 to it (`the_hauliers_till_island_7_to_2050`).
+
+**What the islands showed.** Sweeps to 2050 with six families, main (78f01c7) against the till, means of the
+islands; years with hunger, the people of small towns, and every month below nothing from the probe
+(`cargo run --profile work -p isostate-core --example lorry_bill -- 1-8 OUT [key=value ...]`), the lorry off
+being `tasks.lorry=false lorry.keep=false lorry.roads=false`.
+
+| | islands 1 to 8: main | the till | the lorry off | islands 17 to 32: main | the till | the lorry off |
+|---|---|---|---|---|---|---|
+| years with hunger in the news, from 1990 | 21.25 | 0.25 | 0.38 | 21.19 | 0.62 | 0.50 |
+| years with hunger, the whole run | 21.9 | 0.4 | 0.5 | 21.7 | 1.1 | 1.1 |
+| town-months ending below nothing, a run | 48.9 | 0 | 0 | 53.3 | 0 | 0 |
+| the towns' share of people, 1970 / 2000 / 2050 | 0.578 / 0.587 / 0.548 | 0.581 / 0.590 / 0.559 | | 0.575 / 0.586 / 0.559 | 0.574 / 0.586 / 0.555 | |
+| towns under 1,000 people in 2050, and their people | 14.1, 3,513 | 13.9, 3,286 | 15.5, 4,126 | 13.8, 3,798 | 14.5, 3,936 | 15.9, 3,924 |
+| what is made a head (linked), 1970 / 2050, 1750 = 1 | 18.7 / 21.1 | 18.6 / 21.1 | | 17.7 / 20.4 | 17.7 / 20.4 | |
+| carters, of the hands, 1950 / 2000 / 2050 | 0.089 / 0.056 / 0.059 | 0.091 / 0.055 / 0.058 | | 0.096 / 0.060 / 0.059 | 0.096 / 0.059 / 0.060 | |
+| the haulers' real pay, 2050 over 1970 | 2.05 | 2.01 | | 1.98 | 1.98 | |
+| the carting bill over output, 2050 | 0.051 | 0.052 | | 0.051 | 0.051 | |
+| freight by road / rail / boat, 2050, millions of weight-km | 11,160 / 4,446 / 404 | 11,040 / 4,562 / 402 | | 10,700 / 5,189 / 369 | 10,810 / 5,037 / 363 | |
+| the lorries' share of hauling, 1950 / 2000 / 2050 | 0.43 / 0.91 / 0.91 | 0.43 / 0.91 / 0.92 | | 0.29 / 0.84 / 0.90 | 0.28 / 0.84 / 0.91 | |
+| the wage, per cent a year 1900 to 1970; 2050 over 1970 | 1.19; 1.16 | 1.18; 1.17 | | 1.20; 1.16 | 1.20; 1.18 | |
+| the land's share of hands, 2050 less 1900 | -0.104 | -0.106 | | -0.115 | -0.110 | |
+| slumps in the news (verdicts / alarms) | 8.6 / 9.3 | 8.9 / 9.1 | | 11.6 / 12.1 | 11.4 / 12.0 | |
+
+The hunger is gone, to what the island has without the lorry, and nothing else moves beyond the noise
+between islands: the lorry spreads as it did (its hands a load halved in 1969 and 1981 on the means, as on
+main), the carting pays and takes the hands it did, and the three growth asks are met in all four sweeps.
+The twelve standing facts are 12 of 12 inside on both sets of islands, and nothing moves before the lorry:
+on every island of the 24 the first year in which any yearly series differs from main's is the year its
+lorry was found (1909 on islands 5 and 7, 2000 on island 30). No run failed or lost money. The month is no
+slower: islands 1 to 8 to 2050, main's sweep and the till's run side by side, took 92.4 and 92.5 processor
+seconds a run.
+
 ## What worries me
 
 - **The money for a load's rail squares buys lorries too.** The carting bill is one sum of money for
@@ -289,7 +378,8 @@ carting that frees as many hands as tending sends it.
   carters for it are too few; one far ahead, too many.
 - **The books count the lorries' oil and plant as the households' purchases** (among their spending
   and their goods), and the carting money in full as pay for work, so work's share of income counts the
-  lorries' return as pay.
+  lorries' return as pay. Since the till the money itself is no longer the households' pay (it goes to
+  the till), but the books still read it so, and so does the rate on pay, which is taken on it.
 - **Rail has no terminal charge.** The cost graph prices a load onto a railway at nothing, so the
   railway keeps every haul where its line runs and the road takes only what the line does not reach;
   in a real country the station's handling is what lost the railway its short hauls. With a charge the
@@ -306,3 +396,8 @@ carting that frees as many hands as tending sends it.
   and a quarter of the saving on a track.
 - **The carters' classes are counted as by hand** by the reckoning of pay ([pay.md](pay.md)), which
   reads the carters at the carting's shares whatever the lorries hold.
+- **The fleet is sized to last month's work.** The carting's order for plant is a quarter of what its
+  fleet lacks for last month's work, so a busy month asks for a fleet for that month, which then stands
+  idle. The till bounds what that costs the households but not the asking; sizing the fleet to the year's
+  mean work would be the next mend. The households' put, `invest_frac_hh` of their cash a month, was set by
+  reading the works' pool and not swept.

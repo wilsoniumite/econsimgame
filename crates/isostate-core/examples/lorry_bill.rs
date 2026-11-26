@@ -14,7 +14,8 @@
 //! whole run from 1750 that ended below nothing with no lorries' bill that month
 //! (another path), the first twelve named; the lorries' bill
 //! and the carting's pay over the run, and in towns under a thousand people; the
-//! least the hauliers' till held.
+//! least the hauliers' till held; and at the end of 1900, 1950, 2000 and 2050
+//! the towns under a thousand people and the people in them.
 //!
 //! Each row: the town, its people, the share of the food its households got,
 //! the households' cash a head at the month's start and end, what the town's
@@ -60,6 +61,7 @@ fn one(seed: u64, sets: &[String], dir: &std::path::Path) {
     let mut till_least = f64::INFINITY;
     let mut neg_after_bill_month = 0usize;
     let (mut other, mut others) = (0usize, String::new());
+    let mut marks = String::new();
     let res = isostate_core::edits::play_noting(&P, C.clone(), &[], |sim, month| {
         let st = &sim.st;
         let T = st.T_max;
@@ -67,6 +69,12 @@ fn one(seed: u64, sets: &[String], dir: &std::path::Path) {
             cash0.resize(T, 0.0);
         }
         let Some(m) = month else { return };
+        // the small towns as a mark year ends: how many under a thousand people, and their people
+        if m == 11 && [1900, 1950, 2000, 2050].contains(&sim.year) {
+            let small: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.pop[t] < 1000.0).collect();
+            let people: f64 = small.iter().map(|&t| st.pop[t]).sum();
+            let _ = writeln!(marks, "  {}: {} towns under 1,000 people, {people:.0} people in them", sim.year, small.len());
+        }
         let lorries = st.tasks.cart_paid_run.len() == T;
         // every month of the run: a town's households below nothing with no
         // lorries' bill that month came there by another path
@@ -157,6 +165,7 @@ fn one(seed: u64, sets: &[String], dir: &std::path::Path) {
     let _ = writeln!(txt, "the least any hauliers' till held: {}", if till_least.is_finite() { format!("{till_least:e}") } else { "-".into() });
     let _ = writeln!(txt, "town-months of the whole run ending below nothing with no lorries' bill that month: {other}");
     txt.push_str(&others);
+    txt.push_str(&marks);
     std::fs::write(dir.join(format!("seed{seed}.txt")), &txt).unwrap();
     let head = "seed,year,month,town,name,pop,food,cash_start_ph,cash_end_ph,cart_pay_ph,oil_ph,plant_ph,income_ph,cart_work,auto_haul,held_haul,till_ph\n";
     std::fs::write(dir.join(format!("seed{seed}.csv")), format!("{head}{rows}")).unwrap();
