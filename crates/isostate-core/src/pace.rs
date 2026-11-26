@@ -1,4 +1,4 @@
-//! PACE: works built over a builder's year (not in the Python; see
+//! PACE: works whose plant comes in over a year (not in the Python; see
 //! `docs/rules/pace.md` and `docs/probes/tr-timber.md`).
 //!
 //! Under the port a works that orders plant asks the merchants each month for
@@ -12,15 +12,20 @@
 //! years after 1900.
 //!
 //! With `enabled`, from the year `from` on, a works asks each month for
-//! `1 / months` of what is still to come: with `months` 12 the plant is
-//! delivered over a building year, as a builder's season would bring it, and
-//! the timber merchants see the order book come to them a month at a time.
-//! Nothing else is touched: the size of each order, the year's room, the
-//! review, the price rule and the woods are as they were.
+//! `1 / months` of what is still to come: with `months` 12 half the plant is
+//! in by the eighth month, a third is still to come after a year, and the
+//! mean wait is a year, where the port's is four months. Each year's orders
+//! are spread over the next two or three, so the waves of the four-to-five-year
+//! cycle overlap and the merchants never see a whole year's orders in a season.
+//! (The check found that it is the year's mean wait that cures: plant brought
+//! in evenly within one year does little for timber, and evenly over two does
+//! what this does; docs/probes/tr-timber.md, "The check".) Nothing else is
+//! touched: the size of each order, the year's room, the review, the price rule
+//! and the woods are as they were.
 //!
 //! Off is off: the share asked for is the port's quarter, and the run is the
-//! run to the bit. It is off under the game's rules too: a cure on trial
-//! (docs/probes/tr-timber.md), for a checker to try before it is switched on.
+//! run to the bit. On under the game's rules since its check (26 November
+//! 2026), from 1901, so the played century is untouched.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +57,7 @@ impl Default for PaceParams {
 }
 
 impl PaceParams {
-    /// The rule switched on with its numbers. Not in `game_params` yet.
+    /// The rule switched on with its numbers, as `game_params` has it.
     pub fn on() -> PaceParams {
         PaceParams { enabled: true, ..PaceParams::default() }
     }

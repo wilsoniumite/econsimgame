@@ -14,7 +14,7 @@ Branch `night/g-timber-trace`, from `main` at e7763a5 (25 November 2026). The qu
 
 **The arm that proves it**: plant built without timber, sawn timber or bricks from 1900 (a counterfactual, not a cure) takes timber's swing from 0.51 to 0.11 and bricks' from 0.49 to 0.11, lower on eight islands of eight; a smaller year's room (0.15 to 0.05) takes timber's to 0.21. No arm on the merchants or on the woods brings either under 0.87 of what it was.
 
-**The cure on trial**: `pace` (docs/rules/pace.md), off under both sets of rules. From 1901 a works asks for its plant over a builder's year, a twelfth of what is to come each month and not a quarter. On islands 1 to 16 it takes timber's swing from 0.53 to 0.40 and bricks' from 0.49 to 0.28, lower on all sixteen; the twelve standing facts stand to the last digit, the three growth asks are met and met better, and the wage after 1970 is higher. It does not end timber's cycle: the rest is the woodmen's slow answer, which the arms show and which this piece leaves (below).
+**The cure on trial** (switched on under the game's rules after its check, section 7, which found the trace's account of how it works wrong in one part): `pace` (docs/rules/pace.md), off under both sets of rules when this was written. From 1901 a works asks for its plant over a builder's year, a twelfth of what is to come each month and not a quarter. On islands 1 to 16 it takes timber's swing from 0.53 to 0.40 and bricks' from 0.49 to 0.28, lower on all sixteen; the twelve standing facts stand to the last digit, the three growth asks are met and met better, and the wage after 1970 is higher. It does not end timber's cycle: the rest is the woodmen's slow answer, which the arms show and which this piece leaves (below).
 
 ## 1. What it is
 
@@ -138,3 +138,29 @@ cargo build --release -p isostate-core --example timber_trace
 isostate-core lab --out L --rule prices.enabled=false@1900 --seeds 1-8          # and the other lab arms above
 isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --set pace.enabled=false,true --standing --out S
 ```
+
+## 7. The check (26 November 2026)
+
+Branch `night/g-timber-check`. A checker's experiments, on islands the trace did not use (17 to 32, the game's rules, six families, to 2050), each set against the same islands with the rule off; the trial switches were a build of the branch never committed, as the trace's were. The swing is as in section 1, 1910-2050; the ratio is the arm's over the control's.
+
+**What stands and what broke.**
+
+- **The cause stands.** Plant built without timber, sawn timber or bricks from 1901 takes timber's swing to 0.17 of what it was and bricks' to 0.23, lower on sixteen islands of sixteen, as it did on the trace's eight. Another cause the trace did not try, the tree's rule that plant waits behind the day's trade (`tree.plant_waits` off from 1901), is not it: timber 0.86, bricks 1.10. Not tried by anyone: that the households' leaving timber and bricks is why the cycle grew after 1900.
+- **The cure's effect stands.** Pace takes timber's swing to 0.71 and bricks' to 0.54 on the new islands (on main's tree merged in: 0.71 and 0.55, lower on 16 of 16), as on the trace's (0.75, 0.56). It is not hidden in the price: timber cut, bricks made and building made swing less with it (0.72, 0.51, 0.48), and so do the wage, rents and the investment share. It does not move elsewhere: none of the other 26 goods' prices swings more.
+- **It is not the longer wait.** Pace makes a works count as building three times as long, so it orders again later, which might cure by rationing as the smaller room does. It does not: pace with works let off as soon as under the port (`works.built_share` 0.15 from 1901) keeps the cure (timber 0.75, bricks 0.55); the long wait without pace (`works.built_share` 0.003) does almost nothing (0.91, 0.96).
+- **The account of how it works broke.** The trace called it a builder's year, the plant brought in over a building season. Plant brought in evenly over one year, all of it in by the twelfth month, does nothing for timber (0.98, lower on 9 of 16) and less for bricks (0.68). Pace asks a twelfth of what is still to come, a tail whose mean wait is a year and which reaches three years; plant brought in evenly over two years, whose mean wait is also a year, does what pace does (timber 0.78, bricks 0.48). What cures is that each year's orders reach the merchants spread over the next two or three, so the waves of a four-to-five-year cycle overlap: a year's time to build, not a season's.
+- **The richer island did not repeat.** On the new islands before main was merged, the linked wage of 2030-2050 was 0.8 per cent lower with pace and timber as dear; on the merged tree it is 1.8 per cent higher and timber cheaper (0.52 months of the wage against 0.69). The trace's +4 per cent was its islands'. Neither is a cost the asks can see.
+
+**One dear year with it on.** Island 21 (`timber_trace --seed 21 --set pace.enabled=true`): over 1950-2050 timber's dearest year over its cheapest is 3.9 with pace, 8.5 without. In its dearest year, 2049, the orders placed at the end of 2048 put 457 thousand units of timber on order; a twelfth a month is 58 thousand asked, against a stock of 38 thousand. The price climbs from 0.11 of the wage in January 2048 to 0.37 in October 2049 while the woodmen come in from 1,100 to 10,800, a year late, and by October 2050 the stock is 152 thousand and the price falling. It is the trace's second part, the woodmen's slow answer, on a smaller order book.
+
+**Pay's settling.** With pay by class reckoned on one year's work in place of five, a clerk's pay would move 20 per cent a year with pace off and 14 with it on (on five years, 4.3 and 3.8). Pace takes a third off the lurch in hiring that the settling was made for; the settling must stay.
+
+**A slower pace.** At `months` 24 timber's swing falls to 0.45 and bricks' to 0.37, but the linked wage of 2030-2050 is 2 per cent lower and building a head 3 per cent lower. Twelve was kept.
+
+![Timber and bricks on island 21, 1880-2050, pace off and on](../shots/tc-timber-island21.png)
+
+Island 21, on the merged tree: timber and bricks in months of the wage, yearly means, as the game was (grey) and with pace (orange). Bricks' peaks after 1940 are gone; timber still swings from year to year, about half as far.
+
+**For the next tracer.** The woodmen: they hire on a price they expect months late and move a seventh of the way a month, one number for every hand on the land (`labor_adjust_ex`), so a woodman's own pace needs the land's hiring split by sector in the labour market. And the households: put timber and bricks back in their basket after 1900 and see whether the cycle was born of their leaving.
+
+How to run it again: `isostate-core sweep --seeds 17-32 --rules game --families 6 --end-year 2050 --set pace.enabled=false,true --standing --growth --out S`, and the lab's arms `--rule pace.enabled=true@1901 --rule works.built_share=0.15@1901` and `--rule works.built_share=0.003@1901` on `--seeds 17-32`.
