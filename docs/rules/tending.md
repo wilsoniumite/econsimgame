@@ -481,8 +481,9 @@ nearly doubles. Care's hands grow (0.17 to 0.19 of all hands), at the one wage.
 **So it stays off.** The pass for switching it on was: the towns of 2050 no lower than main's less 0.02
 (0.536); what a wage buys in 2050 over 1970 no lower than with tending off (1.17); what is made a head
 clearly higher; the three growth asks and the twelve; slumps no more than two above tending off. With the
-mend, made a head (1.23, 1.36), the twelve and, for tending alone, the slumps (+2.0) are met; the towns (0.498,
-0.521), the wage (1.00, 1.02) and the wage's growth ask on islands 1 to 8 are missed.
+mend, made a head (1.23, 1.36) and the twelve are met; the slumps are two above for tending alone (11.70
+against 9.67, at the edge) and three for the wider reach; the towns (0.498, 0.521), the wage (1.00, 1.02)
+and the wage's growth ask on islands 1 to 8 are missed.
 
 **What is still missing.** The gains of machines that tend go to profits (0.26 to 0.29 of income), and
 nothing on the island turns profits back into work in the towns: the owners' spending has no share on care
