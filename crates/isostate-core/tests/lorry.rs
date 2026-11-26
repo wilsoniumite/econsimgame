@@ -2,16 +2,19 @@
 //! on the carting behind `tasks.lorry`, waiting on the motor vehicle, an idea of
 //! the tree (`data/game.toml`); the lorry's saving had by the road under it
 //! (`lorry.roads`); and from 1901 no made road unmade for want of traffic
-//! (`lorry.keep`).
+//! (`lorry.keep`); and the lorries paid for out of the hauliers' till, never
+//! beyond it (`lorry.till`).
 //!
-//! The island runs are played on island 7 to 1935 under the game's rules with
-//! six families, with the switches their cases lean on set by name
-//! (`tasks.enabled`, `tasks.land`, `tasks.lorry`, `tasks.tending` off,
-//! `carting.enabled`, `lorry.roads`, `lorry.keep`) and every other rule as the
-//! game has it. What they check holds on any island's history (a run against
-//! another run, shares within their bounds, money that adds up), but for one
-//! thing: that island 7 finds the lorry by 1935, which the test says if a later
-//! rule stops it.
+//! The island runs are played on island 7 to 1935, and to 2050 for the till,
+//! under the game's rules with six families, with the switches their cases
+//! lean on set by name (`tasks.enabled`, `tasks.land`, `tasks.lorry`,
+//! `tasks.tending` off, `carting.enabled`, `lorry.roads`, `lorry.keep`,
+//! `lorry.till`) and every other rule as the game has it. What they check holds
+//! on any island's history (a run against another run, shares within their
+//! bounds, money that adds up, no purse below nothing), but for two things:
+//! that island 7 finds the lorry by 1935, and that with the till off some town
+//! of island 7's ends a month below nothing by 2050, which the tests say if a
+//! later rule stops them.
 #![allow(non_snake_case)]
 
 use isostate_core::lorry::{self, LorryParams};
@@ -28,7 +31,7 @@ fn params(lorry: bool) -> Params {
     P.end_year = Some(TO);
     P.carting.enabled = true;
     P.tasks = TasksParams { enabled: true, land: true, tending: false, lorry, ..TasksParams::game() };
-    P.lorry = LorryParams { roads: true, keep: true };
+    P.lorry = LorryParams { roads: true, keep: true, till: true };
     P
 }
 
@@ -48,7 +51,8 @@ fn content(P: &Params) -> Content {
 fn the_lorry_stands_behind_its_switches() {
     let port = default_params();
     assert!(!port.tasks.lorry && port.lorry == LorryParams::default());
-    assert!(!port.lorry.roads && !port.lorry.keep);
+    assert!(!port.lorry.roads && !port.lorry.keep && !port.lorry.till);
+    assert!(game_params().lorry.till, "the hauliers' till is on under the game's rules");
     assert!(!serde_json::to_string(&port).unwrap().contains("lorry"), "the port's file says nothing of the lorry");
     let (on, off) = (params(true), params(false));
     assert!(serde_json::to_string(&on).unwrap().contains("\"lorry\":true"));
@@ -168,4 +172,66 @@ fn island_7_to_1935() {
     assert!(cheaper, "the lorry carted and the cost graph's land squares were never cheaper");
     eprintln!("the lorry found in {y}; the most a town's carting held of its hauling by {TO}: {most:.3}");
     assert!(at1904 == off.join().unwrap(), "the lorry on moved the run before 1905, though its idea is not sought before 1905");
+}
+
+/// Island 7 to 2050 with the hauliers' till on and off (`lorry.till`), the two
+/// side by side, every month watched (docs/rules/lorry.md, "The lorry's bill"):
+///
+/// - with the till on: no town's households end a month below nothing, by the
+///   lorries' bill or any other path; no till is ever below nothing; lorries
+///   are bought; money is conserved every month (`edits::play_noting` checks
+///   it), and the books' purses, the tills among the households' money, hold
+///   all the money there is;
+/// - with it off: every town-month that ends below nothing had a lorries' bill
+///   that month, so the lorry's is the one path that does it on this island,
+///   and there are some (island 7 has had them since the lorry landed; if a
+///   later rule ends them, this test must be set again).
+#[test]
+fn the_hauliers_till_island_7_to_2050() {
+    let watch = |till: bool| {
+        let mut P = params(true);
+        P.end_year = Some(2050);
+        P.lorry.till = till;
+        let C = content(&P);
+        // town-months below nothing with a lorries' bill that month, and without
+        // one; the least a till held; what the lorries cost, all told
+        let (mut by_bill, mut other, mut least, mut bought) = (0usize, Vec::new(), f64::INFINITY, 0.0);
+        let s = edits::play_noting(&P, C, &[], |sim, month| {
+            let Some(m) = month else { return };
+            let st = &sim.st;
+            let tk = &st.tasks;
+            for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+                let bill = if tk.cart_paid_run.len() > t { tk.cart_paid_run[t] + tk.cart_paid_plant[t] } else { 0.0 };
+                bought += bill;
+                if let Some(&x) = tk.cart_till.get(t) {
+                    least = least.min(x);
+                }
+                if st.hh_cash[t] < -1e-6 {
+                    if bill > 0.0 {
+                        by_bill += 1;
+                    } else {
+                        other.push(format!("{} month {m}, {}: {}", sim.year, st.town_name[t], st.hh_cash[t]));
+                    }
+                }
+            }
+        })
+        .expect("money is conserved every month");
+        (s, by_bill, other, least, bought)
+    };
+    let off = std::thread::spawn(move || {
+        let (_, by_bill, other, _, _) = watch(false);
+        (by_bill, other)
+    });
+    let (s, by_bill, other, least, bought) = watch(true);
+    assert!(by_bill == 0 && other.is_empty(), "with the till, {by_bill} town-months ended below nothing with a lorries' bill, and these without one: {other:?}");
+    assert!(least >= -1e-9, "a hauliers' till held {least}");
+    assert!(bought > 0.0, "with the till no lorry was ever bought");
+    let st = &s.st;
+    let m = &st.acct.years.last().expect("the books are kept").money;
+    let money = m.households + m.landlords + m.merchants + m.works + m.families + m.projects + m.fund + m.treasury;
+    assert!((money - econ::money_total(st)).abs() < 1e-9 * money, "the purses, the tills among the households', hold all the money there is: {money} against {}", econ::money_total(st));
+    let (by_bill, other) = off.join().unwrap();
+    assert!(other.is_empty(), "without the till, town-months ended below nothing with no lorries' bill: {other:?}");
+    assert!(by_bill > 0, "without the till no town of island 7 ended a month below nothing by 2050 (if a later rule ended them, set this test again)");
+    eprintln!("island 7 to 2050: without the till {by_bill} town-months ended below nothing, each with a lorries' bill; with it none");
 }

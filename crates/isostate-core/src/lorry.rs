@@ -16,6 +16,20 @@
 //! - **Nothing unmade by quiet** (`lorry.keep`): from 1901 a made road or a
 //!   turnpike no longer falls back for want of traffic. Only a track fades.
 //!
+//! And one rule of the lorries' accounts, kept in `tasks.rs` beside the
+//! carting's orders:
+//!
+//! - **The hauliers' till** (`lorry.till`): each town's carting keeps a till of
+//!   its own, paid the lorries' part of what the town is paid for carting, in
+//!   the month and the town it is paid; the lorries' oil and plant are paid out
+//!   of it, and their order is cut to what it holds (with what the town's
+//!   households can put in from their savings), so that no town's households
+//!   pay for lorries with money they do not have. What the till holds beyond
+//!   what its lorries still lack is paid to the households. Off, the households
+//!   pay the lorries' bill out of their purse after the month's spending, with
+//!   no bound, as the lorry first landed (docs/rules/lorry.md, "The lorry's
+//!   bill").
+//!
 //! Off, nothing here acts: the cost graph is built with the port's multipliers
 //! and every road falls back as it always has.
 
@@ -36,19 +50,21 @@ pub struct LorryParams {
     /// From `KEEP_FROM` a made road or a turnpike no longer falls back for want
     /// of traffic.
     pub keep: bool,
+    /// The lorries are paid for out of the hauliers' till, never beyond it.
+    pub till: bool,
 }
 
 impl Default for LorryParams {
     /// Off: what the port runs with.
     fn default() -> LorryParams {
-        LorryParams { roads: false, keep: false }
+        LorryParams { roads: false, keep: false, till: false }
     }
 }
 
 impl LorryParams {
     /// The game's.
     pub fn game() -> LorryParams {
-        LorryParams { roads: true, keep: true }
+        LorryParams { roads: true, keep: true, till: true }
     }
 }
 

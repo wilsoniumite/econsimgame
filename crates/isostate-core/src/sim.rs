@@ -758,8 +758,9 @@ fn not_finite(v: f64) -> String {
 /// The first purse `econ::money_total` counts whose value is not a finite number, named.
 fn money_not_finite(st: &State) -> Option<String> {
     let town = |t: usize| st.town_name.get(t).cloned().unwrap_or_else(|| format!("{t}"));
-    let pools: [(&str, &[f64]); 5] = [
+    let pools: [(&str, &[f64]); 6] = [
         ("the households' cash", &st.hh_cash),
+        ("the hauliers' till", &st.tasks.cart_till),
         ("the landlords' cash", &st.lord_cash),
         ("the merchants' cash", &st.merch_cash),
         ("the households' income", &st.hh_income),

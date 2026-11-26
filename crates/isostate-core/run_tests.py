@@ -200,6 +200,9 @@ QUICK_SKIPS = [
     'the_facts',
     'the_freight_waits_for_its_year',
 
+    # lorry (its island_7_to_1935 shares tending's name, below)
+    'the_hauliers_till_island_7_to_2050',
+
     # machines
     'machines_stand_for_years',
     'money_is_conserved_and_runs_are_deterministic_with_machines_on',

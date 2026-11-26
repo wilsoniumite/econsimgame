@@ -275,6 +275,8 @@ pub fn money_total(st: &State) -> f64 {
         + pairwise_sum(&st.lord_income);
     // state (docs/rules/state.md): the treasury, nothing while the purse is off
     let total = if st.purse.treasury != 0.0 { total + st.purse.treasury } else { total };
+    // the lorry (docs/rules/lorry.md): the hauliers' tills, none without `lorry.till`
+    let total = if st.tasks.cart_till.is_empty() { total } else { total + pairwise_sum(&st.tasks.cart_till) };
     if families::active(st) { total + families::cash_total(st) } else { total }
 }
 
@@ -874,7 +876,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     // the lorry (docs/rules/lorry.md): the carters' lorries ask for their oil with
     // the day's trade, and for their plant (below) beside the works' orders
-    let cbuy = crate::tasks::cart_orders(st, C, P);
+    let cbuy = crate::tasks::cart_orders(st, C, P, &budgets);
     if let Some(b) = &cbuy {
         for k in 0..T * G {
             R.data[k] += b.run.data[k];
@@ -1248,16 +1250,20 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         merch[t] += hh_spend[t] + lord_spend[t];
         sales_value[t] += hh_spend[t] + lord_spend[t];
     }
-    // the lorry (docs/rules/lorry.md): the hauliers own their lorries, so the town's
-    // households pay for the lorries' oil and plant, out of the carting they are paid
+    // the lorry (docs/rules/lorry.md): the hauliers own their lorries and pay for
+    // their oil and plant: under the hauliers' till out of the till their carting
+    // is paid into (`lorry.till`), and without it out of the households' purse
     let cart_pay: Vec<f64> = match &cart_got {
         Some((got, _, _)) => (0..T).map(|t| pairwise_sum_by(G, |g| got[(t, g)] * p[(t, g)])).collect(),
         None => Vec::new(),
     };
     for (t, &v) in cart_pay.iter().enumerate() {
-        st.hh_cash[t] -= v;
         merch[t] += v;
         sales_value[t] += v;
+    }
+    if let (Some(b), Some((got, plant, _))) = (&cbuy, &cart_got) {
+        crate::tasks::cart_pay(st, P, b, &cart_pay);
+        crate::tasks::note_cart_paid(st, got, plant);
     }
     if families::active(st) {
         families::pay_spending(st, &fam_budget, &lord_budget, &lord_spend);
@@ -1614,6 +1620,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // state (docs/rules/state.md): the teachers paid, the rate on pay taken and
     // the pensions paid, between the treasury and the households' income
     crate::purse::month(st, P, &w, &pay_banked, &mut hh_inc);
+    // the lorry (docs/rules/lorry.md, "The lorry's bill"): the lorries' part of the
+    // month's carting pay goes into the hauliers' till, and what it need not keep
+    // comes back out to the households (nothing without `lorry.till`)
+    crate::tasks::cart_till_close(st, P, cbuy.as_ref(), &mut hh_inc);
 
     for t in 0..T {
         st.hh_income[t] += hh_inc[t];
