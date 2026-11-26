@@ -68,6 +68,8 @@ pub struct PictureAsk {
     pub begin: bool,
     /// a name whose tooltip is opened and locked for the picture (`tip:Land`)
     pub tip: Option<String>,
+    /// the start chosen, by the core's word (`start:landfall`)
+    pub start: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,7 +107,8 @@ pub fn wanted(argv: &[String], set: &[String]) -> Result<Option<Asked>, String> 
                         "family" => pic.family = true,
                         "begin" => pic.begin = true,
                         w if w.starts_with("tip:") => pic.tip = Some(w["tip:".len()..].to_string()),
-                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family, begin or tip:NAME")),
+                        w if w.starts_with("start:") && starts().iter().any(|s| s.word == &w["start:".len()..]) => pic.start = Some(w["start:".len()..].to_string()),
+                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family, begin, tip:NAME or start:WORD ({})", isostate_core::landfall::STARTS.join(", "))),
                     }
                 }
                 asked.mode = Mode::Picture(pic);
@@ -681,11 +684,14 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
     if picture.as_ref().is_some_and(|p| p.family) {
         choices.kind = Kind::Family;
     }
+    if let Some(i) = picture.as_ref().and_then(|p| p.start.as_ref()).and_then(|w| starts().iter().position(|s| &s.word == w)) {
+        choices.start = i;
+    }
     let saves = saves::listed_in(&saves::folder());
     let size = asked.size.unwrap_or(choices.size);
     // Enter goes on with the newest saved game, as a plain start did before the page; a
     // picture of a choice made shows the new island's command line
-    let chose = picture.as_ref().is_some_and(|p| p.more || p.family);
+    let chose = picture.as_ref().is_some_and(|p| p.more || p.family || p.start.is_some());
     let focus = if saves.is_empty() || chose { Focus::Begin } else { Focus::Save(0) };
     eprintln!("the start page: {} saved game{} in {}", saves.len(), if saves.len() == 1 { "" } else { "s" }, saves::folder().display());
     let page = Page { choices, saves, focus, more: picture.as_ref().is_some_and(|p| p.more), said: None, mode: asked.mode.clone(), go: None, t0 };
@@ -1434,7 +1440,7 @@ mod tests {
         assert_eq!(wanted(&line("--start-page"), &[]), Ok(Some(Asked { mode: Mode::Window { from_game: true }, size: None })));
         assert_eq!(
             wanted(&line("--page-shot out/p.png,more,begin --size 1280x720"), &[]),
-            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true, tip: None }), size: Some((1280, 720)) }))
+            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true, tip: None, start: None }), size: Some((1280, 720)) }))
         );
         assert!(wanted(&line("--start-page --family"), &[]).unwrap_err().contains("--family is an option of a game"));
         assert!(wanted(&line("--page-shot"), &[]).is_err());

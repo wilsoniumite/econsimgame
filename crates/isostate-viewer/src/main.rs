@@ -276,7 +276,7 @@ Pictures and checks with no window:
   --ground-debug       draw the ground as flat class colours and nothing else
   --class-map          write the CPU's land class under every pixel of each view, and stop
   --script STEPS       play keys and clicks and print what happens (see src/script.rs)
-  --page-shot PATH[,more][,family][,begin]
+  --page-shot PATH[,more][,family][,start:WORD][,tip:NAME][,begin]
                        a picture of the start page, with More open, with the family game
                        chosen, and then Begin pressed: the game it starts takes a picture
                        of its own (PATH-island.png)
