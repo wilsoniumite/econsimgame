@@ -493,6 +493,17 @@ impl Squares {
         self.years.get(k)?.as_ref().map(|y| (y.whole, y.list()))
     }
 
+    /// Forget every year from `kept` on, as a take back does (`back::forget`):
+    /// the log is then what a game that had played only `kept` years holds.
+    pub fn forget(&mut self, kept: usize) {
+        for y in self.years.iter_mut().skip(kept) {
+            *y = None;
+        }
+        if self.years.iter().all(Option::is_none) {
+            self.years.clear();
+        }
+    }
+
     /// The years of a record's log: bytes `first[k] .. first[k + 1]` of `log`
     /// are year k's, read when they are first asked for.
     fn of_record(log: std::sync::Arc<[u8]>, first: &[usize], y0: i64) -> Squares {
