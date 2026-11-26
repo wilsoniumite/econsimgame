@@ -184,11 +184,16 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
     // transition (docs/rules/transition.md): each town's share of its income term kept
     // and how far its drains have come, None while the rule is off
     let fs = crate::transition::year(st, P, y, year);
+    // frontier (docs/rules/frontier.md): each town's share of free land within its reach, None while off
+    let free = crate::frontier::year(st, P);
     for t in 0..T {
         if !st.town_active[t] {
             continue;
         }
-        let inc = income_term(pp, y[t]);
+        let inc = match &free {
+            Some(f) => income_term(pp, y[t]) * crate::frontier::lift(P, f[t]),
+            None => income_term(pp, y[t]),
+        };
         let depth = dearth_depth(pp, st.food_min_acc[t]);
         // whatever the numbers are set to, no town loses more than half its people in a
         // year (a town with nobody in it is not something the markets can price)
@@ -215,6 +220,8 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         g[t] = rate;
         st.pp_income_term[t] = inc;
     }
+    // immigration (docs/rules/immigration.md): settlers by ship to the ports, added to their rates
+    crate::immigration::year(st, P, y, year, &mut g, events);
     st.pp_growth = g.clone();
     // ages (docs/rules/ages.md): who took ship from each town, for the reckoning of ages
     crate::ages::sailed(st, P, &left);
@@ -330,6 +337,8 @@ pub struct Candidate {
     /// Towns that would give up people.
     pub donors: Vec<usize>,
     pub kind: &'static str,
+    /// The share of the district's land that is free (frontier, docs/rules/frontier.md).
+    pub free: f64,
 }
 
 /// What the district is known for: the trade that takes a larger share of its
@@ -448,6 +457,7 @@ pub fn candidates(st: &State, C: &Content, P: &Params) -> Vec<Candidate> {
             donor_share: share.iter().cloned().fold(0.0, f64::max),
             donors: (0..T).filter(|&i| gone[i] > 0.0).collect(),
             kind: district_kind(st, C, &mine),
+            free: if P.frontier.hamlets { crate::frontier::district_free(st, P, (0..N).filter(|&k| mine[k])) } else { 0.0 },
         });
     }
     out.sort_by(|a, b| b.saved.total_cmp(&a.saved));
@@ -458,6 +468,13 @@ pub fn candidates(st: &State, C: &Content, P: &Params) -> Vec<Candidate> {
 /// has to pass, on the estimate and again on the real catchment.
 pub fn district_ok(pp: &PeopleParams, cells: usize, people: f64, donor_share: f64) -> bool {
     cells >= pp.found_cells && people >= pp.found_people && donor_share <= pp.donor_max
+}
+
+/// `district_ok`, with the people and the donor's share a district whose land
+/// is free may be founded at (frontier's hamlets, docs/rules/frontier.md).
+fn district_ok_free(P: &Params, cells: usize, people: f64, donor_share: f64, free: f64) -> bool {
+    let (need, donor) = crate::frontier::founding_needs(P, free);
+    cells >= P.people.found_cells && people >= need && donor_share <= donor
 }
 
 /// What the cells trading through town `n` under `st.catch` hold, counted against
@@ -551,7 +568,7 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
     let mut tried = 0;
     for cand in candidates(st, C, P) {
         if cand.saved < pp.found_saving * cand.wages
-            || !district_ok(pp, cand.cells, cand.people, cand.donor_share)
+            || !district_ok_free(P, cand.cells, cand.people, cand.donor_share, cand.free)
             || !cand.donors.iter().all(|&i| year - st.pp_gave[i] >= pp.donor_rest)
         {
             continue;
@@ -568,13 +585,15 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
         st.town_node[n] = cand.cell;
         land::update_transport(st, C, P);
         let (cells, people, donor_share, givers) = district_of(st, &old, n);
+        // frontier: the real area's free land, for the hamlet's needs (nothing while off)
+        let free = if P.frontier.hamlets { crate::frontier::district_free(st, P, (0..st.N).filter(|&k| st.catch[k] == n as i64)) } else { 0.0 };
         // the caller keeps last year's areas and carting to compare against, and works the paths out again
         st.catch = old;
         st.dcatch = old_d;
         st.town_active[n] = false;
         st.town_node[n] = node_before;
         // the real area may draw on a town the estimate did not: it is owed its rest too
-        if !district_ok(pp, cells, people, donor_share) || !givers.iter().all(|&i| year - st.pp_gave[i] >= pp.donor_rest) {
+        if !district_ok_free(P, cells, people, donor_share, free) || !givers.iter().all(|&i| year - st.pp_gave[i] >= pp.donor_rest) {
             continue;
         }
         let rail = {

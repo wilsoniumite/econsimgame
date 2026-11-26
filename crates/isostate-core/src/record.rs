@@ -276,6 +276,12 @@ pub struct Record {
     /// and `way_mode`, a byte a square `[year][cell]` (empty unless `traffic.enabled`).
     pub way_goods: Vec<u8>,
     pub way_mode: Vec<u8>,
+    /// squares (docs/rules/squares.md, "In the record"): the log of the
+    /// squares, each year's changes in order of `Change::at`; year k's are
+    /// `squares[squares_first[k] .. squares_first[k + 1]]` (both empty unless
+    /// the run keeps its squares).
+    pub squares: Vec<crate::squares::Change>,
+    pub squares_first: Vec<u32>,
 }
 
 /// Whether a record keeps the `GROUND_LAYERS`: one past 1900 of a run whose
@@ -321,7 +327,23 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         ground_layers: if ground_kept(P, TownBytes::of(C.end_year)) { (0..GROUND_LAYERS.len()).map(|_| vec![0u8; n_years * N]).collect() } else { Vec::new() },
         way_goods: if P.traffic.enabled { vec![0u8; n_years * N * 4] } else { Vec::new() },
         way_mode: if P.traffic.enabled { vec![0u8; n_years * N] } else { Vec::new() },
+        squares: Vec::new(),
+        squares_first: if P.squares.enabled { vec![0; n_years + 1] } else { Vec::new() },
     }
+}
+
+/// squares: year k's changes into the log (`SquareBook::changes`, those of
+/// the year's end just past). A year written again replaces what it had, and
+/// the years after it are left with none until they come.
+pub fn squares_snapshot(rec: &mut Record, st: &State, k: usize) {
+    if rec.squares_first.len() < k + 2 || !st.sq.kept() {
+        return;
+    }
+    let from = rec.squares_first[k] as usize;
+    rec.squares.truncate(from);
+    rec.squares.extend_from_slice(&st.sq.changes);
+    let to = rec.squares.len() as u32;
+    rec.squares_first[k + 1..].iter_mut().for_each(|f| *f = to);
 }
 
 fn to_u8(x: f64) -> u8 {
@@ -455,6 +477,8 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
             rec.way_mode[base..base + N].copy_from_slice(&mode);
         }
     }
+    // squares: what the year's end changed of them
+    squares_snapshot(rec, st, k);
     for t in 0..T {
         let act = st.town_active[t];
         rec.town_active[k * T + t] = act as u8;
@@ -586,6 +610,23 @@ pub fn field_bytes(field: &[f64]) -> Vec<u8> {
     field.iter().map(|&v| to_u8((v.clamp(0.0, 1.0) * 255.0).round_ties_even())).collect()
 }
 
+/// squares: the log as the record writes it, each year's changes in bytes
+/// (`squares::encode_year`), and where each year's begin (n_years + 1 of
+/// them); None for a run that keeps no squares.
+pub fn squares_log(rec: &Record, start_year: i64) -> Option<(Vec<i32>, Vec<u8>)> {
+    if rec.squares_first.len() != rec.n_years + 1 {
+        return None;
+    }
+    let mut first = vec![0i32; rec.n_years + 1];
+    let mut log = Vec::new();
+    for k in 0..rec.n_years {
+        let (a, b) = (rec.squares_first[k] as usize, rec.squares_first[k + 1] as usize);
+        log.extend(crate::squares::encode_year(&rec.squares[a..b], start_year + k as i64));
+        first[k + 1] = log.len() as i32;
+    }
+    Some((first, log))
+}
+
 /// Binary container for one run: JSON header + aligned typed arrays.
 ///
 /// lite=true keeps series, events and town data but drops map layers and
@@ -628,6 +669,14 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         if !rec.way_goods.is_empty() {
             arrays.push(u8_array("way_goods", vec![n_years, N, 4], rec.way_goods.clone()));
             arrays.push(u8_array("way_mode", vec![n_years, N], rec.way_mode.clone()));
+        }
+        // squares (docs/rules/squares.md, "In the record"): the log of the squares, only
+        // in a run that keeps them, each year's changes in bytes (`squares::encode_year`);
+        // year k's are bytes sq_first[k] .. sq_first[k + 1] of sq_log
+        if let Some((first, log)) = squares_log(rec, y0) {
+            arrays.push(i32_array("sq_first", vec![n_years + 1], &first));
+            let n = log.len();
+            arrays.push(u8_array("sq_log", vec![n], log));
         }
     }
     let T = rec.T;
@@ -835,6 +884,13 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     // gauges: every year's, read off the books
     if let Some(gauges) = crate::gauges::header(st) {
         header["gauges"] = gauges;
+    }
+    // squares: how the log in sq_log is laid out, written only where there is one
+    if !lite && rec.squares_first.len() == n_years + 1 {
+        header["squares"] = json!({
+            "layout": crate::squares::LOG_LAYOUT, "side": crate::squares::SIDE, "metres": crate::squares::METRES,
+            "kinds": crate::squares::KINDS,
+        });
     }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();

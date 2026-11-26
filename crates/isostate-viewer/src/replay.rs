@@ -4,6 +4,7 @@
 //! header, then typed arrays aligned to 8 bytes. Map layers are stored
 //! layer-major, `[year, cell]`.
 
+use isostate_core::squares::{Change, PER_CELL, Tenant};
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
@@ -405,6 +406,184 @@ pub struct Builds {
     /// (`coal_power_station`), where the content has them
     pub steel: Option<usize>,
     pub power: Option<usize>,
+    /// Where in each cell each built thing stands, square by square (the
+    /// core's docs/rules/squares.md): empty in a run that keeps no squares.
+    /// Nothing draws them yet.
+    pub squares: Squares,
+}
+
+/// One square of 125 m as the simulation keeps it: its tenant, the year the
+/// tenant took it, and which side its way lies on (the core's `Table::face`,
+/// in 256ths of a turn, 0 toward the map's east and 64 toward its south).
+/// A square nothing holds is `Tenant::None`, its year and face 0.
+///
+/// Nothing draws the squares yet: they are read here for the stages that
+/// will (works on their squares, the towns after 1900), and the tests read
+/// them, so what only those read is allowed to stand unused for now.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Square {
+    pub tenant: Tenant,
+    pub year: i16,
+    pub face: u8,
+}
+
+#[allow(dead_code)]
+impl Square {
+    pub const NONE: Square = Square { tenant: Tenant::None, year: 0, face: 0 };
+}
+
+/// One cell's squares, row by row from its north-west corner: square
+/// `k = qy * 16 + qx` (the core's `squares::Table`).
+#[allow(dead_code)]
+pub type CellSquares = [Square; PER_CELL];
+
+/// The squares' log, year by year (the core's docs/rules/squares.md, "In the
+/// record"): each year's changes, in order of the square (`Change::at`),
+/// read from a record's `sq_log` or handed over by a live game a year at a
+/// time. The squares of a year are those of the year before with its changes
+/// made; a year whose list is the whole book (a live game that missed a year)
+/// stands alone. A record's years are kept in its bytes and read the first
+/// time they are asked for, so that opening a record does not wait on them;
+/// each year is shared, so copying a run copies pointers.
+#[derive(Clone, Default, Debug)]
+pub struct Squares {
+    /// By year; None for a year not yet filled.
+    years: Vec<Option<SquareYear>>,
+}
+
+/// One year of the squares' log.
+#[derive(Clone, Debug)]
+struct SquareYear {
+    /// Its list is the whole book.
+    whole: bool,
+    /// The record's bytes of the year (`squares::encode_year`): the whole log,
+    /// where the year begins and ends in it, and the year; None for a year a
+    /// live game handed over, whose list is made already.
+    bytes: Option<(std::sync::Arc<[u8]>, usize, usize, i64)>,
+    list: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<[Change]>>>,
+}
+
+impl SquareYear {
+    /// Its changes by `Change::at`, read from the record's bytes the first
+    /// time. Bytes that do not read (a file damaged inside the log, which
+    /// opening checks only for its bounds) are said so, and read as no change.
+    fn list(&self) -> &[Change] {
+        self.list.get_or_init(|| match &self.bytes {
+            Some((log, a, b, year)) => isostate_core::squares::decode_year(&log[*a..*b], *year)
+                .unwrap_or_else(|e| {
+                    eprintln!("the squares of {year} do not read ({e}), and are left out");
+                    Vec::new()
+                })
+                .into(),
+            None => Vec::new().into(),
+        })
+    }
+}
+
+#[allow(dead_code)]
+impl Squares {
+    /// Whether the run keeps its squares.
+    pub fn kept(&self) -> bool {
+        self.years.iter().any(Option::is_some)
+    }
+
+    /// The changes of year `k` (None for a year not filled), and whether they are the whole book.
+    pub fn changes(&self, k: usize) -> Option<(bool, &[Change])> {
+        self.years.get(k)?.as_ref().map(|y| (y.whole, y.list()))
+    }
+
+    /// Forget every year from `kept` on, as a take back does (`back::forget`):
+    /// the log is then what a game that had played only `kept` years holds.
+    pub fn forget(&mut self, kept: usize) {
+        for y in self.years.iter_mut().skip(kept) {
+            *y = None;
+        }
+        if self.years.iter().all(Option::is_none) {
+            self.years.clear();
+        }
+    }
+
+    /// The years of a record's log: bytes `first[k] .. first[k + 1]` of `log`
+    /// are year k's, read when they are first asked for.
+    fn of_record(log: std::sync::Arc<[u8]>, first: &[usize], y0: i64) -> Squares {
+        let years = (0..first.len().saturating_sub(1))
+            .map(|k| Some(SquareYear { whole: false, bytes: Some((log.clone(), first[k], first[k + 1], y0 + k as i64)), list: Default::default() }))
+            .collect();
+        Squares { years }
+    }
+
+    /// Write year `k` of `ny` as a game hands it over (`LiveYear::squares`).
+    pub fn take_year(&mut self, ny: usize, k: usize, whole: bool, changes: &[Change]) {
+        if k >= ny {
+            return;
+        }
+        if self.years.len() < ny {
+            self.years.resize(ny, None);
+        }
+        let mut list = changes.to_vec();
+        list.sort_unstable_by_key(|c| c.at);
+        let made = std::sync::OnceLock::new();
+        let _ = made.set(list.into());
+        self.years[k] = Some(SquareYear { whole, bytes: None, list: std::sync::Arc::new(made) });
+    }
+
+    /// The years whose changes make year `k`: from the last that is the whole book.
+    fn span(&self, k: usize) -> std::ops::RangeInclusive<usize> {
+        let k = k.min(self.years.len().saturating_sub(1));
+        let from = (0..=k).rev().find(|&j| self.years[j].as_ref().is_some_and(|y| y.whole)).unwrap_or(0);
+        from..=k
+    }
+
+    /// The squares of cell `c` as year `k` ends, or None where nothing is
+    /// built on it then (or the run keeps no squares). It reads the log and
+    /// nothing else, so it may be asked anywhere, off the frame.
+    pub fn cell(&self, k: usize, c: usize) -> Option<Box<CellSquares>> {
+        if self.years.is_empty() {
+            return None;
+        }
+        let mut sq = Box::new([Square::NONE; PER_CELL]);
+        let (lo, hi) = ((c * PER_CELL) as u32, ((c + 1) * PER_CELL) as u32);
+        for j in self.span(k) {
+            let Some(y) = &self.years[j] else { continue };
+            let list = y.list();
+            let a = list.partition_point(|x| x.at < lo);
+            let b = a + list[a..].partition_point(|x| x.at < hi);
+            for x in &list[a..b] {
+                sq[x.square()] = square_of(x);
+            }
+        }
+        sq.iter().any(|s| s.tenant != Tenant::None).then_some(sq)
+    }
+
+    /// Every cell with something built on it as year `k` ends, and its
+    /// squares: the whole log to year `k` read once.
+    pub fn year(&self, k: usize) -> std::collections::BTreeMap<usize, Box<CellSquares>> {
+        let mut out: std::collections::BTreeMap<usize, Box<CellSquares>> = std::collections::BTreeMap::new();
+        if self.years.is_empty() {
+            return out;
+        }
+        for j in self.span(k) {
+            let Some(y) = &self.years[j] else { continue };
+            for x in y.list() {
+                out.entry(x.cell()).or_insert_with(|| Box::new([Square::NONE; PER_CELL]))[x.square()] = square_of(x);
+            }
+        }
+        out.retain(|_, sq| sq.iter().any(|s| s.tenant != Tenant::None));
+        out
+    }
+}
+
+#[allow(dead_code)]
+fn square_of(x: &Change) -> Square {
+    if x.tenant == 0 { Square::NONE } else { Square { tenant: Tenant::of(x.tenant), year: x.year, face: x.face } }
+}
+
+/// What is said of a run that keeps no squares.
+fn no_squares(path: &str) -> String {
+    format!(
+        "{path} keeps no squares of 125 m (the simulation has kept them since 26 November 2026, under the game's rules only): where each works and each town's houses stand in their cells is left to the viewer, as before"
+    )
 }
 
 impl Builds {
@@ -1008,6 +1187,34 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             builds.park = park;
         }
     }
+    // where in each cell each built thing stands (the core's docs/rules/squares.md): the
+    // squares' log, both arrays or neither, in the layout the header names; a run made
+    // before the squares were kept has none, and says so
+    #[derive(Deserialize)]
+    struct SquaresOnly {
+        squares: Option<SquaresHeader>,
+    }
+    #[derive(Deserialize)]
+    struct SquaresHeader {
+        layout: u32,
+    }
+    let layout = serde_json::from_slice::<SquaresOnly>(&buf[4..base]).ok().and_then(|s| s.squares).map(|s| s.layout);
+    match layout {
+        Some(l) if l == isostate_core::squares::LOG_LAYOUT && has("sq_first") && has("sq_log") => {
+            let (first, log) = (i32s("sq_first")?, typed(path, buf, base, find("sq_log")?, "uint8")?);
+            if first.len() != ny + 1 {
+                return Err(format!("{path}: its squares' log says where {} years begin, and the run has {ny}", first.len().saturating_sub(1)));
+            }
+            let first: Vec<usize> = first.iter().map(|&f| f.max(0) as usize).collect();
+            if let Some(k) = (0..ny).find(|&k| first[k] > first[k + 1] || first[k + 1] > log.len()) {
+                return Err(format!("{path}: its squares' log of year {k} runs from byte {} to {}, and the log has {}", first[k], first[k + 1], log.len()));
+            }
+            // (each year is read when it is first asked for: `Squares::cell`, `Squares::year`)
+            builds.squares = Squares::of_record(log.into(), &first, header.meta.start_year as i64);
+        }
+        Some(l) if l != isostate_core::squares::LOG_LAYOUT => eprintln!("{path} keeps its squares in a layout the viewer does not know ({l}; it reads {}), so they are left out", isostate_core::squares::LOG_LAYOUT),
+        _ => eprintln!("{}", no_squares(path)),
+    }
     if has("town_know") && !header.techs.is_empty() {
         let know = u8s("town_know")?;
         let names: Vec<String> = header.techs.iter().map(|t| t.name.clone()).collect();
@@ -1372,6 +1579,67 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn a_record_made_before_the_squares_opens_with_none_and_the_log_reads_year_by_year() {
+        // a record with no squares' log (every record made before 26 November 2026) opens as before
+        let old = parse("tiny.bin", &tiny_run()).unwrap();
+        assert!(!old.builds.squares.kept() && old.builds.squares.cell(0, 0).is_none() && old.builds.squares.year(0).is_empty());
+        assert!(no_squares("tiny.bin").starts_with("tiny.bin keeps no squares"));
+        // a log of three years: a works takes two squares of cell 5, then gives one up and
+        // town 2's houses take another; then a live game that missed a year is sent the whole book
+        let at = |c: usize, k: usize| (c * PER_CELL + k) as u32;
+        let works = Tenant::Works(9).code();
+        let houses = Tenant::Houses(2).code();
+        let mut sq = Squares::default();
+        sq.take_year(4, 0, false, &[Change { at: at(5, 17), tenant: works, year: 1750, face: 4 }, Change { at: at(5, 16), tenant: works, year: 1749, face: 4 }]);
+        sq.take_year(4, 1, false, &[Change { at: at(5, 17), tenant: 0, year: 0, face: 0 }, Change { at: at(5, 3), tenant: houses, year: 1751, face: 70 }]);
+        sq.take_year(4, 2, true, &[Change { at: at(6, 0), tenant: houses, year: 1752, face: 1 }]);
+        assert!(sq.kept() && sq.changes(3).is_none());
+        let c0 = sq.cell(0, 5).unwrap();
+        assert_eq!((c0[16], c0[17], c0[3]), (Square { tenant: Tenant::Works(9), year: 1749, face: 4 }, Square { tenant: Tenant::Works(9), year: 1750, face: 4 }, Square::NONE));
+        let c1 = sq.cell(1, 5).unwrap();
+        assert_eq!((c1[16].tenant, c1[17], c1[3].tenant, c1[3].year), (Tenant::Works(9), Square::NONE, Tenant::Houses(2), 1751));
+        // the whole book of the third year stands alone: cell 5 is no longer held
+        assert!(sq.cell(2, 5).is_none() && sq.cell(2, 6).is_some() && sq.cell(1, 6).is_none());
+        // a year not yet filled reads as the last that was
+        assert_eq!(sq.year(3).keys().copied().collect::<Vec<_>>(), [6]);
+        for k in 0..3 {
+            for (c, cells) in sq.year(k) {
+                assert_eq!(sq.cell(k, c).as_deref(), Some(&*cells), "year {k}, cell {c}");
+            }
+        }
+    }
+
+    /// A measure, run by hand, not a test: how long the viewer takes to open each
+    /// run named in `ISOSTATE_TIME_OPEN` (separated by `;`), each opened in turn
+    /// seven times, so that a busy machine weighs on all of them alike; the
+    /// median and the least, in ms of the wall clock.
+    #[test]
+    #[ignore]
+    fn time_to_open() {
+        let Ok(list) = std::env::var("ISOSTATE_TIME_OPEN") else { return };
+        let paths: Vec<&str> = list.split(';').collect();
+        let mut ms = vec![Vec::new(); paths.len()];
+        let mut read = vec![Vec::new(); paths.len()];
+        for _ in 0..7 {
+            for (i, p) in paths.iter().enumerate() {
+                let t = std::time::Instant::now();
+                let r = load(p).unwrap();
+                ms[i].push(t.elapsed().as_secs_f64() * 1e3);
+                assert!(r.ny > 0);
+                // and the squares of the last year, the whole log read for the first time
+                let t = std::time::Instant::now();
+                let cells = r.builds.squares.year(r.ny - 1).len();
+                read[i].push((t.elapsed().as_secs_f64() * 1e3, cells));
+            }
+        }
+        for ((p, mut v), mut w) in paths.iter().zip(ms).zip(read) {
+            v.sort_by(|a, b| a.total_cmp(b));
+            w.sort_by(|a, b| a.0.total_cmp(&b.0));
+            eprintln!("{p}: opened in {:.0} ms on the median, {:.0} ms at the least; its last year's squares read in {:.0} ms on the median ({} cells)", v[v.len() / 2], v[0], w[w.len() / 2].0, w[0].1);
+        }
     }
 
     #[test]

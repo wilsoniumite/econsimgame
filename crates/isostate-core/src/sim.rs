@@ -35,11 +35,15 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
 /// `init_state` with the random streams given (the parity tests replay numpy's draws).
 pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
     // land: an island made by water, from its own stream, in place of the port's
-    let world = if P.land.enabled {
+    let mut world = if P.land.enabled {
         crate::landcells::generate_land(P.seed, P.W, P.H, P.n_towns, &P.land)
     } else {
         generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58)
     };
+    // landfall (docs/rules/landfall.md): one town in a corner, chosen after the island is made
+    if P.start.landfall {
+        crate::landfall::settle(&mut world);
+    }
     let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
     seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
     (st, rng)
@@ -82,7 +86,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     let wsum = pairwise_sum(&wts);
     st.pop = vec![0.0; T];
     for (k, &w) in wts.iter().enumerate() {
-        st.pop[k] = P.pop0 as f64 * w / wsum;
+        st.pop[k] = crate::landfall::people(P) * w / wsum;
     }
 
     // cells
@@ -675,6 +679,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::gauges::init(&mut st, P);
     // owners: the year's sums begin here, as the books do (the warm-up's shares stand)
     crate::owners::start(&mut st);
+    // squares (docs/rules/squares.md): the place of what stands as the run opens
+    crate::squares::open(&mut st, &C, P, y0);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     // engel: the lean's date (the warm-up's months ran with none, and lean nowhere)
@@ -825,6 +831,8 @@ pub fn end_year(sim: &mut Sim) {
     crate::who_works::close_year(st, P, year);
     // care (docs/rules/care.md): the watcher's year, after December's month
     crate::care::end_year(st, C, P, year);
+    // squares (docs/rules/squares.md): the place of what the books now hold; read by no rule
+    crate::squares::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // engel: the date the lean reads in next year's months, whatever the switches
     st.engel.year_now = year + 1;
