@@ -4,6 +4,7 @@
 //! header, then typed arrays aligned to 8 bytes. Map layers are stored
 //! layer-major, `[year, cell]`.
 
+use isostate_core::squares::{Change, PER_CELL, Tenant};
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
@@ -405,6 +406,131 @@ pub struct Builds {
     /// (`coal_power_station`), where the content has them
     pub steel: Option<usize>,
     pub power: Option<usize>,
+    /// Where in each cell each built thing stands, square by square (the
+    /// core's docs/rules/squares.md): empty in a run that keeps no squares.
+    /// Nothing draws them yet.
+    pub squares: Squares,
+}
+
+/// One square of 125 m as the simulation keeps it: its tenant, the year the
+/// tenant took it, and which side its way lies on (the core's `Table::face`,
+/// in 256ths of a turn, 0 toward the map's east and 64 toward its south).
+/// A square nothing holds is `Tenant::None`, its year and face 0.
+///
+/// Nothing draws the squares yet: they are read here for the stages that
+/// will (works on their squares, the towns after 1900), and the tests read
+/// them, so what only those read is allowed to stand unused for now.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Square {
+    pub tenant: Tenant,
+    pub year: i16,
+    pub face: u8,
+}
+
+#[allow(dead_code)]
+impl Square {
+    pub const NONE: Square = Square { tenant: Tenant::None, year: 0, face: 0 };
+}
+
+/// One cell's squares, row by row from its north-west corner: square
+/// `k = qy * 16 + qx` (the core's `squares::Table`).
+#[allow(dead_code)]
+pub type CellSquares = [Square; PER_CELL];
+
+/// The squares' log, year by year (the core's docs/rules/squares.md, "In the
+/// record"): each year's changes, in order of the square (`Change::at`),
+/// read from a record's `sq_log` or handed over by a live game a year at a
+/// time. The squares of a year are those of the year before with its changes
+/// made; a year whose list is the whole book (a live game that missed a year)
+/// stands alone. Each year's list is shared, so copying a run copies pointers.
+#[derive(Clone, Default, Debug)]
+pub struct Squares {
+    /// By year: whether its list is the whole book, and the list; None for a
+    /// year not yet filled.
+    years: Vec<Option<(bool, std::sync::Arc<[Change]>)>>,
+}
+
+#[allow(dead_code)]
+impl Squares {
+    /// Whether the run keeps its squares.
+    pub fn kept(&self) -> bool {
+        self.years.iter().any(Option::is_some)
+    }
+
+    /// The changes of year `k` (None for a year not filled), and whether they are the whole book.
+    pub fn changes(&self, k: usize) -> Option<(bool, &[Change])> {
+        self.years.get(k)?.as_ref().map(|(w, c)| (*w, &c[..]))
+    }
+
+    /// Write year `k` of `ny` as a game hands it over (`LiveYear::squares`).
+    pub fn take_year(&mut self, ny: usize, k: usize, whole: bool, changes: &[Change]) {
+        if k >= ny {
+            return;
+        }
+        if self.years.len() < ny {
+            self.years.resize(ny, None);
+        }
+        let mut list = changes.to_vec();
+        list.sort_unstable_by_key(|c| c.at);
+        self.years[k] = Some((whole, list.into()));
+    }
+
+    /// The years whose changes make year `k`: from the last that is the whole book.
+    fn span(&self, k: usize) -> std::ops::RangeInclusive<usize> {
+        let k = k.min(self.years.len().saturating_sub(1));
+        let from = (0..=k).rev().find(|&j| self.years[j].as_ref().is_some_and(|y| y.0)).unwrap_or(0);
+        from..=k
+    }
+
+    /// The squares of cell `c` as year `k` ends, or None where nothing is
+    /// built on it then (or the run keeps no squares). It reads the log and
+    /// nothing else, so it may be asked anywhere, off the frame.
+    pub fn cell(&self, k: usize, c: usize) -> Option<Box<CellSquares>> {
+        if self.years.is_empty() {
+            return None;
+        }
+        let mut sq = Box::new([Square::NONE; PER_CELL]);
+        let (lo, hi) = ((c * PER_CELL) as u32, ((c + 1) * PER_CELL) as u32);
+        for j in self.span(k) {
+            let Some((_, list)) = &self.years[j] else { continue };
+            let a = list.partition_point(|x| x.at < lo);
+            let b = a + list[a..].partition_point(|x| x.at < hi);
+            for x in &list[a..b] {
+                sq[x.square()] = square_of(x);
+            }
+        }
+        sq.iter().any(|s| s.tenant != Tenant::None).then_some(sq)
+    }
+
+    /// Every cell with something built on it as year `k` ends, and its
+    /// squares: the whole log to year `k` read once.
+    pub fn year(&self, k: usize) -> std::collections::BTreeMap<usize, Box<CellSquares>> {
+        let mut out: std::collections::BTreeMap<usize, Box<CellSquares>> = std::collections::BTreeMap::new();
+        if self.years.is_empty() {
+            return out;
+        }
+        for j in self.span(k) {
+            let Some((_, list)) = &self.years[j] else { continue };
+            for x in list.iter() {
+                out.entry(x.cell()).or_insert_with(|| Box::new([Square::NONE; PER_CELL]))[x.square()] = square_of(x);
+            }
+        }
+        out.retain(|_, sq| sq.iter().any(|s| s.tenant != Tenant::None));
+        out
+    }
+}
+
+#[allow(dead_code)]
+fn square_of(x: &Change) -> Square {
+    if x.tenant == 0 { Square::NONE } else { Square { tenant: Tenant::of(x.tenant), year: x.year, face: x.face } }
+}
+
+/// What is said of a run that keeps no squares.
+fn no_squares(path: &str) -> String {
+    format!(
+        "{path} keeps no squares of 125 m (the simulation has kept them since 26 November 2026, under the game's rules only): where each works and each town's houses stand in their cells is left to the viewer, as before"
+    )
 }
 
 impl Builds {
@@ -1008,6 +1134,37 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             builds.park = park;
         }
     }
+    // where in each cell each built thing stands (the core's docs/rules/squares.md): the
+    // squares' log, both arrays or neither, in the layout the header names; a run made
+    // before the squares were kept has none, and says so
+    #[derive(Deserialize)]
+    struct SquaresOnly {
+        squares: Option<SquaresHeader>,
+    }
+    #[derive(Deserialize)]
+    struct SquaresHeader {
+        layout: u32,
+    }
+    let layout = serde_json::from_slice::<SquaresOnly>(&buf[4..base]).ok().and_then(|s| s.squares).map(|s| s.layout);
+    match layout {
+        Some(l) if l == isostate_core::squares::LOG_LAYOUT && has("sq_first") && has("sq_log") => {
+            let (first, log) = (i32s("sq_first")?, typed(path, buf, base, find("sq_log")?, "uint8")?);
+            if first.len() != ny + 1 {
+                return Err(format!("{path}: its squares' log says where {} years begin, and the run has {ny}", first.len().saturating_sub(1)));
+            }
+            for k in 0..ny {
+                let (a, b) = (first[k].max(0) as usize, first[k + 1].max(0) as usize);
+                let Some(bytes) = log.get(a..b) else {
+                    return Err(format!("{path}: its squares' log of year {k} runs from byte {a} to {b}, and the log has {}", log.len()));
+                };
+                let year = header.meta.start_year as i64 + k as i64;
+                let changes = isostate_core::squares::decode_year(bytes, year).map_err(|e| format!("{path}, {year}: {e}"))?;
+                builds.squares.take_year(ny, k, false, &changes);
+            }
+        }
+        Some(l) if l != isostate_core::squares::LOG_LAYOUT => eprintln!("{path} keeps its squares in a layout the viewer does not know ({l}; it reads {}), so they are left out", isostate_core::squares::LOG_LAYOUT),
+        _ => eprintln!("{}", no_squares(path)),
+    }
     if has("town_know") && !header.techs.is_empty() {
         let know = u8s("town_know")?;
         let names: Vec<String> = header.techs.iter().map(|t| t.name.clone()).collect();
@@ -1372,6 +1529,37 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn a_record_made_before_the_squares_opens_with_none_and_the_log_reads_year_by_year() {
+        // a record with no squares' log (every record made before 26 November 2026) opens as before
+        let old = parse("tiny.bin", &tiny_run()).unwrap();
+        assert!(!old.builds.squares.kept() && old.builds.squares.cell(0, 0).is_none() && old.builds.squares.year(0).is_empty());
+        assert!(no_squares("tiny.bin").starts_with("tiny.bin keeps no squares"));
+        // a log of three years: a works takes two squares of cell 5, then gives one up and
+        // town 2's houses take another; then a live game that missed a year is sent the whole book
+        let at = |c: usize, k: usize| (c * PER_CELL + k) as u32;
+        let works = Tenant::Works(9).code();
+        let houses = Tenant::Houses(2).code();
+        let mut sq = Squares::default();
+        sq.take_year(4, 0, false, &[Change { at: at(5, 17), tenant: works, year: 1750, face: 4 }, Change { at: at(5, 16), tenant: works, year: 1749, face: 4 }]);
+        sq.take_year(4, 1, false, &[Change { at: at(5, 17), tenant: 0, year: 0, face: 0 }, Change { at: at(5, 3), tenant: houses, year: 1751, face: 70 }]);
+        sq.take_year(4, 2, true, &[Change { at: at(6, 0), tenant: houses, year: 1752, face: 1 }]);
+        assert!(sq.kept() && sq.changes(3).is_none());
+        let c0 = sq.cell(0, 5).unwrap();
+        assert_eq!((c0[16], c0[17], c0[3]), (Square { tenant: Tenant::Works(9), year: 1749, face: 4 }, Square { tenant: Tenant::Works(9), year: 1750, face: 4 }, Square::NONE));
+        let c1 = sq.cell(1, 5).unwrap();
+        assert_eq!((c1[16].tenant, c1[17], c1[3].tenant, c1[3].year), (Tenant::Works(9), Square::NONE, Tenant::Houses(2), 1751));
+        // the whole book of the third year stands alone: cell 5 is no longer held
+        assert!(sq.cell(2, 5).is_none() && sq.cell(2, 6).is_some() && sq.cell(1, 6).is_none());
+        // a year not yet filled reads as the last that was
+        assert_eq!(sq.year(3).keys().copied().collect::<Vec<_>>(), [6]);
+        for k in 0..3 {
+            for (c, cells) in sq.year(k) {
+                assert_eq!(sq.cell(k, c).as_deref(), Some(&*cells), "year {k}, cell {c}");
+            }
+        }
     }
 
     #[test]

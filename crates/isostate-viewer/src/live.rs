@@ -1998,6 +1998,10 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
     if !y.pairs.is_empty() {
         r.traffic.take_pairs(ny, k, y.pairs.clone());
     }
+    // squares (the core's docs/rules/squares.md): what the year's end changed of them, as a recording's log keeps it
+    if let Some(sq) = &y.squares {
+        r.builds.squares.take_year(ny, k, sq.whole, &sq.changes);
+    }
 
     // towns: the slots are fixed for the run, so the arrays are made on the first year
     let nt = y.towns.active.len();

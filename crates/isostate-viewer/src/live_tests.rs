@@ -1526,6 +1526,47 @@ fn a_games_traffic_and_trade_between_towns_are_its_recordings() {
     assert!(lines.starts_with("Trades most with") && lines.lines().count() == 1 + crate::traffic::PARTNERS, "{lines}");
 }
 
+#[test]
+fn a_games_squares_are_its_recordings_and_the_books() {
+    // The squares (the core's docs/rules/squares.md, "In the record"): what a game's
+    // thread hands over each year (`LiveYear::squares`) makes, in the viewer, the
+    // squares the same game's `run.bin` makes when it is read, in every year, and those
+    // of the last year are the simulation's own. Island 5 under the game's rules, which
+    // keep the squares, twelve years; it leans on no history, only on something being built.
+    let mut game = isostate_core::save::Game::new(5, 6, 0);
+    assert!(game.sim.params.squares.enabled, "the case is played with the squares kept");
+    let mut board = Board::new(&game.sim);
+    for _ in 0..12 {
+        game.year().unwrap();
+        board.year(&game.sim);
+        game.turn();
+    }
+    let s = &game.sim;
+    let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+    let rec = replay::parse("test.bin", &bytes).expect("the game's record reads");
+    let (a, b) = (&board.r.builds.squares, &rec.builds.squares);
+    let k = (game.last_year() - s.content.start_year) as usize;
+    for j in 0..=k {
+        let (live, kept) = (a.year(j), b.year(j));
+        assert!(live.len() > 100, "year {j}: only {} cells with squares", live.len());
+        assert!(live == kept, "year {j}: the game holds the squares of {} cells and its record {}", live.len(), kept.len());
+    }
+    // the last year's are the simulation's own, square by square
+    let last = a.year(k);
+    let mut held = 0;
+    for (&c, cell) in &last {
+        assert_eq!(a.cell(k, c).as_deref(), Some(&**cell));
+        for (q, sq) in cell.iter().enumerate() {
+            let (tenant, year) = s.st.sq.at(c, q);
+            assert_eq!((sq.tenant, sq.year), (tenant, if tenant == isostate_core::squares::Tenant::None { 0 } else { year }), "cell {c}, square {q}");
+            held += (tenant != isostate_core::squares::Tenant::None) as usize;
+        }
+    }
+    let tables = s.st.sq.index.iter().filter(|&&i| i > 0).count();
+    assert_eq!(last.len(), tables, "a cell with a table is a cell with squares");
+    eprintln!("{} cells, {held} squares held in {}", last.len(), game.last_year());
+}
+
 /// A square near the first town whose hand's list has a works allowed, and
 /// the method that promises most there (as the Works tool offers it).
 fn a_square_for_a_works(a: &Table) -> (usize, String) {
