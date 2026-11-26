@@ -443,12 +443,42 @@ pub type CellSquares = [Square; PER_CELL];
 /// read from a record's `sq_log` or handed over by a live game a year at a
 /// time. The squares of a year are those of the year before with its changes
 /// made; a year whose list is the whole book (a live game that missed a year)
-/// stands alone. Each year's list is shared, so copying a run copies pointers.
+/// stands alone. A record's years are kept in its bytes and read the first
+/// time they are asked for, so that opening a record does not wait on them;
+/// each year is shared, so copying a run copies pointers.
 #[derive(Clone, Default, Debug)]
 pub struct Squares {
-    /// By year: whether its list is the whole book, and the list; None for a
-    /// year not yet filled.
-    years: Vec<Option<(bool, std::sync::Arc<[Change]>)>>,
+    /// By year; None for a year not yet filled.
+    years: Vec<Option<SquareYear>>,
+}
+
+/// One year of the squares' log.
+#[derive(Clone, Debug)]
+struct SquareYear {
+    /// Its list is the whole book.
+    whole: bool,
+    /// The record's bytes of the year (`squares::encode_year`): the whole log,
+    /// where the year begins and ends in it, and the year; None for a year a
+    /// live game handed over, whose list is made already.
+    bytes: Option<(std::sync::Arc<[u8]>, usize, usize, i64)>,
+    list: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<[Change]>>>,
+}
+
+impl SquareYear {
+    /// Its changes by `Change::at`, read from the record's bytes the first
+    /// time. Bytes that do not read (a file damaged inside the log, which
+    /// opening checks only for its bounds) are said so, and read as no change.
+    fn list(&self) -> &[Change] {
+        self.list.get_or_init(|| match &self.bytes {
+            Some((log, a, b, year)) => isostate_core::squares::decode_year(&log[*a..*b], *year)
+                .unwrap_or_else(|e| {
+                    eprintln!("the squares of {year} do not read ({e}), and are left out");
+                    Vec::new()
+                })
+                .into(),
+            None => Vec::new().into(),
+        })
+    }
 }
 
 #[allow(dead_code)]
@@ -460,7 +490,16 @@ impl Squares {
 
     /// The changes of year `k` (None for a year not filled), and whether they are the whole book.
     pub fn changes(&self, k: usize) -> Option<(bool, &[Change])> {
-        self.years.get(k)?.as_ref().map(|(w, c)| (*w, &c[..]))
+        self.years.get(k)?.as_ref().map(|y| (y.whole, y.list()))
+    }
+
+    /// The years of a record's log: bytes `first[k] .. first[k + 1]` of `log`
+    /// are year k's, read when they are first asked for.
+    fn of_record(log: std::sync::Arc<[u8]>, first: &[usize], y0: i64) -> Squares {
+        let years = (0..first.len().saturating_sub(1))
+            .map(|k| Some(SquareYear { whole: false, bytes: Some((log.clone(), first[k], first[k + 1], y0 + k as i64)), list: Default::default() }))
+            .collect();
+        Squares { years }
     }
 
     /// Write year `k` of `ny` as a game hands it over (`LiveYear::squares`).
@@ -473,13 +512,15 @@ impl Squares {
         }
         let mut list = changes.to_vec();
         list.sort_unstable_by_key(|c| c.at);
-        self.years[k] = Some((whole, list.into()));
+        let made = std::sync::OnceLock::new();
+        let _ = made.set(list.into());
+        self.years[k] = Some(SquareYear { whole, bytes: None, list: std::sync::Arc::new(made) });
     }
 
     /// The years whose changes make year `k`: from the last that is the whole book.
     fn span(&self, k: usize) -> std::ops::RangeInclusive<usize> {
         let k = k.min(self.years.len().saturating_sub(1));
-        let from = (0..=k).rev().find(|&j| self.years[j].as_ref().is_some_and(|y| y.0)).unwrap_or(0);
+        let from = (0..=k).rev().find(|&j| self.years[j].as_ref().is_some_and(|y| y.whole)).unwrap_or(0);
         from..=k
     }
 
@@ -493,7 +534,8 @@ impl Squares {
         let mut sq = Box::new([Square::NONE; PER_CELL]);
         let (lo, hi) = ((c * PER_CELL) as u32, ((c + 1) * PER_CELL) as u32);
         for j in self.span(k) {
-            let Some((_, list)) = &self.years[j] else { continue };
+            let Some(y) = &self.years[j] else { continue };
+            let list = y.list();
             let a = list.partition_point(|x| x.at < lo);
             let b = a + list[a..].partition_point(|x| x.at < hi);
             for x in &list[a..b] {
@@ -511,8 +553,8 @@ impl Squares {
             return out;
         }
         for j in self.span(k) {
-            let Some((_, list)) = &self.years[j] else { continue };
-            for x in list.iter() {
+            let Some(y) = &self.years[j] else { continue };
+            for x in y.list() {
                 out.entry(x.cell()).or_insert_with(|| Box::new([Square::NONE; PER_CELL]))[x.square()] = square_of(x);
             }
         }
@@ -1152,15 +1194,12 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             if first.len() != ny + 1 {
                 return Err(format!("{path}: its squares' log says where {} years begin, and the run has {ny}", first.len().saturating_sub(1)));
             }
-            for k in 0..ny {
-                let (a, b) = (first[k].max(0) as usize, first[k + 1].max(0) as usize);
-                let Some(bytes) = log.get(a..b) else {
-                    return Err(format!("{path}: its squares' log of year {k} runs from byte {a} to {b}, and the log has {}", log.len()));
-                };
-                let year = header.meta.start_year as i64 + k as i64;
-                let changes = isostate_core::squares::decode_year(bytes, year).map_err(|e| format!("{path}, {year}: {e}"))?;
-                builds.squares.take_year(ny, k, false, &changes);
+            let first: Vec<usize> = first.iter().map(|&f| f.max(0) as usize).collect();
+            if let Some(k) = (0..ny).find(|&k| first[k] > first[k + 1] || first[k + 1] > log.len()) {
+                return Err(format!("{path}: its squares' log of year {k} runs from byte {} to {}, and the log has {}", first[k], first[k + 1], log.len()));
             }
+            // (each year is read when it is first asked for: `Squares::cell`, `Squares::year`)
+            builds.squares = Squares::of_record(log.into(), &first, header.meta.start_year as i64);
         }
         Some(l) if l != isostate_core::squares::LOG_LAYOUT => eprintln!("{path} keeps its squares in a layout the viewer does not know ({l}; it reads {}), so they are left out", isostate_core::squares::LOG_LAYOUT),
         _ => eprintln!("{}", no_squares(path)),
@@ -1559,6 +1598,36 @@ mod tests {
             for (c, cells) in sq.year(k) {
                 assert_eq!(sq.cell(k, c).as_deref(), Some(&*cells), "year {k}, cell {c}");
             }
+        }
+    }
+
+    /// A measure, run by hand, not a test: how long the viewer takes to open each
+    /// run named in `ISOSTATE_TIME_OPEN` (separated by `;`), each opened in turn
+    /// seven times, so that a busy machine weighs on all of them alike; the
+    /// median and the least, in ms of the wall clock.
+    #[test]
+    #[ignore]
+    fn time_to_open() {
+        let Ok(list) = std::env::var("ISOSTATE_TIME_OPEN") else { return };
+        let paths: Vec<&str> = list.split(';').collect();
+        let mut ms = vec![Vec::new(); paths.len()];
+        let mut read = vec![Vec::new(); paths.len()];
+        for _ in 0..7 {
+            for (i, p) in paths.iter().enumerate() {
+                let t = std::time::Instant::now();
+                let r = load(p).unwrap();
+                ms[i].push(t.elapsed().as_secs_f64() * 1e3);
+                assert!(r.ny > 0);
+                // and the squares of the last year, the whole log read for the first time
+                let t = std::time::Instant::now();
+                let cells = r.builds.squares.year(r.ny - 1).len();
+                read[i].push((t.elapsed().as_secs_f64() * 1e3, cells));
+            }
+        }
+        for ((p, mut v), mut w) in paths.iter().zip(ms).zip(read) {
+            v.sort_by(|a, b| a.total_cmp(b));
+            w.sort_by(|a, b| a.0.total_cmp(&b.0));
+            eprintln!("{p}: opened in {:.0} ms on the median, {:.0} ms at the least; its last year's squares read in {:.0} ms on the median ({} cells)", v[v.len() / 2], v[0], w[w.len() / 2].0, w[0].1);
         }
     }
 
