@@ -178,3 +178,46 @@ fn island_7_to_1935() {
     assert!(off.2.iter().all(|&y| y < 0), "with the switch off an idea of the four was found: {:?}", off.2);
     assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with the four uses taken out");
 }
+
+/// The later machines that tend reaching the land, the pits and the carts
+/// (`tasks.tending_wide`, docs/rules/tending.md, "Where the hands go"): off
+/// under both sets of rules and left out of their files while off; the robot
+/// and the line that runs itself name every land sector and the carters in
+/// their `wide`, the moving line and the automatic machine nothing; and a use
+/// reaches its `wide` places only while this switch and its own (`tending`)
+/// are both on, so with either off it reaches what its `on` names, the works,
+/// and nothing more. (That the island with `tasks.tending` off is the same
+/// island with this switch on or off, to the last digit, is shown by a sweep in
+/// the page, "Where the hands go": the robot is found after 1978, so a run to
+/// show it would take a run to 1980 at the least.)
+#[test]
+fn tending_wide_stands_behind_both_switches() {
+    let (port, off) = (default_params(), game_params());
+    assert!(!port.tasks.tending_wide && !off.tasks.tending_wide, "the wider reach stands off under both sets of rules");
+    assert!(!serde_json::to_string(&off).unwrap().contains("tending_wide"), "a run with the switch off writes the file it wrote before the switch");
+    let mut wide_only = off.clone();
+    wide_only.tasks.tending_wide = true;
+    let mut tending_only = off.clone();
+    tending_only.tasks.tending = true;
+    let mut both = tending_only.clone();
+    both.tasks.tending_wide = true;
+    let C = content(&both);
+    let land = |us: &tasks::Use, P: &Params| (0..C.NS).filter(|&s| us.on_land(s, P)).count();
+    for (name, _, _, _) in USES {
+        let us = &C.tasks.uses[use_of(&C, name)];
+        let wide = matches!(name, "robot" | "lights_out_line");
+        assert_eq!(us.wide_sector.iter().filter(|&&b| b).count(), if wide { C.NS } else { 0 }, "{name}: every land sector or none");
+        assert_eq!(us.wide_carting, wide, "{name}: the carters or not");
+        for P in [&off, &wide_only, &tending_only] {
+            assert!(land(us, P) == 0 && !us.on_carts(P) && !us.on_any_land(P), "{name}: reaches past the works with a switch off");
+        }
+        assert_eq!(land(us, &both), if wide { C.NS } else { 0 }, "{name} with both switches on");
+        assert_eq!(us.on_carts(&both), wide, "{name} on the carts with both switches on");
+    }
+    // every other use reaches what its `on` names, whatever the switch
+    for us in C.tasks.uses.iter().filter(|u| u.switch.as_deref() != Some("tending")) {
+        assert!(us.wide_sector.iter().all(|&b| !b) && !us.wide_carting, "{} has a `wide`", us.name);
+        assert_eq!((0..C.NS).map(|s| us.on_land(s, &both)).collect::<Vec<_>>(), us.on_sector, "{}", us.name);
+        assert_eq!(us.on_carts(&both), us.on_carting, "{}", us.name);
+    }
+}

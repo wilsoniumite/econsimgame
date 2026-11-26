@@ -1058,3 +1058,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   year on the mean, which takes three tenths off timber's swing and nearly half off bricks'
   after 1900, and half off building's ([tr-timber.md](../probes/tr-timber.md)).
   [pace.md](pace.md), `pace.enabled`.
+- **tending's wider reach** (off under the game's rules, and nothing while `tasks.tending` is off): the
+  robot and the line that runs itself reach the tending of the land, the pits and the carts as well as
+  the works'. Traced from where the hands go when machines tend: on islands 1 to 8 it halves the towns'
+  fall under tending (0.488 to 0.532 against 0.570) and lifts 2050 over 1970 to 1.28, and the towns
+  still fall, so it stands off with tending. [tending.md](tending.md), "Where the hands go",
+  `tasks.tending_wide`.
