@@ -151,6 +151,8 @@ fn cut_years(r: &mut Replay, kept: usize) {
     }
     let know = b.know_towns * b.techs;
     cut(&mut b.know, know, 0);
+    // (squares: the log of the years forgotten)
+    b.squares.forget(kept);
     // (each year sends all of them; owner is -1 where no family owns a square)
     if r.owner.len() > kept * n {
         r.owner[kept * n..].fill(-1);

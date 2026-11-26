@@ -1096,7 +1096,8 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
 - **squares** (a shadow, read by no rule): every cell with something built keeps sixteen by sixteen
   squares of 125 m, each with its tenant (a works, a pit, house blocks, a park, a town's open ground,
   derelict ground) and the year it was taken, allotted once a year from the books' shares and never laid
-  out afresh; nothing in the economy, the books or the news moves with it. [squares.md](squares.md),
+  out afresh; nothing in the economy, the books or the news moves with it. The record and a live game
+  carry them as a log of what each year's end changed, the same in both. [squares.md](squares.md),
   `squares.enabled`.
 
 **Off under the game's rules, on with the landfall start.** The start itself is a choice, not a rule:

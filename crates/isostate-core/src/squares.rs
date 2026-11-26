@@ -27,6 +27,10 @@
 //! for a mill, off steep and wet ground) with a hash of the square's place to
 //! break ties, so no draw comes from the run's streams of chance.
 //!
+//! Each year's end also writes down what it changed (`tell`, into
+//! `SquareBook::changes`), which the record keeps as a log in bytes
+//! (`encode_year`) and a live game hands over: the same list for both.
+//!
 //! Nothing here is read by any rule: the economy, the books and the news are
 //! the same to the bit with the switch on or off. Switched off, `open` and
 //! `close_year` return at once and the book stays empty.
@@ -95,6 +99,10 @@ pub enum Tenant {
 const KIND_SHIFT: u32 = 28;
 const ID_MASK: u32 = (1 << KIND_SHIFT) - 1;
 
+/// The kinds of tenant by the number a code holds in its top four bits
+/// (`Tenant::kind` names them), as the record's header lists them.
+pub const KINDS: [&str; 7] = ["none", "works", "houses", "park", "pit", "derelict", "open"];
+
 impl Tenant {
     /// The tenant as a table holds it.
     pub fn code(self) -> u32 {
@@ -126,15 +134,7 @@ impl Tenant {
 
     /// A short name for the kind, as the census and the pictures use it.
     pub fn kind(self) -> &'static str {
-        match self {
-            Tenant::None => "none",
-            Tenant::Works(_) => "works",
-            Tenant::Houses(_) => "houses",
-            Tenant::Park(_) => "park",
-            Tenant::Pit(_) => "pit",
-            Tenant::Derelict(_) => "derelict",
-            Tenant::Open(_) => "open",
-        }
+        KINDS[(self.code() >> KIND_SHIFT) as usize]
     }
 
     /// Town ground: house blocks, a park or open ground.
@@ -173,6 +173,48 @@ pub struct Table {
     /// The town's house blocks and park in the order they were taken.
     houses: Vec<u8>,
     park: Vec<u8>,
+    /// Each square as the log last told it (`Change::pack`): what the
+    /// record and a live game hold of it.
+    told: [u64; PER_CELL],
+}
+
+/// One change to a square, as the record and a live game carry it: the
+/// square, and what it is from the year the change is logged in. A year's
+/// changes are those that make the squares of its end out of the squares of
+/// the year before's (out of none, for the run's first year, whose changes
+/// carry the opening too).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct Change {
+    /// The cell times 256 plus the square (`k = qy * 16 + qx`).
+    pub at: u32,
+    /// The new tenant's `Tenant::code`: 0 where the square was given up.
+    pub tenant: u32,
+    /// The year its tenant took it, which is the year of the log for most;
+    /// the squares of the opening are dated as the books date what stands. 0
+    /// where the square was given up.
+    pub year: i16,
+    /// `Table::face`: which side its way lies on (0 where it was given up).
+    pub face: u8,
+}
+
+impl Change {
+    pub fn cell(&self) -> usize {
+        self.at as usize / PER_CELL
+    }
+
+    pub fn square(&self) -> usize {
+        self.at as usize % PER_CELL
+    }
+
+    /// Tenant, year and face in one number, 0 for a square nothing holds.
+    pub fn pack(tenant: u32, year: i16, face: u8) -> u64 {
+        if tenant == 0 { 0 } else { tenant as u64 | (year as u16 as u64) << 32 | (face as u64) << 48 }
+    }
+
+    /// The change that makes square `at` what `packed` says.
+    pub fn unpack(at: u32, packed: u64) -> Change {
+        Change { at, tenant: packed as u32, year: (packed >> 32) as u16 as i16, face: (packed >> 48) as u8 }
+    }
 }
 
 /// A works' or a pit's squares, in the order taken (the first is where it first stood).
@@ -214,6 +256,11 @@ pub struct SquareBook {
     pub split: u64,
     /// Squares a tenant should have had and could not, for want of room in its cell.
     pub short: u64,
+    /// The log: the squares the last year's end changed, by `Change::at`
+    /// (the record and a live game carry them; docs/rules/squares.md, "In the record").
+    pub changes: Vec<Change>,
+    /// Year's ends logged so far: the first's `changes` are from no squares at all.
+    pub told: u64,
 }
 
 impl SquareBook {
@@ -233,6 +280,23 @@ impl SquareBook {
     /// The tenant and year of square k of cell c.
     pub fn at(&self, c: usize, k: usize) -> (Tenant, i16) {
         self.table(c).map_or((Tenant::None, 0), |t| (Tenant::of(t.tenant[k]), t.year[k]))
+    }
+
+    /// Every square something holds, as the log has told them so far, by
+    /// `Change::at`: what a reader that has every year's changes holds after
+    /// the last of them, and what a live game sends whole to a viewer that has
+    /// missed a year.
+    pub fn whole(&self) -> Vec<Change> {
+        let mut all: Vec<Change> = Vec::new();
+        for t in &self.tables {
+            for k in 0..PER_CELL {
+                if t.told[k] != 0 {
+                    all.push(Change::unpack((t.cell * PER_CELL + k) as u32, t.told[k]));
+                }
+            }
+        }
+        all.sort_unstable_by_key(|c| c.at);
+        all
     }
 }
 
@@ -277,6 +341,7 @@ fn new_table(st: &State, book: &SquareBook, c: usize) -> Table {
         to_water: [16.0; PER_CELL],
         houses: Vec::new(),
         park: Vec::new(),
+        told: [0; PER_CELL],
     };
     let Some(lf) = st.world.landform.as_deref() else {
         // the old island: no ground finer than the cell, and water only where the cell is
@@ -518,6 +583,25 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         start_book(st);
     }
     allot(st, C, P, year, false);
+    tell(&mut st.sq);
+}
+
+/// The log of the year's end: every square whose tenant, year or face is not
+/// what the log last told, in order of `Change::at`. Every table is looked at,
+/// those given up too (their squares went back to nothing as they were).
+fn tell(b: &mut SquareBook) {
+    b.changes.clear();
+    for t in &mut b.tables {
+        for k in 0..PER_CELL {
+            let now = Change::pack(t.tenant[k], t.year[k], t.face[k]);
+            if now != t.told[k] {
+                t.told[k] = now;
+                b.changes.push(Change::unpack((t.cell * PER_CELL + k) as u32, now));
+            }
+        }
+    }
+    b.changes.sort_unstable_by_key(|c| c.at);
+    b.told += 1;
 }
 
 fn start_book(st: &mut State) {
@@ -1033,6 +1117,124 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
         }
     }
     st.sq.year = year;
+}
+
+// ---------------------------------------------------------------- the log in the record
+
+/// What the record's header says of its squares (`record::pack`), so that a
+/// reader knows how to read `sq_log`; a later layout gets a higher number.
+pub const LOG_LAYOUT: u32 = 1;
+
+fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        out.push((v as u8) | 0x80);
+        v >>= 7;
+    }
+    out.push(v as u8);
+}
+
+fn get_varint(bytes: &[u8], i: &mut usize) -> Result<u64, String> {
+    let mut v = 0u64;
+    for shift in (0..64).step_by(7) {
+        let Some(&b) = bytes.get(*i) else { return Err("the squares' log ends in the middle of a number".into()) };
+        *i += 1;
+        v |= ((b & 0x7f) as u64) << shift;
+        if b < 0x80 {
+            return Ok(v);
+        }
+    }
+    Err("the squares' log has a number too long to be one".into())
+}
+
+/// One year's changes as the record writes them, in bytes (`sq_log`; the
+/// changes in any order, each square once). Cell by cell in rising order,
+/// each cell as: the cell less the one before it in the year (the first less
+/// 0), then the number of runs, then each run of changes that give its
+/// squares to one tenant with one year: a head, `((id << 3 | kind) << 1 | dated)`
+/// with `id` and `kind` as in `Tenant::code` (0 for squares given up), then
+/// the year less the log's year, zigzagged (`2y` for y >= 0, `-2y - 1` below),
+/// where `dated` is 1, then the number of squares, then each square: its place
+/// in the cell (`k`), and its face but where it was given up. Every number but
+/// the squares and faces, which are single bytes, is a varint of seven bits a
+/// byte, low first. A year's ordinary change, a square taken for a tenant
+/// that takes others in its cell that year, is two bytes.
+pub fn encode_year(changes: &[Change], year: i64) -> Vec<u8> {
+    // a square given up has no year
+    let key = |c: &Change| (c.cell(), c.tenant, if c.tenant == 0 { 0 } else { c.year }, c.at);
+    let mut sorted: Vec<Change> = changes.to_vec();
+    sorted.sort_unstable_by_key(key);
+    let mut out = Vec::with_capacity(sorted.len() * 2 + 16);
+    let mut prev = 0usize;
+    let mut i = 0;
+    while i < sorted.len() {
+        let cell = sorted[i].cell();
+        let end = i + sorted[i..].iter().take_while(|c| c.cell() == cell).count();
+        let run_of = |c: &Change| (c.tenant, if c.tenant == 0 { 0 } else { c.year });
+        let runs = 1 + (i + 1..end).filter(|&j| run_of(&sorted[j]) != run_of(&sorted[j - 1])).count();
+        put_varint(&mut out, (cell - prev) as u64);
+        prev = cell;
+        put_varint(&mut out, runs as u64);
+        while i < end {
+            let (tenant, y) = run_of(&sorted[i]);
+            let n = sorted[i..end].iter().take_while(|c| run_of(c) == (tenant, y)).count();
+            let dated = tenant != 0 && y as i64 != year;
+            let head = ((((tenant >> KIND_SHIFT) as u64) | ((tenant & ID_MASK) as u64) << 3) << 1) | dated as u64;
+            put_varint(&mut out, head);
+            if dated {
+                let d = y as i64 - year;
+                put_varint(&mut out, if d >= 0 { 2 * d as u64 } else { (-2 * d - 1) as u64 });
+            }
+            put_varint(&mut out, n as u64);
+            for c in &sorted[i..i + n] {
+                out.push(c.square() as u8);
+                if tenant != 0 {
+                    out.push(c.face);
+                }
+            }
+            i += n;
+        }
+    }
+    out
+}
+
+/// The changes of one year of the log (`encode_year`), by `Change::at`, or
+/// what is wrong with the bytes.
+pub fn decode_year(bytes: &[u8], year: i64) -> Result<Vec<Change>, String> {
+    let mut out = Vec::new();
+    let (mut i, mut cell) = (0usize, 0u64);
+    while i < bytes.len() {
+        cell += get_varint(bytes, &mut i)?;
+        let runs = get_varint(bytes, &mut i)?;
+        for _ in 0..runs {
+            let head = get_varint(bytes, &mut i)?;
+            let (kind, id) = (((head >> 1) & 7) as u32, head >> 4);
+            if kind > 6 || id > ID_MASK as u64 {
+                return Err(format!("the squares' log names a tenant of kind {kind} and number {id}, which is none"));
+            }
+            let tenant = if kind == 0 { 0 } else { (kind << KIND_SHIFT) | id as u32 };
+            let y = if head & 1 == 1 {
+                let z = get_varint(bytes, &mut i)?;
+                year + if z % 2 == 0 { (z / 2) as i64 } else { -((z / 2) as i64) - 1 }
+            } else {
+                year
+            };
+            let n = get_varint(bytes, &mut i)?;
+            for _ in 0..n {
+                let step = if tenant == 0 { 1 } else { 2 };
+                let Some(b) = bytes.get(i..i + step) else { return Err("the squares' log ends in the middle of a run".into()) };
+                i += step;
+                let at = cell.checked_mul(PER_CELL as u64).map(|a| a + b[0] as u64).filter(|&a| a <= u32::MAX as u64);
+                let Some(at) = at else { return Err(format!("the squares' log names cell {cell}, past any map")) };
+                out.push(if tenant == 0 {
+                    Change { at: at as u32, tenant: 0, year: 0, face: 0 }
+                } else {
+                    Change { at: at as u32, tenant, year: y.clamp(i16::MIN as i64, i16::MAX as i64) as i16, face: b[1] }
+                });
+            }
+        }
+    }
+    out.sort_unstable_by_key(|c| c.at);
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- reading the book
