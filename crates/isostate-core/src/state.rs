@@ -607,4 +607,12 @@ pub struct State {
     // ---------------- highways (docs/rules/highways.md; empty while it neither acts nor watches)
     /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
     pub hw: crate::highways::HighwayState,
+
+    // ---------------- frontier (docs/rules/frontier.md; empty while `frontier.enabled` is off)
+    /// Each town's share of free land within its reach, as the year's people were reckoned.
+    pub frontier: crate::frontier::FrontierState,
+
+    // ---------------- immigration (docs/rules/immigration.md; empty while it is off)
+    /// The settlers who came to each town this year, and each year's for the island.
+    pub immigration: crate::immigration::ImmigrationState,
 }

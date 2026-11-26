@@ -355,6 +355,21 @@ impl Game {
         Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
     }
 
+    /// A new game begun at landfall, one town in a corner with the rules that
+    /// come with it (docs/rules/landfall.md), on the land `land` says, played to
+    /// the year `to` (as `under_to`). The viewer's `--landfall`.
+    pub fn landfall_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64, land: bool) -> Result<Game, String> {
+        let mut P = params_to(rules, seed, families, to)?;
+        P.land = if land { crate::landform::LandParams::game() } else { crate::landform::LandParams::default() };
+        crate::landfall::landfall(&mut P);
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+    }
+
+    /// Whether the game began at landfall (docs/rules/landfall.md).
+    pub fn at_landfall(&self) -> bool {
+        self.sim.params.start.landfall
+    }
+
     /// `on_old_land`, played to the year `to` (as `under_to`).
     pub fn on_old_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
         let mut P = params_to(rules, seed, families, to)?;
@@ -541,6 +556,7 @@ impl Game {
             worth: me.as_ref().map(|r| r.net_worth.round() as i64).unwrap_or(0),
             check: check(&self.sim),
             land: self.on_land(),
+            landfall: self.sim.params.start.landfall,
             to: (self.to() != content_last_year(self.rules)).then_some(self.to()),
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
@@ -587,6 +603,12 @@ pub struct Save {
     /// (`Game::on_new_land`, the viewer's `--new-land`) wrote the line.
     #[serde(default)]
     pub land: bool,
+    /// Whether the game began at landfall, one town in a corner, and not on the
+    /// settled island (docs/rules/landfall.md); it is played again from the
+    /// same start. Left out of the file for the settled island, so a save of
+    /// it is written as it always was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landfall: bool,
     /// The last year the game is played to, when it is not the content's
     /// (`Game::under_to`; docs/rules/longrun.md, "A game past 1900"). Left
     /// out of the file otherwise, so a game to 1900 is written as it always
@@ -725,7 +747,9 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     // line was made on the port's island before the game's rules took the new land), and
     // played to the year it was begun to (a save that does not say is a game to 1900)
     let to = save.last_year_of_game();
-    let mut game = if save.land {
+    let mut game = if save.landfall {
+        Game::landfall_to(save.played_under(), save.seed, save.families, save.started, to, save.land)?
+    } else if save.land {
         Game::on_new_land_to(save.played_under(), save.seed, save.families, save.started, to)?
     } else {
         Game::on_old_land_to(save.played_under(), save.seed, save.families, save.started, to)?

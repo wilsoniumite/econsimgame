@@ -142,8 +142,10 @@ pub struct Welcome;
 /// On the opening card of a game gone on with: carry on, or start again.
 #[derive(Component)]
 struct ContinueButton;
+/// A new game; `true` begins it at landfall, one town in a corner
+/// (docs/rules/landfall.md), `false` on the settled island.
 #[derive(Component)]
-struct NewGameButton;
+struct NewGameButton(bool);
 /// The small print under them, which also says if a new game could not be started.
 #[derive(Component)]
 struct WelcomeHint;
@@ -1993,10 +1995,22 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
             Interaction::default(),
             FocusPolicy::Block,
             crate::ui::Hoverable,
-            NewGameButton,
+            NewGameButton(false),
         ))
         .with_children(|b| {
             b.spawn(text(f, "New game", 15.5, INK));
+        });
+        // landfall (docs/rules/landfall.md): the other start, one town in a corner
+        row.spawn((
+            Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            BackgroundColor(BTN),
+            Interaction::default(),
+            FocusPolicy::Block,
+            crate::ui::Hoverable,
+            NewGameButton(true),
+        ))
+        .with_children(|b| {
+            b.spawn(text(f, "New game from landfall", 15.5, INK));
         });
     });
     c.spawn((
@@ -2082,7 +2096,7 @@ fn session_card(commands: &mut Commands, f: &Handle<Font>, seed: u64, back: &liv
                         Interaction::default(),
                         FocusPolicy::Block,
                         crate::ui::Hoverable,
-                        NewGameButton,
+                        NewGameButton(false),
                     ))
                     .with_children(|b| {
                         b.spawn(text(f, "Begin again", 15.0, INK));
@@ -2099,17 +2113,18 @@ fn session_card(commands: &mut Commands, f: &Handle<Font>, seed: u64, back: &liv
 fn press_unattended(
     mut pressed: Local<bool>,
     mut go_on: Query<&mut Interaction, (With<ContinueButton>, Without<NewGameButton>)>,
-    mut new_game: Query<&mut Interaction, (With<NewGameButton>, Without<ContinueButton>)>,
+    mut new_game: Query<(&mut Interaction, &NewGameButton), Without<ContinueButton>>,
 ) {
     if *pressed {
         return;
     }
     let button = match std::env::var("ISOSTATE_WELCOME").as_deref() {
-        Ok("continue") => go_on.single_mut(),
-        Ok("new") => new_game.single_mut(),
+        Ok("continue") => go_on.single_mut().ok(),
+        // (the plain new game, not the one from landfall)
+        Ok("new") => new_game.iter_mut().find(|(_, b)| !b.0).map(|(i, _)| i),
         _ => return,
     };
-    if let Ok(mut i) = button {
+    if let Some(mut i) = button {
         *i = Interaction::Pressed;
         *pressed = true;
         eprintln!("pressing the card's button, as ISOSTATE_WELCOME asks");
@@ -2119,7 +2134,7 @@ fn press_unattended(
 /// Start the program again on a new game, and leave this one. The game being
 /// left is already saved; the new one sets it aside when it is first saved.
 fn new_game_clicks(
-    q: Query<&Interaction, (Changed<Interaction>, With<NewGameButton>)>,
+    q: Query<(&Interaction, &NewGameButton), Changed<Interaction>>,
     data: Res<Data>,
     // there is none in a replay, which has no such button either
     fam: Option<Res<FamilyView>>,
@@ -2129,13 +2144,13 @@ fn new_game_clicks(
     mut exit: MessageWriter<AppExit>,
 ) {
     let Some(fam) = fam else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    let Some(landfall) = q.iter().find(|(i, _)| **i == Interaction::Pressed).map(|(_, b)| b.0) else {
         return;
-    }
+    };
     // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
     let args: Vec<String> = std::env::args().skip(1).collect();
     let scripted = args.iter().any(|a| a == "--script");
-    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len(), sandbox.is_some());
+    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len(), sandbox.is_some(), landfall);
     let button = if sandbox.is_some() { "Begin again" } else { "New game" };
     if scripted {
         // a scripted run is one program from start to end: say what would be started, and stop

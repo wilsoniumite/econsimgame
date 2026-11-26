@@ -126,6 +126,9 @@ struct Args {
     /// the new game is on the port's island, the one every game was played on
     /// before the game's rules took the new land (`--old-land`)
     old_land: bool,
+    /// the new game begins at landfall, one town in a corner (`--landfall`;
+    /// docs/rules/landfall.md)
+    landfall: bool,
     /// a saved game to go on with
     load: Option<String>,
     /// where to save, instead of the island's autosave
@@ -205,6 +208,9 @@ it was left, behind a short card (Go on, or Begin again). --family plays the fam
   --old-land           a new game on the old island, the one every game was played on before
                        the game's rules took the new land (19 November 2026). A saved game
                        says its land itself and is played on it again
+  --landfall           a new game begun at landfall: one town of 5,000 settlers in a corner of
+                       the island, its people answering to the free land, and settlers coming
+                       by sea (docs/rules/landfall.md). A saved game says its start itself
   --new-land           does nothing: every new game is on the new land. Kept so that commands
                        written before the switch still run
   --load FILE          go on with this saved game
@@ -350,6 +356,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         demo: false,
         fresh: false,
         old_land: false,
+        landfall: false,
         load: None,
         save: None,
         keep: false,
@@ -405,6 +412,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--new" => { a.new = true; a.fresh = true; }
             "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
             "--old-land" => { a.old_land = true; a.new = true; a.fresh = true; }
+            "--landfall" => { a.landfall = true; a.new = true; a.fresh = true; }
             // (the new land is every new game's since the switch: the option is kept so that old commands run)
             "--new-land" => {}
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
@@ -525,6 +533,9 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if let (true, Some(file)) = (a.old_land, &a.load) {
         return Err(format!("--old-land starts a new game, and --load goes on with one: a saved game is played again on the land it says without being told, so leave --old-land out to go on with {file}"));
     }
+    if let (true, Some(file)) = (a.landfall, &a.load) {
+        return Err(format!("--landfall starts a new game, and --load goes on with one: a saved game is played again from the start it says without being told, so leave --landfall out to go on with {file}"));
+    }
     // options that only mean something beside another say so, rather than being passed over in silence
     if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
         eprintln!("--out, --tilt, --turn and --loupe go with --lab and do nothing without it");
@@ -598,6 +609,7 @@ fn opening(a: &Args) -> live::Opening {
         restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
         keep: a.keep,
         old_land: a.old_land,
+        landfall: a.landfall,
         sandbox: a.sandbox,
         // every new game runs to 2050 unless --to says otherwise (and --shots plays to 1900)
         to: Some(a.to.unwrap_or(isostate_core::save::LATEST_YEAR)),
@@ -1025,7 +1037,7 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            format!("Island {} with {}{}, {} by {} pixels", args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, args.size.0, args.size.1)
+            format!("Island {} with {}{}{}, {} by {} pixels", args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, if args.landfall { ", from landfall" } else { "" }, args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -3046,7 +3058,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--old-land", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }
