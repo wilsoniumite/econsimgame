@@ -12,6 +12,9 @@ pub struct TrainPath {
     pub pts: Vec<Vec3>,
     pub cum: Vec<f32>,
     pub len: f32,
+    /// a carters' round's cells, in order (`road_routes`), whose links it
+    /// runs along: its curves may pass through a corner of a third cell
+    pub cells: Vec<usize>,
 }
 
 impl TrainPath {
@@ -67,7 +70,8 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// Routes along the main roads for year k: carters' rounds of a dozen cells,
 /// starting from a few cells picked by hash and turning by hash at junctions.
 /// The rounds keep to the main roads as they are drawn (`network::drawn_links`),
-/// and each runs along its road's surface (`network::driven`): the ribbon,
+/// and each runs along its road's surface on its course (`network::course`,
+/// `network::driven_on`): the ribbon,
 /// over a river the bridge, and over a lake or the tide the causeway. Three
 /// kinds of link are left out, where the
 /// map shows no way a cart could go and a carter turns back: one whose road
@@ -92,7 +96,7 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
     // a link's surface, from the lower-numbered cell (the way it is drawn)
     fn surface<'a>(ways: &'a mut std::collections::HashMap<(usize, usize, Crossed), Vec<Vec3>>, r: &Replay, k: usize, g: &Ground, cen: &[(f32, f32)], lo: usize, hi: usize) -> &'a Vec<Vec3> {
         let crossed = r.crossed(lo, hi, k);
-        ways.entry((lo, hi, crossed)).or_insert_with(|| network::driven(g, cen[lo], cen[hi], true, crossed, r.round()))
+        ways.entry((lo, hi, crossed)).or_insert_with(|| network::driven_on(g, &network::course(r, g, cen, lo, hi, k), true, crossed, r.round()))
     }
     let mut covered: std::collections::HashMap<usize, bool> = Default::default();
     // a link a cart may take: worked out when a round first comes to it (its surface is only
@@ -105,8 +109,8 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
         *dry.entry((lo, hi, r.crossed(lo, hi, k))).or_insert_with(|| {
             let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
-            // (a way that goes round, a meander or a lake, is looked along wherever it is)
-            (!waters.near(a, b) && network::route(g, a, b, r.round()).straight()) || {
+            // (a way that bends, on a curve, round a meander or a lake, is looked along wherever it is)
+            (!waters.near(a, b) && network::course(r, g, cen, lo, hi, k).straight()) || {
                 let way = surface(ways, r, k, g, cen, lo, hi);
                 !waters.drowns(g, way) && !steps(way)
             }
@@ -151,7 +155,7 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
         if let Some(p) = TrainPath::new(pts) {
             if p.len > 1.5 {
-                out.push(p);
+                out.push(TrainPath { cells, ..p });
             }
         }
     }
@@ -202,7 +206,7 @@ pub fn middle_under_bridge(r: &Replay, k: usize, g: &Ground, cen: &[(f32, f32)],
         let crossed = r.crossed(c, m, k);
         bridges
             .entry((c, m, lv == 3, crossed))
-            .or_insert_with(|| network::road_bridges(g, middle(c), middle(m), lv == 3, crossed, r.round(), |_| isostate_gen::houses::Detail::Play))
+            .or_insert_with(|| network::bridges_of(&network::course(r, g, cen, c, m, k), lv == 3, crossed, |_| isostate_gen::houses::Detail::Play))
             .iter()
             .any(|b| b.holds(p) && b.roadway_at(b.t_of(p), &height).is_some_and(|h| h > ribbon + crate::carts::LIFT))
     })
@@ -220,7 +224,7 @@ impl TrainPath {
             cum.push(cum[i - 1] + d);
         }
         let len = *cum.last()?;
-        Some(TrainPath { pts, cum, len })
+        Some(TrainPath { pts, cum, len, cells: Vec::new() })
     }
 }
 
