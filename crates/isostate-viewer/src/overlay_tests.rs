@@ -254,7 +254,7 @@ fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
 #[test]
 fn overlays_are_named_on_the_command_line() {
     let r = strip();
-    let c = |kind, which, range| Some(Choice { kind, which, range });
+    let c = |kind, which, range| Some(Choice { kind, which, range, trend: None });
     assert_eq!(parse("rent", &r), c(Some(Overlay::Rent), None, None));
     assert_eq!(parse("price:Coal", &r), c(Some(Overlay::Price), Some(1), None));
     assert_eq!(parse("made:grain+year", &r), c(Some(Overlay::Made), Some(0), Some(Range::Year)));
@@ -420,4 +420,76 @@ fn the_ramp_ends_on_its_end_stops() {
     assert_eq!(ramp(&SEPIA, 0.0), rgb(SEPIA[0]));
     assert_eq!(ramp(&SEPIA, 1.0), rgb(SEPIA[4]));
     assert_eq!(ramp(&SEPIA, 0.5), rgb(SEPIA[2]));
+}
+
+#[test]
+fn a_town_that_doubles_in_ten_years_reads_seven_point_two_a_year_and_new_ground_reads_new() {
+    let mut r = strip_years(11);
+    r.town_urban = vec![3000.0; 11 * 2];
+    // Ashby's wage doubles from £2 to £4 in the ten years; Brill's stays at £3
+    r.town_wage[10 * 2] = 4.0;
+    let m = trend::trend_map(&r, 10, Overlay::Wages, 0, Span::Ten).unwrap();
+    let trend::Change::Rate(v) = m.towns[0] else { panic!("{:?}", m.towns) };
+    assert_eq!(trend::rate_words(v), "+7.2%");
+    assert_eq!(m.towns[1], trend::Change::Rate(0.0));
+    // wages go by towns: each square takes its market's rate
+    assert!(m.by_town && m.cells[2] == m.towns[0] && m.cells[0] == trend::Change::Nothing);
+    // the movers: Ashby rising, and nobody falling (Brill held)
+    let (up, down) = trend::movers(&r, &m, 10);
+    assert_eq!((up.len(), up[0].name.as_str(), down.len()), (1, "Ashby", 0));
+    // a town under the floor at both ends is left out
+    r.town_urban = vec![500.0; 11 * 2];
+    assert!(trend::movers(&r, &m, 10).0.is_empty());
+    // the scale is even about nought, and never nearer than the least end
+    let e = trend::trend_ends(&r, 10, Overlay::Wages, 0, Span::Ten).unwrap();
+    assert!(e.lo == -e.hi && e.hi >= trend::LEAST_END, "{e:?}");
+    // before the span's first year is held there is no trend, and the card says from when
+    assert!(trend::trend_map(&r, 9, Overlay::Wages, 0, Span::Ten).is_none());
+    let w = trend_wash(&r, 9, Overlay::Wages, 0, Span::Ten, Scaling::reckon_trend(&r, 9, Overlay::Wages, 0, Range::Year, Some(Span::Ten)));
+    assert!(w.legend.note.starts_with("A change over 10 years can be shown from 1760"), "{}", w.legend.note);
+
+    // residents, square by square: the second square is town ground throughout and doubles; the
+    // third joins its town in the span and is new, the last is town ground only at the start and is gone
+    let (n, ny) = (4, 11);
+    r.built = vec![0; ny * n];
+    r.res = vec![0; ny * n];
+    for k in 0..ny {
+        r.built[k * n + 1] = 10;
+        r.res[k * n + 1] = if k < 10 { 40 } else { 80 };
+    }
+    r.built[10 * n + 2] = 100;
+    r.res[10 * n + 2] = 20;
+    r.built[3] = 10;
+    r.res[3] = 30;
+    let m = trend::trend_map(&r, 10, Overlay::Residents, 0, Span::Ten).unwrap();
+    assert!(!m.by_town);
+    assert!(matches!(m.cells[1], trend::Change::Rate(v) if trend::rate_words(v) == "+7.2%"), "{:?}", m.cells);
+    assert_eq!((m.cells[2], m.cells[3]), (trend::Change::New, trend::Change::Gone));
+    let w = trend_wash(&r, 10, Overlay::Residents, 0, Span::Ten, Scaling::reckon_trend(&r, 10, Overlay::Residents, 0, Range::Thirty, Some(Span::Ten)));
+    assert_eq!((&tint(&w, 2)[..3], &tint(&w, 3)[..3]), (&rgb(NEW)[..], &rgb(GONE)[..]));
+    assert_eq!(w.legend.title, "Residents: change a year, 1750 to 1760");
+    assert_eq!(w.legend.keys.iter().map(|k| k.1.as_str()).collect::<Vec<_>>(), ["new since 1750", "gone since 1750"]);
+    assert!(w.legend.note.contains("1 square new since 1750, 1 gone"), "{}", w.legend.note);
+    // the still middle of the scale is pale
+    assert_eq!(change_tint(trend::Change::Rate(0.0), &Scale { lo: -2.0, hi: 2.0, log: false }), rgb(CALM));
+}
+
+#[test]
+fn the_trend_is_named_on_the_command_line_and_greyed_where_it_means_nothing() {
+    let r = strip();
+    assert_eq!(parse("residents+trend10", &r).unwrap().trend, Some(Some(Span::Ten)));
+    let c = parse("wages+trendoff+year", &r).unwrap();
+    assert_eq!((c.trend, c.range), (Some(None), Some(Range::Year)));
+    assert_eq!(parse("rent", &r).unwrap().trend, None);
+    assert_eq!(parse("rent+trend7", &r), None);
+    assert!(is_word("price:coal+30+trend5") && !is_word("rent+trend"));
+    // the switch is one for every view, and kept while a view without a trend is on
+    let mut ov = MapOverlay::new(None, 0);
+    ov.choose(&parse("residents+trend30", &r).unwrap());
+    assert_eq!(ov.trend_shown(), Some(Span::Thirty));
+    ov.choose(&parse("areas", &r).unwrap());
+    assert_eq!((ov.trend, ov.trend_shown()), (Some(Span::Thirty), None));
+    for kind in Overlay::ALL {
+        assert_eq!(trend::trends(kind), matches!(kind, Overlay::Residents | Overlay::Wages | Overlay::Rent | Overlay::Price | Overlay::Made), "{kind:?}");
+    }
 }

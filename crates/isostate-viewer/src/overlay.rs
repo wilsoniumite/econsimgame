@@ -19,9 +19,17 @@
 //! whole run's (`ranges.rs`), chosen on the legend card for each view. A
 //! year's ends are reckoned once and kept (`EndsCache`), off the main thread
 //! when many years want them at once.
+//!
+//! Five of the views (residents, wages, rent, prices, made here) have a Trend
+//! switch on the card: coloured by how their figure changed over the last 5,
+//! 10 or 30 years, with the towns that rose and fell fastest named under the
+//! legend. The reckoning is `trend.rs`, apart from the painting here.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
+
+#[path = "trend.rs"]
+pub mod trend;
 
 use std::collections::HashMap;
 
@@ -36,6 +44,7 @@ use crate::ranges::{self, Ends, Range};
 use crate::replay::{self, Replay};
 use crate::ui::{self, text, INK, MUTED, RULE};
 use crate::{terrain, Data, SeasonMats, Timeline, UiFont};
+use trend::Span;
 
 /// How much of the ground's own colour the wash replaces.
 const STRENGTH: f32 = 0.88;
@@ -168,32 +177,49 @@ fn find_kind(t: &str) -> Option<usize> {
 
 /// A map view as the command line, a `--view` or a script names it: the view
 /// (None for the plain map), the good or the kind of ground it shows if one
-/// is named, and the range if one is named.
+/// is named, the range if one is named, and the trend if one is named
+/// (Some(None) for "+trendoff").
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Choice {
     pub kind: Option<Overlay>,
     pub which: Option<usize>,
     pub range: Option<Range>,
+    pub trend: Option<Option<Span>>,
+}
+
+/// The parts after a view's name: "+year", "+30" or "+all" for its range,
+/// "+trend5", "+trend10", "+trend30" or "+trendoff" for its trend, in any
+/// order. None if one is neither.
+fn suffixes<'a>(parts: impl Iterator<Item = &'a str>) -> Option<(Option<Range>, Option<Option<Span>>)> {
+    let (mut range, mut trend) = (None, None);
+    for p in parts {
+        if let Some(t) = trend::parse_word(p) {
+            trend = Some(t);
+        } else {
+            range = Some(Range::parse(p)?);
+        }
+    }
+    Some((range, trend))
 }
 
 /// For the command line: "rent", "areas", "reach", "price", "price:coal",
 /// "made:grain", "wages", "growth", "residents", "deposits:coal", or "plain"
-/// for no overlay, each with "+year", "+30" or "+all" after it for its range.
-/// The good is by name or label, and stays as it was if none is given. None
-/// if the word is not an overlay at all.
+/// for no overlay, each with "+year", "+30" or "+all" after it for its range
+/// and "+trend10" (5, 10, 30 or off) for its trend. The good is by name or
+/// label, and stays as it was if none is given. None if the word is not an
+/// overlay at all.
 pub fn parse(word: &str, r: &Replay) -> Option<Choice> {
     let w = word.to_ascii_lowercase();
-    let (w, range) = match w.split_once('+') {
-        Some((a, b)) => (a.to_string(), Some(Range::parse(b)?)),
-        None => (w, None),
-    };
-    let (head, tail) = w.split_once(':').map_or((w.as_str(), None), |(a, b)| (a, Some(b)));
+    let mut parts = w.split('+');
+    let w = parts.next().unwrap_or("");
+    let (range, trend) = suffixes(parts)?;
+    let (head, tail) = w.split_once(':').map_or((w, None), |(a, b)| (a, Some(b)));
     let kind = if head == "plain" { None } else { Some(Overlay::ALL.into_iter().find(|o| o.word() == head)?) };
     let which = match kind {
         Some(Overlay::Deposits) => tail.and_then(find_kind),
         _ => tail.and_then(|t| find_good(&r.header.goods, t)),
     };
-    Some(Choice { kind, which, range })
+    Some(Choice { kind, which, range, trend })
 }
 
 /// The good a word names, by its name or its label, whatever its case.
@@ -231,16 +257,14 @@ pub fn complaint_among(word: &str, goods: &[replay::Good]) -> Option<String> {
 }
 
 /// The words a map view takes, for the messages that refuse one.
-pub const VIEWS_WORDS: &str = "use rent, areas, reach, price, price:GOOD, made, made:GOOD, wages, growth, residents, deposits, deposits:KIND, traffic or plain, each with +year, +30 or +all after it for its range if wanted";
+pub const VIEWS_WORDS: &str = "use rent, areas, reach, price, price:GOOD, made, made:GOOD, wages, growth, residents, deposits, deposits:KIND, traffic or plain, each with +year, +30 or +all after it for its range if wanted, and +trend5, +trend10, +trend30 or +trendoff for its trend";
 
 /// Whether a word of a `--view` names an overlay (before the run is loaded).
 pub fn is_word(word: &str) -> bool {
     let w = word.to_ascii_lowercase();
-    let (w, range) = match w.split_once('+') {
-        Some((a, b)) => (a.to_string(), Some(b.to_string())),
-        None => (w, None),
-    };
-    if range.is_some_and(|r| Range::parse(&r).is_none()) {
+    let mut parts = w.split('+');
+    let w = parts.next().unwrap_or("");
+    if suffixes(parts).is_none() {
         return false;
     }
     let head = w.split(':').next().unwrap_or("");
@@ -253,10 +277,11 @@ pub fn is_word(word: &str) -> bool {
 /// the reckoning of many years at once while it goes on off the main thread.
 #[derive(Default)]
 struct EndsCache {
-    /// by view and the good or kind it shows: for each year, its ends once reckoned
-    years: HashMap<(Overlay, usize), Vec<Option<Option<Ends>>>>,
+    /// by view, the good or kind it shows, and its trend if it shows one: for
+    /// each year, its ends once reckoned
+    years: HashMap<EndsKey, Vec<Option<Option<Ends>>>>,
     /// the years being reckoned off the main thread, for one view
-    task: Option<((Overlay, usize), Task<Vec<(usize, Option<Ends>)>>)>,
+    task: Option<(EndsKey, Task<Vec<(usize, Option<Ends>)>>)>,
     /// raised when a reckoning off the main thread lands
     version: u64,
     /// how many years were reckoned on the main thread, and off it (for the notes)
@@ -264,8 +289,19 @@ struct EndsCache {
     pub away: u64,
 }
 
+/// A view's ends are kept by the view, its good or kind of ground, and its trend.
+type EndsKey = (Overlay, usize, Option<Span>);
+
 /// At most this many years' ends are reckoned in the frame; more go off the main thread.
 const INLINE_YEARS: usize = 3;
+
+/// Year `k`'s own ends of a view, or of its trend over `span`.
+pub fn ends_of(r: &Replay, k: usize, kind: Overlay, which: usize, span: Option<Span>) -> Option<Ends> {
+    match span {
+        Some(s) => trend::trend_ends(r, k, kind, which, s),
+        None => year_ends(r, k, kind, which),
+    }
+}
 
 /// What is washed over the map, if anything.
 #[derive(Resource)]
@@ -279,10 +315,13 @@ pub struct MapOverlay {
     last: Overlay,
     /// the range chosen on each view's card, while the viewer is open
     ranges: HashMap<Overlay, Range>,
+    /// the Trend switch: one setting for every view that has a trend
+    /// (`trend::trends`), kept while the others show the present
+    pub trend: Option<Span>,
     /// what the texture holds: overlay, good or kind, year index, years filled,
     /// the month whose prices or wages it shows in place of the year's, the
-    /// range, and the version of the ends it was painted with
-    painted: Option<(Option<Overlay>, usize, usize, usize, Option<usize>, Option<Range>, u64)>,
+    /// range, the trend, and the version of the ends it was painted with
+    painted: Option<(Option<Overlay>, usize, usize, usize, Option<usize>, Option<Range>, Option<Span>, u64)>,
     legend: Option<Legend>,
     /// bumped when the legend card must be rebuilt
     version: u64,
@@ -333,7 +372,12 @@ impl MapOverlay {
     }
 
     pub fn new(kind: Option<Overlay>, good: usize) -> MapOverlay {
-        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None, preview: Preview::default() }
+        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), trend: None, painted: None, legend: None, version: 0, card: None, ends: EndsCache::default(), scale: None, preview: Preview::default() }
+    }
+
+    /// The trend the view on shows, if the switch is on and the view has one.
+    pub fn trend_shown(&self) -> Option<Span> {
+        self.trend.filter(|_| self.kind.is_some_and(trend::trends))
     }
 
     /// GROUND-BRUSH: the brush's preview put in place, and the map painted again.
@@ -356,6 +400,9 @@ impl MapOverlay {
         }
         if let (Some(kind), Some(range)) = (c.kind, c.range) {
             self.ranges.insert(kind, range);
+        }
+        if let Some(t) = c.trend {
+            self.trend = t;
         }
     }
 
@@ -409,6 +456,19 @@ impl MapOverlay {
     /// words, with the least and the greatest of what year `k` shows.
     pub fn range_said(&self, r: &Replay, k: usize) -> String {
         match (self.kind, &self.legend) {
+            (Some(_), Some(l)) if self.trend_shown().is_some() && l.range.is_some() => {
+                // the trend: its span, its ends in per cent a year, and the movers with their rates
+                let names = |m: &[trend::Mover]| m.iter().map(|m| format!("{} {}", m.name, trend::rate_words(m.rate))).collect::<Vec<_>>().join(", ");
+                let (up, down) = l.movers.as_ref().map_or((String::new(), String::new()), |(a, b)| (names(a), names(b)));
+                format!(
+                    "trend: {} years range: {} ({}) ticks: {} keys: {} rising: [{up}] falling: [{down}]",
+                    self.trend_shown().map_or(0, |s| s.years()),
+                    self.range(self.kind.unwrap()).word(),
+                    l.ends,
+                    l.ticks.iter().map(|t| t.1.as_str()).collect::<Vec<_>>().join(" "),
+                    l.keys.iter().map(|k| k.1.as_str()).collect::<Vec<_>>().join(", ")
+                )
+            }
             (Some(kind), Some(l)) if kind.scaled() && l.range.is_some() => {
                 let extremes = sample(r, k, kind, self.which(kind)).map(|v| v.iter().fold((f32::MAX, f32::MIN), |a, &x| (a.0.min(x), a.1.max(x))));
                 let ext = extremes.map_or(String::new(), |(a, b)| format!(" the year's least and greatest: {} to {}", tick_words(kind, a), tick_words(kind, b)));
@@ -944,12 +1004,18 @@ impl Scaling {
     /// for the tests: the viewer keeps the years (`scaling_for`).
     #[cfg(test)]
     pub fn reckon(r: &Replay, k: usize, kind: Overlay, which: usize, range: Range) -> Scaling {
+        Scaling::reckon_trend(r, k, kind, which, range, None)
+    }
+
+    /// The same, of a view's trend over `span` where one is given.
+    #[cfg(test)]
+    pub fn reckon_trend(r: &Replay, k: usize, kind: Overlay, which: usize, range: Range, span: Option<Span>) -> Scaling {
         let upto = match range {
             Range::Year => k + 1,
             Range::Thirty => k + 1,
             Range::Whole => r.filled.min(r.ny),
         };
-        let years: Vec<Option<Ends>> = (0..upto).map(|j| if range == Range::Year && j != k { None } else { year_ends(r, j, kind, which) }).collect();
+        let years: Vec<Option<Ends>> = (0..upto).map(|j| if range == Range::Year && j != k { None } else { ends_of(r, j, kind, which, span) }).collect();
         Scaling { range, ends: ranges::ends(range, &years, k) }
     }
 }
@@ -973,6 +1039,11 @@ pub struct Legend {
     pub ends: String,
     /// the range the colours are spread over, where the view has one to choose
     pub range: Option<Range>,
+    /// tints that stand for a word and not a figure, named beside a swatch
+    /// under the bar: under a trend, "new since 1890" and "gone since 1890"
+    pub keys: Vec<([u8; 3], String)>,
+    /// under a trend, the towns rising fastest and falling fastest
+    pub movers: Option<(Vec<trend::Mover>, Vec<trend::Mover>)>,
 }
 
 pub struct Wash {
@@ -1011,7 +1082,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
     let region = |c: usize| market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8);
     let mut put = |c: usize, col: [u8; 3]| cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], region(c)]);
     let lands = (0..r.n).filter(|&c| land(r, c));
-    let none = |title: String, note: String| Legend { title, note, ramp: Vec::new(), ticks: Vec::new(), low: String::new(), high: String::new(), ends: String::new(), range: None };
+    let none = |title: String, note: String| Legend { title, note, ramp: Vec::new(), ticks: Vec::new(), low: String::new(), high: String::new(), ends: String::new(), range: None, keys: Vec::new(), movers: None };
     let spec = kind.spec();
     // the scale the range gives; a view with no figures at all says so before it is wanted
     let scale = scaling.ends.map(|e| Scale::of(e, spec.log));
@@ -1021,7 +1092,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
     };
     let legend = |title: String, note: String, stops: &[u32; 5], sc: &Scale, pinned_word: Option<&str>| {
         let (ramp, ticks, low, high, ends) = words(sc, stops, pinned_word);
-        Legend { title, note, ramp, ticks, low, high, ends, range: Some(scaling.range) }
+        Legend { title, note, ramp, ticks, low, high, ends, range: Some(scaling.range), keys: Vec::new(), movers: None }
     };
     match kind {
         Overlay::Rent => {
@@ -1295,6 +1366,113 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Mo
 const TRAFFIC_PAPER: u32 = 0xe9e1d0;
 const TRAFFIC_INK: [u32; 5] = [0xe6dccb, 0xd1b496, 0xb58763, 0x9e6640, 0x8a4f2a];
 
+// ------------------------------------------------------------------ the trend, painted
+
+/// A trend's tints: pale where nothing moves, Prussian blue as it rises and
+/// brick red as it falls, the two sides alike in how fast they darken. Ground
+/// new in the span is saffron and ground gone is charcoal, neither on the scale.
+const CALM: u32 = 0xf1ede3;
+const RISE: [u32; 5] = [CALM, 0xc8d9df, 0x92b5c6, 0x5a87a6, 0x2f5a80];
+const FALL: [u32; 5] = [CALM, 0xeacdbb, 0xd89c80, 0xb8664c, 0x84392c];
+pub const NEW: u32 = 0xe2b43c;
+pub const GONE: u32 = 0x4f4a47;
+
+/// The tint at `t` from 0 (falling fastest) through 0.5 (still) to 1 (rising fastest).
+fn diverge(t: f32) -> [u8; 3] {
+    if t >= 0.5 { ramp(&RISE, (t - 0.5) * 2.0) } else { ramp(&FALL, (0.5 - t) * 2.0) }
+}
+
+/// A square's tint under a trend on scale `sc`, BLANK where nothing was there at either end.
+pub fn change_tint(c: trend::Change, sc: &Scale) -> [u8; 3] {
+    match c {
+        trend::Change::Nothing => rgb(BLANK),
+        trend::Change::New => rgb(NEW),
+        trend::Change::Gone => rgb(GONE),
+        trend::Change::Rate(v) => diverge(sc.at(v)),
+    }
+}
+
+/// A view coloured by its change over `span` to year `k`, from the
+/// reckoning in `trend.rs`, with the movers for the card. `scaling` holds the
+/// ends in per cent a year, even about nought (`trend::trend_ends`), taken
+/// under the view's range as its plain colours are.
+pub fn trend_wash(r: &Replay, k: usize, kind: Overlay, which: usize, span: Span, scaling: Scaling) -> Wash {
+    let year = r.y0 + k as i32;
+    let n = span.years();
+    let mut cells = vec![0u8; r.n * 4];
+    let region = |c: usize| market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8);
+    let label = r.header.goods.get(which).map_or("goods".to_string(), |g| g.label.to_lowercase());
+    let what = match kind {
+        Overlay::Residents => "Residents".to_string(),
+        Overlay::Wages => "Wages".to_string(),
+        Overlay::Rent => "Land rent".to_string(),
+        Overlay::Price => format!("The price of {label}"),
+        Overlay::Made => format!("The making of {label}"),
+        _ => kind.chip().to_string(),
+    };
+    let (soft, lines) = match kind {
+        Overlay::Rent => (0.5, false),
+        Overlay::Residents => (0.06, false),
+        _ => (0.06, true),
+    };
+    let none = |title: String, note: String| Legend { title, note, ramp: Vec::new(), ticks: Vec::new(), low: String::new(), high: String::new(), ends: String::new(), range: None, keys: Vec::new(), movers: None };
+    let blank = |cells: &mut Vec<u8>| {
+        for c in (0..r.n).filter(|&c| land(r, c)) {
+            let b = rgb(BLANK);
+            cells[c * 4..c * 4 + 4].copy_from_slice(&[b[0], b[1], b[2], region(c)]);
+        }
+    };
+    let Some(from) = k.checked_sub(n) else {
+        blank(&mut cells);
+        let note = format!("A change over {n} years can be shown from {}: the run begins in {}.", r.y0 + n as i32, r.y0);
+        return Wash { cells, legend: none(format!("{what}: change over {n} years"), note), soft, lines };
+    };
+    let y0 = r.y0 + from as i32;
+    let title = format!("{what}: change a year, {y0} to {year}");
+    let Some(m) = trend::trend_map(r, k, kind, which, span) else {
+        // nothing this year (no record of it, a good not made): the plain view's words say why
+        blank(&mut cells);
+        let plain = wash(r, k, kind, which, None, Scaling { range: scaling.range, ends: None });
+        return Wash { cells, legend: none(title, plain.legend.note), soft, lines };
+    };
+    let e = scaling.ends.unwrap_or(Ends { lo: -trend::LEAST_END, hi: trend::LEAST_END });
+    let sc = Scale { lo: e.lo, hi: e.hi, log: false };
+    for c in (0..r.n).filter(|&c| land(r, c)) {
+        let col = change_tint(m.cells[c], &sc);
+        cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], region(c)]);
+    }
+    let values = ranges::ticks(sc.lo, sc.hi, false);
+    let whole = values.iter().all(|v| v.fract().abs() < 1e-3);
+    let words = |v: f32| if v.abs() < 1e-4 { "0%".to_string() } else if whole { format!("{v:+.0}%") } else { trend::rate_words(v) };
+    let ticks = values.iter().map(|&v| (sc.at(v), words(v))).collect();
+    let (new, gone) = m.new_and_gone();
+    let unit = if m.by_town { "town" } else { "square" };
+    let s = |n: usize| if n == 1 { "" } else { "s" };
+    let lead = match kind {
+        Overlay::Residents => format!("The people living on each square of town ground in {year} against {y0}"),
+        Overlay::Wages => format!("What a month's work pays in each town in {year} against {y0}, across its market area"),
+        Overlay::Rent => format!("What the ground of each square earns in a year, {year} against {y0}"),
+        Overlay::Price => format!("The price of {label} in each town's market in {year} against {y0}, the years' averages"),
+        Overlay::Made if m.by_town => format!("What each town's works made of {label} in {year} against {y0}, over the town's own ground"),
+        _ => format!("How much {label} each square grew or raised in {year} against {y0}"),
+    };
+    let note = format!("{lead}, as a rate in per cent a year: blue where it rose, red where it fell, pale where it held. {new} {unit}{} new since {y0}, {gone} gone.", s(new));
+    let keys = vec![(rgb(NEW), format!("new since {y0}")), (rgb(GONE), format!("gone since {y0}"))];
+    let legend = Legend {
+        title,
+        note,
+        ramp: (0..24).map(|i| diverge(i as f32 / 23.0)).collect(),
+        ticks,
+        low: "and falling faster".to_string(),
+        high: "and rising faster".to_string(),
+        ends: format!("{} to {} a year", trend::rate_words(sc.lo), trend::rate_words(sc.hi)),
+        range: Some(scaling.range),
+        keys,
+        movers: Some(trend::movers(r, &m, k)),
+    };
+    Wash { cells, legend, soft, lines }
+}
+
 /// What the overlay says of square `c` in year index `k`, as a sentence for the
 /// inspector. None where it has nothing to say (the sea, or no record).
 pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: Option<&Month>) -> Option<String> {
@@ -1444,6 +1622,14 @@ pub struct GoodStep(pub i32);
 #[derive(Component, Clone, Copy)]
 pub struct RangeChip(pub Range);
 
+/// The Trend switch: off, or the years it looks back over.
+#[derive(Component, Clone, Copy)]
+pub struct TrendChip(pub Option<Span>);
+
+/// A town among the movers: a click takes the camera there.
+#[derive(Component, Clone, Copy)]
+pub struct MoverRow(pub usize);
+
 pub fn plugin(app: &mut App) {
     app.add_systems(PostStartup, setup).add_systems(Update, (input, paint, legend_card).chain());
 }
@@ -1476,9 +1662,29 @@ fn input(
     chips: Query<(&Interaction, &OverlayChip), Changed<Interaction>>,
     steps: Query<(&Interaction, &GoodStep), Changed<Interaction>>,
     ranges: Query<(&Interaction, &RangeChip), Changed<Interaction>>,
+    trends: Query<(&Interaction, &TrendChip), Changed<Interaction>>,
+    mut movers: Query<(&Interaction, &MoverRow, &mut BackgroundColor), Changed<Interaction>>,
     cards: Res<crate::game::CardOpen>,
     tl: Res<Timeline>,
+    mut o: ResMut<crate::Orbit>,
+    mut picked: ResMut<crate::Picked>,
 ) {
+    for (i, t) in &trends {
+        if *i == Interaction::Pressed && ov.trend != t.0 {
+            ov.trend = t.0;
+        }
+    }
+    // a town among the movers takes the camera there and opens its note, as a town's row in the panels does
+    for (i, row, mut bg) in &mut movers {
+        bg.0 = if *i == Interaction::None { Color::NONE } else { ui::PAPER_2 };
+        if *i == Interaction::Pressed {
+            if let Some(&(x, z)) = data.r.header.towns.get(row.0).and_then(|t| data.cen.get(t.node)) {
+                o.target = Vec3::new(x, crate::world::height_at(&data.g, x, z).max(0.0), z);
+                o.dist = o.dist.min(9.0);
+                picked.what = Some(crate::Pick::Town(row.0));
+            }
+        }
+    }
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     // while a card wants an answer the keys are the card's, as with the panels' keys
     if keys.just_pressed(KeyCode::KeyM) && !cards.0 {
@@ -1531,9 +1737,10 @@ fn input(
 /// few (a year that has just arrived) or every year must be (a still), and
 /// otherwise off the main thread, the year's own ends standing in until they
 /// come. Returns the scaling, and whether it is the one asked for.
-fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which: usize, range: Range, stills: bool) -> Scaling {
+#[allow(clippy::too_many_arguments)]
+fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which: usize, range: Range, span: Option<Span>, stills: bool) -> Scaling {
     let r = &data.r;
-    let key = (kind, which);
+    let key = (kind, which, span);
     let filled = r.filled.min(r.ny);
     // a reckoning that has come back: kept, and the map painted again
     if let Some((_, task)) = ov.ends.task.as_mut() {
@@ -1550,7 +1757,7 @@ fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which:
         }
     }
     // the town ground's whole run is its own scale, and needs no years
-    if kind == Overlay::Growth && range == Range::Whole {
+    if kind == Overlay::Growth && range == Range::Whole && span.is_none() {
         return Scaling { range, ends: None };
     }
     let want = match range {
@@ -1569,7 +1776,7 @@ fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which:
     };
     if missing.len() <= INLINE_YEARS || stills {
         for &j in &missing {
-            let e = year_ends(r, j, kind, which);
+            let e = ends_of(r, j, kind, which, span);
             keep(ov, j, e);
             ov.ends.inline += 1;
         }
@@ -1580,11 +1787,11 @@ fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which:
             let run = data.r.clone();
             let years = missing.clone();
             ov.ends.away += years.len() as u64;
-            ov.ends.task = Some((key, bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { years.into_iter().map(|j| (j, year_ends(&run, j, kind, which))).collect() })));
+            ov.ends.task = Some((key, bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { years.into_iter().map(|j| (j, ends_of(&run, j, kind, which, span))).collect() })));
         }
         // meanwhile this year's own ends stand in
         if !have(ov, k) {
-            let e = year_ends(r, k, kind, which);
+            let e = ends_of(r, k, kind, which, span);
             keep(ov, k, e);
             ov.ends.inline += 1;
         }
@@ -1624,11 +1831,12 @@ pub(crate) fn paint(
     };
     let which = ov.kind.map_or(0, |kind| ov.which(kind));
     let range = ov.kind.filter(|k| k.scaled()).map(|k| ov.range(k));
+    let span = ov.trend_shown();
     // a reckoning off the main thread that has landed moves the version, and the map is painted again
     if let Some((_, task)) = ov.ends.task.as_ref() {
         if task.is_finished() {
             if let (Some(kind), Some(range)) = (ov.kind, range) {
-                scaling_for(&mut ov, &data, k, kind, which, range, stills.is_some());
+                scaling_for(&mut ov, &data, k, kind, which, range, span, stills.is_some());
             }
         }
     }
@@ -1636,18 +1844,25 @@ pub(crate) fn paint(
     if !ov.preview.cells.is_empty() && r.filled > ov.preview.from + 1 {
         ov.preview = Preview::default();
     }
-    let key = (ov.kind, which, k, r.filled, month, range, ov.ends.version);
+    // (a trend is of whole years, and takes no month)
+    let month = if span.is_some() { None } else { month };
+    let key = (ov.kind, which, k, r.filled, month, range, span, ov.ends.version);
     if ov.painted == Some(key) {
         return;
     }
     let month = month.map(|t| Month::of(r, &months, t));
-    let w = match (ov.kind, range) {
-        (Some(kind), Some(range)) => {
-            let scaling = scaling_for(&mut ov, &data, k, kind, which, range, stills.is_some());
+    let w = match (ov.kind, range, span) {
+        (Some(kind), Some(range), Some(span)) => {
+            let scaling = scaling_for(&mut ov, &data, k, kind, which, range, Some(span), stills.is_some());
+            ov.scale = None;
+            Some(trend_wash(r, k, kind, which, span, scaling))
+        }
+        (Some(kind), Some(range), None) => {
+            let scaling = scaling_for(&mut ov, &data, k, kind, which, range, None, stills.is_some());
             ov.scale = scaling.ends.map(|e| Scale::of(e, kind.spec().log));
             Some(wash(r, k, kind, which, month.as_ref(), scaling))
         }
-        (Some(kind), None) => {
+        (Some(kind), None, _) => {
             ov.scale = None;
             Some(wash(r, k, kind, which, month.as_ref(), Scaling { range: Range::Year, ends: None }))
         }
@@ -1685,7 +1900,7 @@ pub(crate) fn paint(
     // of the trees together with the season, which used to put the leaves back
     // (the key is taken again: the ends' version may have moved while they were reckoned)
     let which = ov.kind.map_or(0, |kind| ov.which(kind));
-    ov.painted = Some((ov.kind, which, k, r.filled, month.as_ref().map(|m| m.t), range, ov.ends.version));
+    ov.painted = Some((ov.kind, which, k, r.filled, month.as_ref().map(|m| m.t), range, span, ov.ends.version));
     let legend = w.map(|w| w.legend);
     if ov.legend != legend {
         ov.legend = legend;
@@ -1723,7 +1938,7 @@ fn legend_card(
     }
     let f = font.0.clone();
     let accent = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
-    let (kind, legend) = (ov.kind, ov.legend.clone());
+    let (kind, legend, trend_on) = (ov.kind, ov.legend.clone(), ov.trend);
     let chosen = match kind {
         Some(Overlay::Deposits) => KINDS.get(ov.deposit).map(|k| k.label.to_string()).unwrap_or_default(),
         _ => data.r.header.goods.get(ov.good).map(|g| g.label.clone()).unwrap_or_default(),
@@ -1777,6 +1992,43 @@ fn legend_card(
                 ends.spawn(text(&f, &l.high, 11.5, MUTED));
             });
         }
+        if !l.keys.is_empty() {
+            // the tints that stand for a word: a swatch and its word each
+            p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|row| {
+                for (c, words) in &l.keys {
+                    row.spawn((Node { width: Val::Px(14.0), height: Val::Px(10.0), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(Color::srgb_u8(c[0], c[1], c[2]))));
+                    row.spawn((text(&f, words, 12.0, INK), Node { margin: UiRect::right(Val::Px(8.0)), ..default() }));
+                }
+            });
+        }
+        if let Some((rising, falling)) = &l.movers {
+            // the movers: two columns of three towns, each row taking the camera there
+            p.spawn(Node { width: Val::Px(CARD_W), column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(2.0)), ..default() }).with_children(|cols| {
+                for (head, list, ink) in [("Rising fastest", rising, rgb(RISE[4])), ("Falling fastest", falling, rgb(FALL[4]))] {
+                    cols.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: Val::Px(0.0), row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
+                        col.spawn(text(&f, head, 12.0, MUTED));
+                        if list.is_empty() {
+                            col.spawn(text(&f, "none", 12.5, MUTED));
+                        }
+                        for m in list {
+                            col.spawn((
+                                Node { justify_content: JustifyContent::SpaceBetween, padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+                                BackgroundColor(Color::NONE),
+                                Interaction::default(),
+                                FocusPolicy::Block,
+                                MoverRow(m.town),
+                            ))
+                            .with_children(|row| {
+                                row.spawn((text(&f, &m.name, 13.0, INK), TextLayout::default().with_no_wrap()));
+                                row.spawn(text(&f, &format!("{} a year", trend::rate_words(m.rate)), 13.0, Color::srgb_u8(ink[0], ink[1], ink[2])));
+                            });
+                        }
+                    });
+                }
+            });
+            let floor = ui::thousands(trend::FLOOR_PEOPLE);
+            p.spawn((text(&f, &format!("Towns of {floor} people or more at either end; a click takes you there."), 11.5, MUTED), Node { width: Val::Px(CARD_W), ..default() }));
+        }
         if let Some(range) = l.range {
             // how the ends are taken: three small chips, the one in use lit
             p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }).with_children(|row| {
@@ -1786,6 +2038,22 @@ fn legend_card(
                 }
             });
         }
+        // the Trend switch, greyed on the views that have no trend
+        p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }).with_children(|row| {
+            let can = trend::trends(kind);
+            row.spawn(text(&f, "Trend", 12.0, if can { MUTED } else { MUTED.with_alpha(0.45) }));
+            let chips = std::iter::once((None, "Off")).chain(Span::ALL.into_iter().map(|s| (Some(s), s.chip())));
+            for (s, word) in chips {
+                if can {
+                    chip_button(row, &f, word, s == trend_on, accent, TrendChip(s));
+                } else {
+                    // greyed: nothing to press
+                    row.spawn((Node { padding: UiRect::axes(Val::Px(9.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() }, BackgroundColor(ui::BTN.with_alpha(0.45)))).with_children(|c| {
+                        c.spawn(text(&f, word, 12.5, INK.with_alpha(0.3)));
+                    });
+                }
+            }
+        });
         if matches!(kind, Overlay::Price | Overlay::Made | Overlay::Deposits) {
             // which good: one step back or on, never a list to scroll
             p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|row| {
