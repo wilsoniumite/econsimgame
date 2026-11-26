@@ -6,7 +6,7 @@ About once a week, when main holds a game worth trying, it is marked as a versio
 
 1. On main, at origin's main, with nothing changed: raise `version` under `[workspace.package]` in `Cargo.toml` if the last version is already tagged (0.1.0 to 0.2.0; the third number is for a mended version of the same week). Commit and push that.
 2. `python tools/release.py`. It refuses unless the checkout is clean, at origin's main and its version not yet tagged.
-3. It builds the game (`cargo build --profile dist -p isostate-viewer`, with the machine's folders taken out of the program), about ten minutes from nothing and a minute or two after a small change.
+3. It builds the game (`cargo build --profile dist -p isostate-viewer`, with the machine's folders taken out of the program, in `target/dist`): 10.6 minutes from nothing, and a few minutes for a week's changes to the game's own code.
 4. It gathers `dist/isolated-state-VERSION-windows-x64.zip`: the program, a README.txt for a player, `docs/BACKLOG.md` and `docs/DEVLOG.md` for the backlog card and the What's new card (the only pages the game reads from disk; it looks for them in `docs\` beside the program), and the licences.
 5. It looks for the home folder, the user name, and git's name and address in the program and in every file of the zip, and stops if it finds any.
 6. It unpacks the zip into an empty folder in the system's temporary folder, away from the repository, and has the game take one picture there with nobody at the window (a sandbox five years in); it stops unless the picture is there and is not blank, and keeps it as `dist/isolated-state-VERSION-trial.png`. Look at it.
@@ -15,7 +15,7 @@ About once a week, when main holds a game worth trying, it is marked as a versio
 9. Run them. The zip is then at the repository's `releases/latest` page, to download from anywhere.
 10. `python tools/release.py --practice` does all of it from wherever the checkout stands, its refusals turned into warnings, to try the command itself; it publishes nothing either, and what it prints is not to be run.
 
-The whole command took 14 minutes from an empty build folder and 4 minutes with the build already made (26 November 2026, on a busy machine; the notes of the release kit's piece have the measurements).
+On 26 November 2026, on a machine shared with other builds, the whole command took 11.2 minutes from an empty build folder (the build 10.6, the trial 12 seconds) and 0.6 minutes with the build already made. The zip is 28 MiB, the program in it 87.5 MiB.
 
 ## What a player needs
 
