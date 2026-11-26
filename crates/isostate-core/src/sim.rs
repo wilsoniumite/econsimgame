@@ -405,17 +405,30 @@ pub fn update_roads(st: &mut State, _C: &Content, P: &Params, year: i64) {
             traffic[c] = 0.0;
         }
     }
+    // haulage (docs/rules/haulage.md): the squares a train passed between where it
+    // was boarded and left are laid with its weight, and from 1901 a road is worn
+    // by what went over it by road
+    let wear = crate::haulage::wear(st, P, year, &mut traffic);
+    let mut wear = wear.unwrap_or_else(|| traffic.clone());
+    for c in 0..N {
+        if !st.world.land[c] {
+            wear[c] = 0.0;
+        }
+    }
+    let worn = &wear;
+    // highways (docs/rules/highways.md): the weight by road, which the state's sums read
+    crate::highways::note_wear(st, P, worn);
     let [t1, t2, t3] = P.road_thresholds;
     let thr = [0.0, t1, t2, t3];
     // roads (docs/probes/dx-roads.md): from 1750 only a track is worn for nothing;
     // a made road is the parish's and a turnpike a trust's (`roads::yearly`)
     let free = if P.roads.enabled && !st.rd.cell_trust.is_empty() { 1 } else { 3 };
     for c in 0..N {
-        let lvl = ((traffic[c] >= t1) as u8 + (traffic[c] >= t2) as u8 + (traffic[c] >= t3) as u8).min(free);
+        let lvl = ((worn[c] >= t1) as u8 + (worn[c] >= t2) as u8 + (worn[c] >= t3) as u8).min(free);
         if lvl > st.road[c] {
             st.road[c] = lvl;
         }
-        let quiet = st.road[c] > 0 && traffic[c] < 0.2 * thr[st.road[c] as usize];
+        let quiet = st.road[c] > 0 && worn[c] < 0.2 * thr[st.road[c] as usize];
         st.road_quiet[c] = if quiet { st.road_quiet[c] + 1 } else { 0 };
         // the lorry (docs/rules/lorry.md): from 1901 a made road or a turnpike is kept
         if st.road_quiet[c] >= 6 && !crate::lorry::kept(P, year, st.road[c]) {
@@ -476,6 +489,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     crate::roads::yearly(st, C, P, year, warm);
     // crossings (docs/rules/crossings.md): the year's traffic over water, and the bridges it pays for
     crate::crossings::yearly(st, C, P, year, warm);
+    // highways (docs/rules/highways.md): the year's through traffic, and the state's ways that pay
+    crate::highways::yearly(st, C, P, year, warm);
     // canals (docs/rules/canals.md): what the year's goods put on the water, on the
     // paths they took (before the paths are worked out again)
     crate::canals::year_traffic(st, C, P, year, warm);
@@ -488,6 +503,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     // towns has run and while the market areas are still last year's
     towns::new_town_year(st, P, &founded, &mut pbar, &mut wbar);
     st.prev_catch = st.catch.clone();
+    // haulage (docs/rules/haulage.md): the year the cost graph is made at the close of
+    crate::haulage::year(st, year);
     land::update_transport(st, C, P);
     if P.people.enabled {
         // people: households go with their cells every year, not only at a founding
@@ -683,6 +700,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     crate::roads::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     // crossings (docs/rules/crossings.md): bridges that are built open
     crate::crossings::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // highways (docs/rules/highways.md): the treasury pays its works, and finished ones open
+    crate::highways::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         check_money(st, sim.year, month)?;

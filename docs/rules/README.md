@@ -1058,3 +1058,20 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   year on the mean, which takes three tenths off timber's swing and nearly half off bricks'
   after 1900, and half off building's ([tr-timber.md](../probes/tr-timber.md)).
   [pace.md](pace.md), `pace.enabled`.
+- **tending's wider reach** (off under the game's rules, and nothing while `tasks.tending` is off): the
+  robot and the line that runs itself reach the tending of the land, the pits and the carts as well as
+  the works'. Traced from where the hands go when machines tend: on islands 1 to 8 it halves the towns'
+  fall under tending (0.488 to 0.532 against 0.570) and lifts 2050 over 1970 to 1.28, and the towns
+  still fall, so it stands off with tending. [tending.md](tending.md), "Where the hands go",
+  `tasks.tending_wide`.
+- **haulage** (acts only from 1901): the railway is a layer of its own in the cost graph, and a load
+  pays the canal's wharf charge to be put on a train and again to be taken off, so the road takes the
+  short hauls (`haulage.handling`); and a road is worn by what goes over it by road, not by the
+  railway beside it (`haulage.wear`). The road's share of freight rises to 0.60 by 2000 and passes the
+  railway's about 1972. [haulage.md](haulage.md), `haulage.handling`, `haulage.wear`.
+- **the state's ways** (acts only from the end of 1909): the treasury buys road-making, road works of the
+  towns' stone and men paid out of the rate on pay; from 1909 it betters the cheapest ways between the large
+  towns into trunk roads, with their fords bridged, where what they save by motor pays (`highways.trunk`); from
+  1920 it bypasses a town on one, or widens its high street, where the through traffic pays
+  (`highways.bypass`). About 300 km of trunk road an island by 1970. [highways.md](highways.md),
+  `highways.trunk`, `highways.bypass`.

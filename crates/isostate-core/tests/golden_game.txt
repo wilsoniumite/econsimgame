@@ -278,10 +278,30 @@
 # everyone's); 1750-1900 held
 # Taken: on the merge of main (pace) into night/g-lorry: 1901-2050 economy,
 # books, news and run.bin, the lorry and pace together; 1750-1900 held
+# Taken: haulage on under the game's rules (docs/rules/haulage.md): from 1901
+# the railway a layer of its own in the cost graph with the wharf's charge to
+# get on and off, and a road worn by its own traffic; 1901-2050 moved,
+# 1750-1900 held
+# Taken: 1901-2050 economy, books, news and run.bin: the state's ways
+# (highways.trunk, highways.bypass; docs/rules/highways.md) on under the
+# game's rules: from 1909 the treasury betters the ways between the large
+# towns into trunk roads with their fords bridged, and from 1920 bypasses a
+# town on one or widens its high street, where what they save pays; its works
+# are road works of the towns' stone and men paid out of the treasury, and the
+# record marks trunk roads and bypasses in the road byte; 1750-1900 held,
+# since nothing of it acts before 1909
+# Taken: Taken again on night/g-batch-core-b (26 November 2026), the batch of
+# where the hands go when machines tend, the railway's handling and the roads'
+# wear, and the state's ways, with main at cb9e692 merged in: against main
+# 1901-2050 economy, books, news and run.bin moved, by haulage
+# (haulage.handling, haulage.wear) and the state's ways (highways.trunk,
+# highways.bypass), on under the game's rules from 1901 and 1909; 1750-1900
+# held; tasks.tending_wide stands off and out of the params' file, so it moves
+# none, and the merged tree's eight are the state's ways' own
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x115d1bac67fe985e
-1901-2050 books    0xa7817e00f2d2dd2c
-1901-2050 news     0xa735135428bbfb84
-1901-2050 run.bin  0x860084f227908b91
+1901-2050 economy  0x5a4c184a4950e682
+1901-2050 books    0x3c5c693e83e30fc8
+1901-2050 news     0x7279d914b0a180ba
+1901-2050 run.bin  0x91174fa62cf5aa36

@@ -320,6 +320,8 @@ Of the design's state only the purse, the rate on pay, schools and pensions are 
   rate on pay.
 - **The fund and its stake, and the dividend by head**: a second purse beside the treasury, paid by head
   through the line that pays the common fund's dividend (`fund_div` in `econ::step_month`).
+- **Public works** are built for the roads (26 November 2026, [highways.md](highways.md)): the treasury pays road
+  works of the towns' stone and men, and next year's bill for them is in the budget.
 - **Relief, health and public works**: programmes beside the schools and pensions in `purse::close_year`
   (their law, their reach, their cost at December's wages) and in `purse::month` (what they pay). Health would
   hire hands as the schools do; public works would order goods as a railway does.

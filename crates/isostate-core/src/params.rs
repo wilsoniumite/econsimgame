@@ -408,6 +408,16 @@ pub struct Params {
     /// Python; on under the game's rules from 1901; see docs/rules/pace.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub pace: crate::pace::PaceParams,
+    /// From 1901 a load pays a station's handling to be put on a train and
+    /// again to be taken off, and a road is worn by its own traffic and not the
+    /// railway's (not in the Python; see docs/rules/haulage.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub haulage: crate::haulage::HaulageParams,
+    /// From 1909 the treasury betters the ways between the large towns into
+    /// trunk roads, and from 1920 bypasses a town, or widens its high street,
+    /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub highways: crate::highways::HighwayParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -635,6 +645,8 @@ pub fn default_params() -> Params {
         who_works: crate::who_works::WhoWorksParams::default(),
         lorry: crate::lorry::LorryParams::default(),
         pace: crate::pace::PaceParams::default(),
+        haulage: crate::haulage::HaulageParams::default(),
+        highways: crate::highways::HighwayParams::default(),
     }
 }
 
@@ -719,6 +731,13 @@ pub fn game_params() -> Params {
     // mean; the cure of the timber-and-brick cycle (docs/probes/tr-timber.md), on
     // since its check
     P.pace = crate::pace::PaceParams::on();
+    // haulage (docs/rules/haulage.md): from 1901 a load pays a station's handling at
+    // each end of a railway haul, and a road is worn by its own traffic alone
+    P.haulage = crate::haulage::HaulageParams::game();
+    // highways (docs/rules/highways.md): from 1909 the treasury betters the ways between
+    // the large towns into trunk roads, and from 1920 bypasses a town or widens its high
+    // street, where what they save pays
+    P.highways = crate::highways::HighwayParams::game();
     P
 }
 

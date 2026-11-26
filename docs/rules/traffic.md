@@ -209,7 +209,8 @@ notes):
   railway are turnpikes the trains' weight made or keeps: much of the "main
   road everywhere and therefore nowhere" the ways' page found. The rule is the
   port's and is not changed here; the traffic record is what a mend would
-  read (wear a road with its links' weight by cart alone).
+  read (wear a road with its links' weight by cart alone). Mended from 1901
+  under `haulage.wear` ([haulage.md](haulage.md)).
 
 ## The viewer
 
@@ -228,7 +229,9 @@ by the carting along them. The viewer's README, "Map views", says how.
   the simulation has no lorry and no short-haul penalty for rail. So the
   picture of 1900 to 2050 is black lines with brown feeders, and the ways'
   later builders will read no road traffic where the railway runs. The lorry
-  (the ways' design, stage 3) is what changes that.
+  (the ways' design, stage 3) is what changes that, with the station's charge
+  from 1901 ([haulage.md](haulage.md)): with it the railway is a layer of its
+  own, and a road beside it carries what goes by road.
 - **The canal's steps are put on the canal's links, its wharves not.** A
   load put on a boat pays the wharf in the cost graph and goes on the canal's
   own links; the record has it on those links by boat. The ground step to the

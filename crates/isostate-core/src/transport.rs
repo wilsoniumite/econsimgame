@@ -45,6 +45,15 @@ pub struct Graph {
     pub boat: Vec<Vec<(u32, f64)>>,
     /// The charge for getting a load on to a boat, and again for getting it off.
     pub wharf: f64,
+    // ---- handling (docs/rules/haulage.md): empty and unused unless the railway is a layer of its own
+    /// `train[c]`: cell c is land with track, so a train runs through it. With
+    /// any cell so, the railway is a layer of its own over the cells, as a canal
+    /// is: a load is on the ground or on a train, and pays `handling` to change,
+    /// and an edge of the ground between two cells with track costs what the
+    /// ground costs (`railed` is false everywhere).
+    pub train: Vec<bool>,
+    /// The charge for getting a load on to a train, and again for getting it off.
+    pub handling: f64,
 }
 
 impl Graph {
@@ -52,12 +61,47 @@ impl Graph {
         let finite = w.iter().copied().filter(|x| x.is_finite());
         let min_w = finite.clone().fold(f64::INFINITY, f64::min);
         let max_w = finite.fold(0.0, f64::max);
-        Graph { N, W, H, w, railed, min_w, max_w, boat: Vec::new(), wharf: 0.0 }
+        Graph { N, W, H, w, railed, min_w, max_w, boat: Vec::new(), wharf: 0.0, train: Vec::new(), handling: 0.0 }
     }
 
     /// canals: whether any cell has a canal, so that searches must look at the water too.
     pub fn has_boats(&self) -> bool {
         !self.boat.is_empty()
+    }
+
+    /// handling: whether the railway is a layer of its own, so that searches must look at the trains too.
+    pub fn has_train(&self) -> bool {
+        !self.train.is_empty()
+    }
+
+    /// handling: the railway put back on the ground, as the port's graph has it:
+    /// every edge between two cells with track costs `RAIL_COST` a step and is
+    /// railed, and nothing is charged to get on or off. What `build_graph`
+    /// would have made, edge for edge (the crossings' and the tolls' charges
+    /// never fall on a railed edge). The promoters of new lines and canals
+    /// reckon on this graph (`ways::Net`).
+    pub fn flatten_train(&mut self) {
+        if !self.has_train() {
+            return;
+        }
+        for a in 0..self.N {
+            if !self.train[a] {
+                continue;
+            }
+            for k in 0..8 {
+                if let Some(b) = neighbour(self.H, self.W, a, k) {
+                    if self.train[b] {
+                        self.w[a * 8 + k] = (RAIL_COST * step_len(k)).max(1e-3);
+                        self.railed[a * 8 + k] = true;
+                    }
+                }
+            }
+        }
+        self.train = Vec::new();
+        self.handling = 0.0;
+        let finite = self.w.iter().copied().filter(|x| x.is_finite());
+        self.min_w = finite.clone().fold(f64::INFINITY, f64::min);
+        self.max_w = finite.fold(0.0, f64::max);
     }
 
     /// canals: join cells a and b by a link of canal costing `cost` to pass.
@@ -104,7 +148,17 @@ pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], 
 /// Python): the lorry's year (`lorry::road_mult`, docs/rules/lorry.md) cheapens
 /// the squares where it runs. With `ROAD_MULT` it is `build_graph`.
 pub fn build_graph_with(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], cover: &[f64], road_mult: &[f64; 4]) -> Graph {
+    build_graph_trains(world, road, rail, port_mask, cover, road_mult, None)
+}
+
+/// `build_graph_with`, and with `handling` given (not in the Python;
+/// docs/rules/haulage.md) the railway a layer of its own: the ground's edges
+/// between cells with track cost what the ground costs, and a train runs over
+/// the cells with track (`Graph::train`) at `RAIL_COST` a step, for `handling`
+/// to get on and again to get off. With None it is `build_graph_with`.
+pub fn build_graph_trains(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], cover: &[f64], road_mult: &[f64; 4], handling: Option<f64>) -> Graph {
     let (H, W) = (world.H, world.W);
+    let trains = handling.is_some();
     let N = H * W;
     let cell: Vec<f64> = (0..N)
         .map(|c| {
@@ -126,7 +180,8 @@ pub fn build_graph_with(world: &World, road: &[u8], rail: &[u8], port_mask: &[bo
             if river {
                 cost = cost.min(RIVER_COST * step);
             }
-            let on_rail = both_land && rail[a] > 0 && rail[b] > 0;
+            // (handling: with the railway a layer of its own, the ground between two cells with track is ground)
+            let on_rail = both_land && rail[a] > 0 && rail[b] > 0 && !trains;
             if on_rail {
                 cost = RAIL_COST * step;
             }
@@ -160,7 +215,15 @@ pub fn build_graph_with(world: &World, road: &[u8], rail: &[u8], port_mask: &[bo
             railed[a * 8 + k] = on_rail;
         }
     }
-    Graph::new(N, W, H, w, railed)
+    let mut g = Graph::new(N, W, H, w, railed);
+    if let Some(h) = handling {
+        let train: Vec<bool> = (0..N).map(|c| world.land[c] && rail[c] > 0).collect();
+        if train.iter().any(|&t| t) {
+            g.train = train;
+            g.handling = h;
+        }
+    }
+    g
 }
 
 /// Construction cost of laying track: slopes, mountains and bridges are expensive.
@@ -204,7 +267,18 @@ pub struct Paths {
     /// The reached cells in the order the search settled them. Every cell comes
     /// after its predecessor, so walking this backwards visits children first.
     pub order: Vec<u32>,
+    /// haulage (docs/rules/haulage.md): how each cell was reached from its
+    /// predecessor (`BY_GROUND`, `BY_BOAT`, `BY_TRAIN`), kept only by a search
+    /// of a graph whose railway is a layer of its own; empty otherwise.
+    pub by: Vec<u8>,
 }
+
+/// How a cell was reached from its predecessor in a search (`Paths::by`): over
+/// the ground, off a boat that was loaded at the predecessor, or off a train
+/// that was loaded there.
+pub const BY_GROUND: u8 = 0;
+pub const BY_BOAT: u8 = 1;
+pub const BY_TRAIN: u8 = 2;
 
 /// Shortest paths from one or more sources, each entered at a starting distance:
 /// scipy's `dijkstra(indices=s, return_predecessors=True)`, tie for tie.
@@ -221,6 +295,10 @@ pub struct Paths {
 /// the predecessors along its path are final at that point, so they are the same
 /// as after a full search; other cells may be unfinished.
 pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> Paths {
+    // haulage (docs/rules/haulage.md): with the railway a layer of its own, the trains' too
+    if g.has_train() {
+        return dijkstra_layers(g, sources, target);
+    }
     // canals (docs/rules/canals.md): with a canal open the search has two layers
     if g.has_boats() {
         return dijkstra_boats(g, sources, target);
@@ -238,6 +316,10 @@ pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> P
 /// edge weights span too wide a range for buckets. Both give exactly the
 /// distances scipy gives.
 pub fn distances(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
+    // haulage (docs/rules/haulage.md): with the railway a layer of its own, the trains' too
+    if g.has_train() {
+        return distances_layers(g, sources);
+    }
     // canals (docs/rules/canals.md): with a canal open the search has two layers
     if g.has_boats() {
         return distances_boats(g, sources);
@@ -291,7 +373,7 @@ fn dijkstra_buckets(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) 
     let mut queued = 0usize;
     let mut cur = match srcs.first() {
         Some(&(_, d0)) => bucket(d0),
-        None => return Paths { dist, pred, order },
+        None => return Paths { dist, pred, order, by: Vec::new() },
     };
     loop {
         // sources whose starting distance falls in this bucket
@@ -325,7 +407,7 @@ fn dijkstra_buckets(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) 
             done[u] = true;
             order.push(u as u32);
             if target == Some(u) {
-                return Paths { dist, pred, order };
+                return Paths { dist, pred, order, by: Vec::new() };
             }
             let du = dist[u];
             let wu = &g.w[u * 8..u * 8 + 8];
@@ -346,7 +428,7 @@ fn dijkstra_buckets(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) 
         buckets[cur & mask] = items; // keep the allocation
         cur += 1;
     }
-    Paths { dist, pred, order }
+    Paths { dist, pred, order, by: Vec::new() }
 }
 
 /// Dijkstra with a binary heap (lazy deletion), for graphs whose edge weights span
@@ -393,7 +475,7 @@ fn dijkstra_heap(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> 
             }
         });
     }
-    Paths { dist, pred, order }
+    Paths { dist, pred, order, by: Vec::new() }
 }
 
 /// canals (docs/rules/canals.md): shortest paths when some cells have a canal.
@@ -484,7 +566,7 @@ fn dijkstra_boats(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) ->
             }
         }
     }
-    Paths { dist, pred, order }
+    Paths { dist, pred, order, by: Vec::new() }
 }
 
 /// canals: `distances` when some cells have a canal. The two layers of
@@ -594,16 +676,297 @@ fn distances_boats(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
     dist
 }
 
+/// haulage (docs/rules/haulage.md): shortest paths when the railway is a
+/// layer of its own, with or without canals.
+///
+/// A cell is up to three nodes: the ground (node c), the water where it has a
+/// canal (N + c), and a train where it has track (2N + c). The water is as in
+/// `dijkstra_boats`. Between the ground and a train is the station
+/// (`g.handling` each way); a train goes from a cell with track to any of its
+/// eight neighbours with track at `RAIL_COST` a step, as the port's railed
+/// edge did. So a load that takes the railway pays the station twice and the
+/// rail's rate in between; a cart that only crosses the line, or runs on the
+/// road beside it, pays nothing for it; and a load changing from a train to
+/// a boat pays for each.
+///
+/// As with the canal, the tree is a tree over cells: where the cheapest way to
+/// a cell ends on a train, its predecessor is the cell where the train was
+/// boarded, and `by` says so (`BY_TRAIN`); the cells in between are not on it
+/// (`haulage::Rails::route` finds them). Ties go to the higher node, the
+/// ground before the water and the water before the train.
+fn dijkstra_layers(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> Paths {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    let N = g.N;
+    let boats = g.has_boats();
+    let mut dist = vec![f64::INFINITY; N];
+    let mut pred = vec![NO_PRED; N];
+    let mut by = vec![BY_GROUND; N];
+    let mut done = vec![false; N];
+    let mut order: Vec<u32> = Vec::with_capacity(N);
+    // the water, as in dijkstra_boats (empty without a canal)
+    let mut afloat = if boats { vec![f64::INFINITY; N] } else { Vec::new() };
+    let mut loaded = if boats { vec![0u32; N] } else { Vec::new() };
+    let mut done_w = if boats { vec![false; N] } else { Vec::new() };
+    // the trains: cost of being aboard at each cell, and where that train was boarded
+    let mut aboard = vec![f64::INFINITY; N];
+    let mut boarded = vec![0u32; N];
+    let mut done_t = vec![false; N];
+    let mut heap: BinaryHeap<(Reverse<u64>, u32)> = BinaryHeap::new();
+    for &(s, d0) in sources {
+        debug_assert!(d0 >= 0.0);
+        if d0 < dist[s] {
+            dist[s] = d0;
+            heap.push((Reverse(d0.to_bits()), s as u32));
+        }
+    }
+    while let Some((Reverse(dbits), node)) = heap.pop() {
+        let d = f64::from_bits(dbits);
+        let node = node as usize;
+        if node < N {
+            let u = node;
+            if done[u] || d > dist[u] {
+                continue;
+            }
+            done[u] = true;
+            order.push(u as u32);
+            if target == Some(u) {
+                break;
+            }
+            for_each_edge(g, u, |k, v| {
+                if done[v] {
+                    return;
+                }
+                let nd = d + g.w[u * 8 + k];
+                if nd < dist[v] {
+                    dist[v] = nd;
+                    pred[v] = u as i64;
+                    by[v] = BY_GROUND;
+                    heap.push((Reverse(nd.to_bits()), v as u32));
+                }
+            });
+            // on to a boat here
+            if boats && !g.boat[u].is_empty() && !done_w[u] && d + g.wharf < afloat[u] {
+                afloat[u] = d + g.wharf;
+                loaded[u] = u as u32;
+                heap.push((Reverse(afloat[u].to_bits()), (N + u) as u32));
+            }
+            // on to a train here
+            if g.train[u] && !done_t[u] && d + g.handling < aboard[u] {
+                aboard[u] = d + g.handling;
+                boarded[u] = u as u32;
+                heap.push((Reverse(aboard[u].to_bits()), (2 * N + u) as u32));
+            }
+        } else if node < 2 * N {
+            let u = node - N;
+            if done_w[u] || d > afloat[u] {
+                continue;
+            }
+            done_w[u] = true;
+            for &(v, w) in &g.boat[u] {
+                let v = v as usize;
+                let nd = d + w;
+                if !done_w[v] && nd < afloat[v] {
+                    afloat[v] = nd;
+                    loaded[v] = loaded[u];
+                    heap.push((Reverse(nd.to_bits()), (N + v) as u32));
+                }
+            }
+            // off the boat here (never where it was loaded: that would be a round trip)
+            let nd = d + g.wharf;
+            if loaded[u] as usize != u && !done[u] && nd < dist[u] {
+                dist[u] = nd;
+                pred[u] = loaded[u] as i64;
+                by[u] = BY_BOAT;
+                heap.push((Reverse(nd.to_bits()), u as u32));
+            }
+        } else {
+            let u = node - 2 * N;
+            if done_t[u] || d > aboard[u] {
+                continue;
+            }
+            done_t[u] = true;
+            let from = boarded[u];
+            for_each_edge(g, u, |k, v| {
+                if !g.train[v] || done_t[v] {
+                    return;
+                }
+                let nd = d + RAIL_COST * step_len(k);
+                if nd < aboard[v] {
+                    aboard[v] = nd;
+                    boarded[v] = from;
+                    heap.push((Reverse(nd.to_bits()), (2 * N + v) as u32));
+                }
+            });
+            // off the train here (never where it was boarded)
+            let nd = d + g.handling;
+            if from as usize != u && !done[u] && nd < dist[u] {
+                dist[u] = nd;
+                pred[u] = from as i64;
+                by[u] = BY_TRAIN;
+                heap.push((Reverse(nd.to_bits()), u as u32));
+            }
+        }
+    }
+    Paths { dist, pred, order, by }
+}
+
+/// handling: `distances` when the railway is a layer of its own. The three
+/// layers of `dijkstra_layers` on the bucket queue of `dijkstra_buckets`, sound
+/// for the same reason as `distances_boats`: the bucket is a hair narrower than
+/// the cheapest step of any kind (an edge of the ground, a link of water, a
+/// step by train, the wharf, the station). The distances are those
+/// `dijkstra_layers` gives.
+fn distances_layers(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
+    let N = g.N;
+    let boats = g.has_boats();
+    let (mut lo, mut hi) = (g.min_w.min(g.handling).min(RAIL_COST), g.max_w.max(g.handling).max(RAIL_COST * std::f64::consts::SQRT_2));
+    if boats {
+        lo = lo.min(g.wharf);
+        hi = hi.max(g.wharf);
+        for links in &g.boat {
+            for &(_, w) in links {
+                lo = lo.min(w);
+                hi = hi.max(w);
+            }
+        }
+    }
+    if !(lo > 0.0 && hi / lo < 65_536.0) {
+        return dijkstra_layers(g, sources, None).dist;
+    }
+    let mut dist = vec![f64::INFINITY; N];
+    let mut afloat = if boats { vec![f64::INFINITY; N] } else { Vec::new() };
+    let mut aboard = vec![f64::INFINITY; N];
+    // node c is the ground of cell c, N + c its water, 2N + c its train
+    let mut done = vec![false; 3 * N];
+    let per_width = 1.0 / (lo * (1.0 - 1e-9));
+    let bucket = |d: f64| (d * per_width) as usize;
+    let ring = ((hi * per_width) as usize + 2).next_power_of_two();
+    let mask = ring - 1;
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); ring];
+    let mut srcs: Vec<(usize, f64)> = sources.to_vec();
+    srcs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    let mut next_src = 0;
+    let mut queued = 0usize;
+    let mut cur = match srcs.first() {
+        Some(&(_, d0)) => bucket(d0),
+        None => return dist,
+    };
+    loop {
+        while next_src < srcs.len() && bucket(srcs[next_src].1) <= cur {
+            let (s, d0) = srcs[next_src];
+            next_src += 1;
+            if d0 < dist[s] {
+                dist[s] = d0;
+                buckets[cur & mask].push(s as u32);
+                queued += 1;
+            }
+        }
+        if queued == 0 {
+            match srcs.get(next_src) {
+                Some(&(_, d0)) => {
+                    cur = bucket(d0);
+                    continue;
+                }
+                None => break,
+            }
+        }
+        let mut items = std::mem::take(&mut buckets[cur & mask]);
+        queued -= items.len();
+        for &node in &items {
+            let node = node as usize;
+            if done[node] {
+                continue;
+            }
+            done[node] = true;
+            if node < N {
+                let u = node;
+                let du = dist[u];
+                let wu = &g.w[u * 8..u * 8 + 8];
+                for_each_edge(g, u, |k, v| {
+                    if done[v] {
+                        return;
+                    }
+                    let nd = du + wu[k];
+                    if nd < dist[v] {
+                        dist[v] = nd;
+                        buckets[bucket(nd) & mask].push(v as u32);
+                        queued += 1;
+                    }
+                });
+                if boats && !g.boat[u].is_empty() && !done[N + u] && du + g.wharf < afloat[u] {
+                    afloat[u] = du + g.wharf;
+                    buckets[bucket(afloat[u]) & mask].push((N + u) as u32);
+                    queued += 1;
+                }
+                if g.train[u] && !done[2 * N + u] && du + g.handling < aboard[u] {
+                    aboard[u] = du + g.handling;
+                    buckets[bucket(aboard[u]) & mask].push((2 * N + u) as u32);
+                    queued += 1;
+                }
+            } else if node < 2 * N {
+                let u = node - N;
+                let d = afloat[u];
+                for &(v, w) in &g.boat[u] {
+                    let v = v as usize;
+                    if !done[N + v] && d + w < afloat[v] {
+                        afloat[v] = d + w;
+                        buckets[bucket(d + w) & mask].push((N + v) as u32);
+                        queued += 1;
+                    }
+                }
+                if !done[u] && d + g.wharf < dist[u] {
+                    dist[u] = d + g.wharf;
+                    buckets[bucket(dist[u]) & mask].push(u as u32);
+                    queued += 1;
+                }
+            } else {
+                let u = node - 2 * N;
+                let d = aboard[u];
+                for_each_edge(g, u, |k, v| {
+                    if !g.train[v] || done[2 * N + v] {
+                        return;
+                    }
+                    let nd = d + RAIL_COST * step_len(k);
+                    if nd < aboard[v] {
+                        aboard[v] = nd;
+                        buckets[bucket(nd) & mask].push((2 * N + v) as u32);
+                        queued += 1;
+                    }
+                });
+                if !done[u] && d + g.handling < dist[u] {
+                    dist[u] = d + g.handling;
+                    buckets[bucket(dist[u]) & mask].push(u as u32);
+                    queued += 1;
+                }
+            }
+        }
+        items.clear();
+        buckets[cur & mask] = items;
+        cur += 1;
+    }
+    dist
+}
+
 /// Distances, predecessor trees and settle orders from every active town.
 ///
 /// Python searches from every town slot, pointing the inactive ones at the first
 /// active town, and then sets their distances to infinity; nothing reads their
 /// trees. Here inactive rows are infinite and their trees left empty.
 pub fn town_paths(g: &Graph, town_nodes: &[usize], active: &[bool]) -> (Mat, Vec<Vec<i64>>, Vec<Vec<u32>>) {
+    let (dist, pred, order, _) = town_paths_by(g, town_nodes, active);
+    (dist, pred, order)
+}
+
+/// `town_paths`, and how each cell was reached in each town's tree
+/// (`Paths::by`; handling, docs/rules/haulage.md): all empty unless the
+/// railway is a layer of its own.
+pub fn town_paths_by(g: &Graph, town_nodes: &[usize], active: &[bool]) -> (Mat, Vec<Vec<i64>>, Vec<Vec<u32>>, Vec<Vec<u8>>) {
     let T = town_nodes.len();
     let mut dist = Mat::filled(T, g.N, f64::INFINITY);
     let mut pred: Vec<Vec<i64>> = vec![Vec::new(); T];
     let mut order: Vec<Vec<u32>> = vec![Vec::new(); T];
+    let mut by: Vec<Vec<u8>> = if g.has_train() { vec![Vec::new(); T] } else { Vec::new() };
     for i in 0..T {
         if !active[i] {
             continue;
@@ -612,8 +975,11 @@ pub fn town_paths(g: &Graph, town_nodes: &[usize], active: &[bool]) -> (Mat, Vec
         dist.row_mut(i).copy_from_slice(&p.dist);
         pred[i] = p.pred;
         order[i] = p.order;
+        if let Some(b) = by.get_mut(i) {
+            *b = p.by;
+        }
     }
-    (dist, pred, order)
+    (dist, pred, order, by)
 }
 
 /// Each land cell belongs to the town it can reach most cheaply (the first such

@@ -355,6 +355,8 @@ pub fn layers(st: &State, C: &Content, rent_scale: f64) -> Vec<Vec<u8>> {
             *t |= 16;
         }
     }
+    // highways (docs/rules/highways.md): 64 marks a trunk road, 128 a bypass
+    crate::highways::mark(st, &mut trans);
     for pr in &st.projects {
         // roads (docs/probes/dx-roads.md): a road works is not a railway building
         if pr.way == crate::ways::ROAD {

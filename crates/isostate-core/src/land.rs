@@ -45,7 +45,8 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     }
     // the lorry (docs/rules/lorry.md): a land square cheaper where lorries run
     let mult = crate::lorry::road_mult(st, _P);
-    let mut graph = tr::build_graph_with(&st.world, &st.road, &st.rail, &port, &st.cover, &mult);
+    // haulage (docs/rules/haulage.md): from 1901 the railway a layer of its own, with a station's charge
+    let mut graph = crate::haulage::build_graph(st, _P, &port, &mult);
     // canals (docs/rules/canals.md): the canals open so far, as a layer of water over the cells
     crate::canals::float(st, _P, &mut graph);
     // roads (docs/probes/dx-roads.md): a trust's road costs its toll to pass
@@ -54,7 +55,7 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     crate::crossings::charges(st, _P, &mut graph);
     let first = (0..T).find(|&i| st.town_active[i]).expect("no active town");
     let nodes: Vec<usize> = (0..T).map(|i| if st.town_active[i] { st.town_node[i] } else { st.town_node[first] }).collect();
-    let (dist, pred, settle) = tr::town_paths(&graph, &nodes, &st.town_active);
+    let (dist, pred, settle, by) = tr::town_paths_by(&graph, &nodes, &st.town_active);
     let (catch, dmin) = tr::catchments(&dist, &st.town_active, &st.world.land);
     let mut tc = Mat::filled(T, T, f64::INFINITY);
     for i in 0..T {
@@ -68,6 +69,7 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     st.dist = dist;
     st.pred = pred;
     st.settle = settle;
+    st.hl.by = by;
     st.catch = catch;
     st.dcatch = dmin;
     st.town_cost = tc;

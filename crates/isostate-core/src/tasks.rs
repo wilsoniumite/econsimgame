@@ -140,6 +140,15 @@ pub struct TasksParams {
     /// params' file while off, as `computing` is.
     #[serde(skip_serializing_if = "is_false")]
     pub lorry: bool,
+    /// The later machines that tend reach the land, the pits and the carts too
+    /// (`docs/rules/tending.md`, "Where the hands go"): a use reaches the places
+    /// its `wide` names as well as those its `on` names, while this and its own
+    /// switch are on (today the robot and the line that runs itself, behind
+    /// `tending`). Off under both sets of rules, as `tending` is; with `tending`
+    /// off it does nothing. Left out of the params' file while off, as
+    /// `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub tending_wide: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -149,7 +158,7 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false, lorry: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false, office_machines: false, tending: false, lorry: false, tending_wide: false }
     }
 }
 
@@ -237,6 +246,11 @@ pub struct Use {
     pub idea: Option<usize>,
     /// The uses that must have been found before it (`needs`, by place).
     pub needs: Vec<usize>,
+    /// The land's sectors and the carters it reaches as well while
+    /// `tasks.tending_wide` is on (`wide`, read in [`Use::on_land`] and
+    /// [`Use::on_carts`]; docs/rules/tending.md, "Where the hands go").
+    pub wide_sector: Vec<bool>,
+    pub wide_carting: bool,
 }
 
 impl Use {
@@ -244,6 +258,30 @@ impl Use {
     /// behind one that is on.
     pub fn allowed(&self, P: &Params) -> bool {
         self.switch.as_deref().is_none_or(|s| P.tasks.switch_on(s))
+    }
+
+    /// Whether its `wide` places are in its reach under `P`: `tasks.tending_wide`
+    /// and its own switch are both on. While either is off a use reaches what
+    /// its `on` names and nothing more, so the run is the run without `wide`.
+    fn wide_on(&self, P: &Params) -> bool {
+        P.tasks.tending_wide && self.allowed(P)
+    }
+
+    /// Whether it is used on land sector `s` under `P`: `on` names it, or
+    /// `wide` does and [`Use::wide_on`].
+    pub fn on_land(&self, s: usize, P: &Params) -> bool {
+        self.on_sector.get(s) == Some(&true) || (self.wide_sector.get(s) == Some(&true) && self.wide_on(P))
+    }
+
+    /// Whether it is used on some land sector under `P`.
+    pub fn on_any_land(&self, P: &Params) -> bool {
+        (0..self.on_sector.len().max(self.wide_sector.len())).any(|s| self.on_land(s, P))
+    }
+
+    /// Whether the carters use it under `P`: `on` names them, or `wide` does
+    /// and [`Use::wide_on`].
+    pub fn on_carts(&self, P: &Params) -> bool {
+        self.on_carting || (self.wide_carting && self.wide_on(P))
     }
 
     /// A use with no plant is rented (models, `docs/rules/computing.md`): its
@@ -354,6 +392,10 @@ struct RawUse {
     /// Uses, by name, that must have been found before it.
     #[serde(default)]
     needs: Vec<String>,
+    /// Places it reaches as well while `tasks.tending_wide` is on: land sectors
+    /// by name, and "carting".
+    #[serde(default)]
+    wide: Vec<String>,
 }
 
 /// The table of `text` for content `C`: methods and sectors by name (a name the
@@ -461,6 +503,15 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
                 return Err(format!("tasks: {:?} is used on {o:?}, which is neither the works, the carters nor a land sector", u.name));
             }
         }
+        // where it reaches as well under `tasks.tending_wide`: land sectors and the carters
+        let mut wide_sector = vec![false; C.NS];
+        for o in &u.wide {
+            if let Some(i) = C.sector_name.iter().position(|x| x == o) {
+                wide_sector[i] = true;
+            } else if o != "carting" && !KNOWN_SECTORS.contains(&o.as_str()) {
+                return Err(format!("tasks: {:?} reaches {o:?} under `wide`, which is neither the carters nor a land sector", u.name));
+            }
+        }
         t.uses.push(Use {
             name: u.name.clone(),
             class: k,
@@ -484,6 +535,8 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             switch: u.switch.clone(),
             idea,
             needs: Vec::new(),
+            wide_sector,
+            wide_carting: u.wide.iter().any(|o| o == "carting"),
         });
         if let Some(r) = &u.replaces {
             replaces.push((t.uses.len() - 1, r.clone()));
@@ -1602,7 +1655,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             s.land_parts = vec![vec![Default::default(); NS]; T];
         }
         // the carters (the lorry, docs/rules/lorry.md): from the month a use on the carting is found
-        let carting = P.carting.enabled && tb.uses.iter().enumerate().any(|(u, us)| us.on_carting && s.found.get(u).is_some_and(|&y| y >= 0) && us.allowed(P));
+        let carting = P.carting.enabled && tb.uses.iter().enumerate().any(|(u, us)| us.on_carts(P) && s.found.get(u).is_some_and(|&y| y >= 0) && us.allowed(P));
         if carting {
             fit_cart(st, C);
         } else {
@@ -1615,7 +1668,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             for u in 0..nu {
                 let us = &tb.uses[u];
                 let w = st.wage[t];
-                let used = us.on_works || (land && us.on_sector.iter().any(|&b| b)) || (carting && us.on_carting);
+                let used = us.on_works || (land && us.on_any_land(P)) || (carting && us.on_carts(P));
                 // (a use behind a switch thrown off by hand after its find is priced
                 // nowhere, and its works fall back as their machines wear)
                 let known = st.town_active[t] && used && st.tasks.found[u] >= 0 && w > 0.0 && us.allowed(P);
@@ -1640,7 +1693,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             if land {
                 for s in 0..NS {
                     for k in 0..K {
-                        let ps = work_out_parts(st, C, t, k, &|u| u.on_sector.get(s) == Some(&true));
+                        let ps = work_out_parts(st, C, t, k, &|u| u.on_land(s, P));
                         st.tasks.land_target[t][s][k] = ps.iter().map(|p| p.2).fold(0.0, f64::max);
                         st.tasks.land_parts[t][s][k] = ps;
                     }
@@ -1648,7 +1701,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             }
             if carting {
                 for k in 0..K {
-                    let ps = work_out_parts(st, C, t, k, &|u| u.on_carting);
+                    let ps = work_out_parts(st, C, t, k, &|u| u.on_carts(P));
                     st.tasks.cart_target[t][k] = ps.iter().map(|p| p.2).fold(0.0, f64::max);
                     st.tasks.cart_parts[t][k] = ps;
                 }
@@ -1837,9 +1890,9 @@ fn land_parts(st: &State, t: usize, s: usize, k: usize) -> &[(usize, f64, f64)] 
 
 /// The life of the machines on sector `s`: the longest of the uses that reach
 /// it and have plant to wear.
-fn land_life(C: &Content, s: usize) -> f64 {
+fn land_life(C: &Content, P: &Params, s: usize) -> f64 {
     let sh = C.tasks.sector.get(s).copied().unwrap_or([0.0; K]);
-    C.tasks.uses.iter().filter(|u| u.on_sector.get(s) == Some(&true) && sh[u.class] > 0.0 && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
+    C.tasks.uses.iter().filter(|u| u.on_land(s, P) && sh[u.class] > 0.0 && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
 }
 
 /// The land's month's end (`end_month`): the year's sums at the part held this
@@ -1895,7 +1948,7 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
             if plant.iter().any(|&v| v > 0.0) {
                 let value: f64 = tb.plant_goods.iter().enumerate().map(|(j, &g)| plant[j] * st.price[(t, g)]).sum();
                 acc.land_return += P.hurdle / 12.0 * value;
-                let wear = 1.0 / (12.0 * land_life(C, s));
+                let wear = 1.0 / (12.0 * land_life(C, P, s));
                 plant.iter_mut().for_each(|v| *v *= 1.0 - wear);
             }
         }
@@ -2089,7 +2142,7 @@ pub fn cart_deliver(st: &mut State, C: &Content, b: &CartBuy, plant: &Mat, run_f
 fn cart_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: f64) {
     let tb = &C.tasks;
     let sh = tb.carting;
-    let life = tb.uses.iter().filter(|u| u.on_carting && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0);
+    let life = tb.uses.iter().filter(|u| u.on_carts(P) && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0);
     let wear = 1.0 / (12.0 * life);
     for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
         let work = st.tasks.cart_work[t];

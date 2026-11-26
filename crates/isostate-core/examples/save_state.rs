@@ -296,7 +296,7 @@ bin_struct!(Why { test, series, value, threshold, baseline, note });
 bin_struct!(Event { year, kind, clock, weight, title, text, span, series, town, cell, cell2, tech, firm, family, why, kept });
 bin_struct!(MonthStats { prod, method_out, hh_got, lord_got, share, hh_spend, lord_spend, urban_rent, employment, ex_labor_by_sector, firm_labor_by_method, heat_use, supply });
 bin_struct!(World { W, H, land, h, terrain, down, acc, river, navigable, coast, fertility, pasture, forest_pot, rock, clay, ore, coal, jitter, town_sites, forest0, landform });
-bin_struct!(Graph { N, W, H, w, railed, min_w, max_w, boat, wharf });
+bin_struct!(Graph { N, W, H, w, railed, min_w, max_w, boat, wharf, train, handling });
 bin_struct!(SeriesMeta { label, group, unit });
 bin_struct!(ObserverState { cross_state, milestones, last_alarm, peak, in_slump, slump_start, trough, first_output, base, groups, crossings });
 bin_struct!(EngelState { year_now, need_spend, real_income, chain, base_p, base_q, acc_p, acc_q, months });
@@ -512,6 +512,10 @@ macro_rules! state_parts {
                 tf: Default::default(),
                 // who works (docs/rules/who-works.md): carried across as the roads are
                 who_works: Default::default(),
+                // haulage (docs/rules/haulage.md): carried across as the roads are
+                hl: Default::default(),
+                // highways (docs/rules/highways.md): carried across as the roads are
+                hw: Default::default(),
             }
         }
 
@@ -644,6 +648,8 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.purse = carry.purse.clone();
     st.tf = carry.tf.clone();
     st.who_works = carry.who_works.clone();
+    st.hl = carry.hl.clone();
+    st.hw = carry.hw.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);
