@@ -20,10 +20,13 @@
 # Taken: the first hashes of the landfall start (--start landfall,
 # docs/rules/landfall.md) as night/g-one-town built it, with main at f8bf321
 # (care) merged in, taken on night/g-two-starts (26 November 2026)
+# Taken: the batch starts-a (two-starts on one-town and the squares): the
+# landfall start's hashes taken again on the merged tree, where the squares
+# (squares.enabled, on under the game's rules) keep their log in the record
 1750-1900 economy  0xc6436b97bd9f2045
 1750-1900 books    0x7270d31b6d38601f
 1750-1900 news     0x9e37de29e9388cf2
 1901-2050 economy  0x5c575ea027de14fe
 1901-2050 books    0x31fdf137ae077d0c
 1901-2050 news     0x9ecfa0441c4f6d9d
-1901-2050 run.bin  0x93dccb2f1063f7f9
+1901-2050 run.bin  0x4d62492a47074cc2
