@@ -185,3 +185,55 @@ fn a_drop_offers_nothing_that_does_nothing() {
     let last = drop_choices(r, i.end + 40, i.end).unwrap();
     assert!(last.iter().all(|o| matches!(o.edit, Edit::Pin { year, .. } if year == i.end)));
 }
+
+#[test]
+fn a_pin_by_drag_gives_the_island_of_the_same_dated_edit_from_the_command_line() {
+    use isostate_core::save::{self, Game, Order, Save};
+    // a game as the viewer plays one, two months into 1801
+    let mut g = Game::new(7, 6, 1_000);
+    let mut learnt = Learnt::default();
+    for _ in 0..51 {
+        g.year().unwrap();
+        g.turn();
+        learnt.year_end(&g.sim);
+    }
+    assert_eq!(g.sim.year, 1801);
+    for _ in 0..2 {
+        g.month().unwrap();
+    }
+    let ask = save::check(&g.sim);
+    let i = ideas(&g.sim, &learnt);
+    assert_eq!(save::check(&g.sim), ask, "asking for the island's ideas changes nothing");
+    // the first idea of the tree not yet found, dropped on 1880 and held back
+    let row = i.rows().find(|r| r.kind != "use" && r.found.is_none() && r.drag.is_ok()).expect("an idea of the tree not yet found").clone();
+    let offers = drop_choices(&row, 1880, i.end).unwrap();
+    let hold = offers.iter().find(|o| matches!(o.edit, Edit::Pin { when: PinWhen::NotBefore, .. })).unwrap().edit.clone();
+    eprintln!("{} held back until 1880 in March 1801", row.label);
+    g.give(Order::ByHand { edit: hold.clone() }).unwrap();
+    assert_eq!(ideas(&g.sim, &learnt).row(&row.name).unwrap().pin, Some((1880, PinWhen::NotBefore)));
+    // and another found now, by a drop on this year
+    let now_row = i.rows().find(|r| r.kind != "use" && r.found.is_none() && r.drag.is_ok() && r.name != row.name).expect("a second idea not yet found").clone();
+    let find = drop_choices(&now_row, i.now, i.end).unwrap()[0].edit.clone();
+    assert!(matches!(find, Edit::Discover { .. }), "{find:?}");
+    g.give(Order::ByHand { edit: find.clone() }).unwrap();
+    let k = g.sim.content.tech_name.iter().position(|n| *n == now_row.name).unwrap();
+    assert_eq!(g.sim.st.tech_year[k], 1801, "{} found now", now_row.label);
+    let found = ideas(&g.sim, &learnt);
+    let r = found.row(&now_row.name).unwrap();
+    assert_eq!((r.found, r.by_hand), (Some(1801), true), "the row says it was found by hand");
+    for _ in 0..10 {
+        g.year().unwrap();
+        g.turn();
+    }
+    assert_eq!(g.sim.year, 1811);
+    // saved and loaded, the same; and a run with no window given the same edits, dated as the log has them
+    let b = save::load(&Save::from_text(&g.save(2_000).to_text()).unwrap(), |_| {}).unwrap();
+    assert!(!b.drifted && b.refused.is_empty());
+    assert_eq!(save::check(&b.game.sim), save::check(&g.sim));
+    let mut P = save::params(Rules::Game, 7, 6);
+    P.end_year = Some(1810);
+    let list = vec![Dated { before: (1801, 3), edit: hold }, Dated { before: (1801, 3), edit: find }];
+    let run = edits::play(&P, Rules::Game.content(), &list).unwrap();
+    assert_eq!(run.year, g.sim.year);
+    assert_eq!(save::check(&run), save::check(&g.sim), "the drags' edits and the same list played with no window give the same island");
+}

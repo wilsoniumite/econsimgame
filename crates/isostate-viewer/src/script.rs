@@ -61,6 +61,12 @@
 //!                     picks the town by its name and opens its making;
 //!                     point:menu:NAME opens the hand's menu of a box
 //!                     (TOWN-FLOW-HAND), point:menu:none shuts it
+//!     ideas:WHAT      the panel of the island's ideas (ideas_plate.rs):
+//!                     ideas:open, ideas:shut, ideas:fold:GROUP and
+//!                     ideas:unfold:GROUP (or all), ideas:show:NAME (its row
+//!                     scrolled into view), ideas:point:NAME (point:none), and
+//!                     ideas:drag:NAME@YEAR, the idea's mark dropped on YEAR;
+//!                     click: then presses what the drop offers
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -139,6 +145,8 @@ enum Step {
     Back,
     /// MAKING: the Making panel's pointer, on a box or a ribbon by name (town_flow.rs)
     Point(String),
+    /// IDEAS-PLATE: a step for the panel of the island's ideas (ideas_plate.rs)
+    Ideas(String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -300,6 +308,8 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "map" => Step::Map(arg.to_string()),
             // MAKING: the Making panel's pointer (town_flow.rs)
             "point" if !arg.is_empty() => Step::Point(arg.to_string()),
+            // IDEAS-PLATE: the panel of the island's ideas (ideas_plate.rs)
+            "ideas" if !arg.is_empty() => Step::Ideas(arg.to_string()),
             "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
                 Some((name, word)) if !name.is_empty() && !word.is_empty() => Step::Rule(name.to_string(), word.to_string()),
                 _ => return Err(format!("{part}: rule takes a name and a chip's word, as rule:money.growth=None")),
@@ -1098,6 +1108,13 @@ fn step(world: &mut World, sc: &mut Script) {
             Step::Point(words) => {
                 if let Some(mut flow) = world.get_resource_mut::<crate::town_flow::Flow>() {
                     flow.point = (!words.eq_ignore_ascii_case("none")).then(|| words.clone());
+                }
+                frame = true;
+            }
+            // IDEAS-PLATE: the panel of the island's ideas (ideas_plate.rs)
+            Step::Ideas(what) => {
+                if let Some(mut plate) = world.get_resource_mut::<crate::ideas_plate::Plate>() {
+                    plate.script = Some(what.clone());
                 }
                 frame = true;
             }
