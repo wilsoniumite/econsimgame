@@ -620,6 +620,33 @@ struct NewCount;
 /// The word on More's button: More, or Less while it is open.
 #[derive(Component)]
 struct MoreWord;
+/// The parts of the page whose heights decide how tall the list of saved games may be.
+#[derive(Component, Clone, Copy, PartialEq)]
+enum Fits {
+    Title,
+    GoOn,
+    Foot,
+}
+
+/// The saved games' card is as tall as the window leaves it, under More when
+/// More is open, so that the foot stays on the screen and the list scrolls.
+/// (A flex layout would do it, if a height shrunk by the flex could be shared
+/// out again: in Bevy's it cannot, so the room is worked out here.)
+fn fit(page: Res<Page>, cams: Query<&Camera>, parts: Query<(&Fits, &ComputedNode)>, more: Query<&ComputedNode, With<MoreCard>>, mut go_on: Query<(&Fits, &mut Node)>) {
+    let Some(view) = cams.iter().find_map(|c| c.logical_viewport_size()) else { return };
+    let height = |which: Fits| parts.iter().find(|(f, _)| **f == which).map_or(0.0, |(_, n)| n.size().y * n.inverse_scale_factor);
+    // the root's padding (20 above and below) and its three gaps of 14 between title, cards, room and foot
+    let mut room = view.y - 40.0 - 42.0 - height(Fits::Title) - height(Fits::Foot);
+    if page.more {
+        room -= more.iter().map(|n| n.size().y * n.inverse_scale_factor).fold(0.0, f32::max) + 14.0;
+    }
+    let want = Val::Px(room.max(120.0));
+    for (f, mut n) in &mut go_on {
+        if *f == Fits::GoOn && n.max_height != want {
+            n.max_height = want;
+        }
+    }
+}
 
 /// What the tooltips of Command and Go on say.
 pub const COMMAND_SAYS: &str = "This command line starts the same game as the page. Copy puts it on the clipboard. Any option on a command line skips the page.";
@@ -681,7 +708,7 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
         .add_plugins(crate::tips::plugin)
         // (after the pointer's own pass over the buttons, so that a button Enter presses stays pressed for the cards to see)
         .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).after(bevy::ui::UiSystems::Focus).after(crate::tips::escape))
-        .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, news_count, up_after, go).chain());
+        .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, fit, news_count, up_after, go).chain());
     if let Some(p) = picture {
         app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None });
         app.add_systems(Update, shoot.after(go));
@@ -718,24 +745,27 @@ fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page) {
         ))
         .with_children(|root| {
             // the name of the game
-            root.spawn(Node { align_items: AlignItems::Baseline, column_gap: Val::Px(12.0), ..default() }).with_children(|t| {
+            root.spawn((Node { align_items: AlignItems::Baseline, column_gap: Val::Px(12.0), ..default() }, Fits::Title)).with_children(|t| {
                 t.spawn(ui::text(f, "Isolated State", 38.0, INK));
                 t.spawn(ui::text(f, &format!("version {}", crate::VERSION), 15.0, INK.with_alpha(0.7)));
             });
             // (each card as tall as what it holds; the saved games scroll when there are more than fit)
             root.spawn(Node { column_gap: Val::Px(18.0), flex_shrink: 1.0, min_height: Val::Px(0.0), align_items: AlignItems::FlexStart, ..default() }).with_children(|row| {
-                go_on_card(row, f, page, now);
+                // the saved games, and under them More, folded away: open, it takes the room the
+                // list gives up, and the list scrolls, so that the foot stays in a window 720 high
+                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(14.0), max_height: Val::Percent(100.0), min_height: Val::Px(0.0), ..default() }).with_children(|col| {
+                    go_on_card(col, f, page, now);
+                    col.spawn((
+                        ui::card(Node { display: Display::None, flex_direction: FlexDirection::Column, width: Val::Px(520.0), padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)), row_gap: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() }),
+                        MoreCard,
+                    ))
+                    .with_children(|c| {
+                        for f2 in Field::MORE {
+                            field_row(c, f, f2);
+                        }
+                    });
+                });
                 new_card(row, f);
-            });
-            // More, folded away
-            root.spawn((
-                ui::card(Node { display: Display::None, flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, width: Val::Px(1078.0), max_width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(12.0)), column_gap: Val::Px(28.0), row_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() }),
-                MoreCard,
-            ))
-            .with_children(|c| {
-                for f2 in Field::MORE {
-                    c.spawn(Node { width: Val::Px(500.0), ..default() }).with_children(|w| field_row(w, f, f2));
-                }
             });
             // the foot stands at the bottom of the window
             root.spawn(Node { flex_grow: 1.0, ..default() });
@@ -755,7 +785,8 @@ fn heading(p: &mut ChildSpawnerCommands, f: &Handle<Font>, title: &str, aside: &
 
 fn go_on_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>, page: &Page, now: u64) {
     row.spawn((
-        ui::card(Node { flex_direction: FlexDirection::Column, width: Val::Px(520.0), max_height: Val::Percent(100.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(18.0)), row_gap: Val::Px(4.0), border_radius: BorderRadius::all(Val::Px(18.0)), min_height: Val::Px(0.0), ..default() }),
+        ui::card(Node { flex_direction: FlexDirection::Column, width: Val::Px(520.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(18.0)), row_gap: Val::Px(4.0), border_radius: BorderRadius::all(Val::Px(18.0)), min_height: Val::Px(0.0), ..default() }),
+        Fits::GoOn,
         RelativeCursorPosition::default(),
     ))
     .with_children(|c| {
@@ -904,7 +935,7 @@ fn lay_field(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field, c: &C
 }
 
 fn foot(root: &mut ChildSpawnerCommands, f: &Handle<Font>) {
-    root.spawn(ui::card(Node { flex_direction: FlexDirection::Column, width: Val::Px(1078.0), max_width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(12.0)), row_gap: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() })).with_children(|c| {
+    root.spawn((ui::card(Node { flex_direction: FlexDirection::Column, width: Val::Px(1078.0), max_width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(22.0), Val::Px(12.0)), row_gap: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() }), Fits::Foot)).with_children(|c| {
         // the command line that does the same
         c.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).with_children(|row| {
             row.spawn(Node { width: Val::Px(84.0), flex_shrink: 0.0, ..default() }).with_children(|l| {
