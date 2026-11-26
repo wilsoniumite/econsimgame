@@ -661,6 +661,44 @@ mod tests {
         assert!(curved.run_mean_by_length < straight.run_mean_by_length, "{curved:?}");
     }
 
+    /// What finding the roads' ways costs: for the first run named in
+    /// `ISOSTATE_CURVE_RUNS`, every drawn link's way found for every year of
+    /// the record, on the curves alone and over the ground, twice each in
+    /// turn, by the clock on the wall (one thread); and over the ground, the
+    /// year with the most links drawn for the first time, alone. Run by hand.
+    #[test]
+    #[ignore]
+    fn time_the_courses() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        let path = paths.split(';').next().unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let r = crate::replay::parse(path, &bytes).unwrap();
+        let cen = network::centres(&r);
+        let years = r.filled.min(r.ny);
+        for how in ["curves", "ground", "curves", "ground"] {
+            CURVES_ALONE_IN_TEST.with(|a| a.set(how == "curves"));
+            let g = crate::world::build_ground(&r);
+            // (the ends fixed first, which both do alike)
+            g.courses.fixed(&r, &g, &cen, 0, 1, years - 1);
+            let t0 = std::time::Instant::now();
+            let (mut found, mut most) = (0usize, (0usize, 0usize, 0.0f64));
+            let mut seen = std::collections::HashSet::new();
+            for k in 0..years {
+                let t1 = std::time::Instant::now();
+                let mut new = 0;
+                for (c, m, _) in network::drawn_links(&r, &g.worn, k) {
+                    new += seen.insert(key(c, m)) as usize;
+                    found += g.courses.way_found(&r, &g, &cen, c, m, k).1 as usize;
+                }
+                if new > most.1 {
+                    most = (k, new, t1.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            println!("{how}: every way of {years} years found in {:.0} ms, {found} link-years over the ground; the year of most new links, {} ({} new), {:.0} ms", t0.elapsed().as_secs_f64() * 1000.0, r.y0 + most.0 as i32, most.1, most.2);
+            CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+        }
+    }
+
     /// Where the ground bends the roads most, to aim pictures at: for the
     /// first run named in `ISOSTATE_CURVE_RUNS`, in the year
     /// `ISOSTATE_CURVE_YEAR` (2050 if not named), the twelve links whose way
