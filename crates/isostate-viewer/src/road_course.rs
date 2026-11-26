@@ -30,6 +30,12 @@
 //!   does, through the same point and square to the water
 //!   (`network::bent_route`); where it cannot, the link keeps the way it was
 //!   drawn before.
+//! - **The ground.** On the new land a link not held straight seeks its way
+//!   between its two fixed ends over the ground, by the prices of the kind of
+//!   road it was the year it was first drawn (`road_ground`), and keeps the
+//!   way found if it is cheaper by those prices than the curve; once found it
+//!   is kept, as the ends are. `ISOSTATE_ROADS_GROUND=off` draws the curves
+//!   alone, as the piece before this did.
 //!
 //! The years are gone through in order, as the roads the carts wore are
 //! (`network::Worn`), and what is fixed is kept in `Ground::courses`.
@@ -66,6 +72,8 @@ pub struct Fixed {
     /// at its lower cell's place and at the other's, which way along the
     /// place's line it leaves (0 along it, 1 against it), if it does
     pub along: [Option<u8>; 2],
+    /// the kind of road it was the year it was first drawn (`road_ground::kind_in`)
+    pub kind: u8,
 }
 
 #[derive(Default)]
@@ -82,7 +90,10 @@ struct Known {
 #[derive(Default)]
 pub struct Courses {
     known: std::sync::Mutex<Known>,
-    ways: std::sync::Mutex<HashMap<(u32, u32), Way>>,
+    /// each link's way, and whether it was found over the ground
+    ways: std::sync::Mutex<HashMap<(u32, u32), (Way, bool)>>,
+    /// the ground as a road's search reads it, read as it is asked for
+    lie: std::sync::Mutex<Option<crate::newland::passing::Lie>>,
 }
 
 /// Whether the roads are drawn on curves: unless `ISOSTATE_CURVES=off`
@@ -95,6 +106,16 @@ pub fn on() -> bool {
 thread_local! {
     /// In a test: draw every road straight, as before the curves.
     pub static STRAIGHT_IN_TEST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// In a test: draw the roads on the curves alone, as before they sought their way over the ground.
+    pub static CURVES_ALONE_IN_TEST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a road on the new land seeks its way over the ground
+/// (`road_ground`): unless `ISOSTATE_ROADS_GROUND=off` asks for the curves
+/// alone, to set the two side by side.
+pub fn over_ground() -> bool {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    on() && !CURVES_ALONE_IN_TEST.with(|a| a.get()) && !*OFF.get_or_init(|| std::env::var("ISOSTATE_ROADS_GROUND").is_ok_and(|v| v == "off"))
 }
 
 impl Courses {
@@ -121,22 +142,59 @@ impl Courses {
 
     /// The way the link between `c` and `m` is drawn in year `k`.
     pub fn way(&self, r: &Replay, g: &Ground, cen: &[(f32, f32)], c: usize, m: usize, k: usize) -> Way {
+        self.way_found(r, g, cen, c, m, k).0
+    }
+
+    /// The way the link between `c` and `m` is drawn in year `k`, and whether it was found over the ground.
+    pub fn way_found(&self, r: &Replay, g: &Ground, cen: &[(f32, f32)], c: usize, m: usize, k: usize) -> (Way, bool) {
         let (lo, hi) = (c.min(m), c.max(m));
         let (a, b) = (Vec2::new(cen[lo].0, cen[lo].1), Vec2::new(cen[hi].0, cen[hi].1));
-        let bend = if on() { self.fixed(r, g, cen, lo, hi, k).and_then(|f| f.bend) } else { None };
-        let Some((da, db)) = bend else {
-            let way = network::route(g, a, b, r.round());
-            return if c <= m { way } else { reversed(way) };
-        };
-        let kept = self.ways.lock().ok().and_then(|w| w.get(&key(lo, hi)).cloned());
-        let way = kept.unwrap_or_else(|| {
-            let found = network::bent_route(g, a, b, da, db, r.round());
-            if let Ok(mut w) = self.ways.lock() {
-                w.insert(key(lo, hi), found.clone());
+        let fixed = if on() { self.fixed(r, g, cen, lo, hi, k) } else { None };
+        // a link not held straight on town ground seeks its way over the new land's ground
+        let seeks = over_ground() && g.laid.is_some() && fixed.is_some_and(|f| !f.held);
+        let (way, found) = match (fixed.and_then(|f| f.bend), seeks) {
+            (None, false) => (network::route(g, a, b, r.round()), false),
+            _ => {
+                let kept = self.ways.lock().ok().and_then(|w| w.get(&key(lo, hi)).cloned());
+                kept.unwrap_or_else(|| {
+                    let found = self.find(r, g, a, b, lo, hi, fixed.unwrap(), seeks);
+                    if let Ok(mut w) = self.ways.lock() {
+                        w.insert(key(lo, hi), found.clone());
+                    }
+                    found
+                })
             }
-            found
-        });
-        if c <= m { way } else { reversed(way) }
+        };
+        (if c <= m { way } else { reversed(way) }, found)
+    }
+
+    /// The way of a link from `a` (cell `lo`'s place) to `b` (cell `hi`'s),
+    /// fixed as `f` says: its curve (or the way drawn before, for a link with
+    /// both ends straight), or, where it `seeks`, the way found over the
+    /// ground if that is cheaper by its kind's prices.
+    #[allow(clippy::too_many_arguments)]
+    fn find(&self, r: &Replay, g: &Ground, a: Vec2, b: Vec2, lo: usize, hi: usize, f: Fixed, seeks: bool) -> (Way, bool) {
+        let own = (b - a).normalize_or(Vec2::X);
+        let plain = match f.bend {
+            Some((da, db)) => network::bent_route(g, a, b, da, db, r.round(), &mut |_, _, _, _| None),
+            None => network::route(g, a, b, r.round()),
+        };
+        if !seeks {
+            return (plain, false);
+        }
+        let (da, db) = f.bend.unwrap_or((own, own));
+        let mut lie = self.lie.lock().unwrap();
+        let lie = lie.get_or_insert_with(|| crate::newland::passing::Lie::new(g));
+        let town = |cell: usize| town(r, f.year, cell);
+        let asked = crate::road_ground::Asked { kind: crate::road_ground::prices(f.kind), cells: [lo, hi], town: &town };
+        let sought = network::bent_route(g, a, b, da, db, r.round(), &mut |p, dp, q, dq| crate::road_ground::seek(lie, g, &asked, p, dp, q, dq));
+        let lie = &*lie;
+        let differs = sought.pts.len() != plain.pts.len() || sought.pts.iter().zip(&plain.pts).any(|(p, q)| p != q);
+        if differs && crate::road_ground::cost(lie, g, &asked, &sought.pts) < crate::road_ground::cost(lie, g, &asked, &plain.pts) {
+            (sought, true)
+        } else {
+            (plain, false)
+        }
     }
 }
 
@@ -229,7 +287,8 @@ fn go_through(r: &Replay, g: &Ground, cen: &[(f32, f32)], known: &mut Known, k: 
             let db = leave.get(&(m, c)).map_or(own, |l| -l.0);
             let straight = da.perp_dot(own).abs() < STRAIGHT && db.perp_dot(own).abs() < STRAIGHT;
             let along = [leave.get(&(c, m)).map(|l| l.1), leave.get(&(m, c)).map(|l| l.1)];
-            known.ends.insert(key(c, m), Fixed { year: y, bend: (!straight).then_some((da, db)), held: town(r, y, c) || town(r, y, m), along });
+            let kind = crate::road_ground::kind_in(r, y, c, m);
+            known.ends.insert(key(c, m), Fixed { year: y, bend: (!straight).then_some((da, db)), held: town(r, y, c) || town(r, y, m), along, kind });
         }
         known.through += 1;
     }
@@ -278,6 +337,9 @@ pub struct Shape {
     /// the share of the drawn length that runs within 5 degrees of one of
     /// the eight directions
     pub on_eight: f32,
+    /// the same for the ways found over the ground, the links held straight
+    /// on town ground and the rest, each with its share of the length
+    pub on_eight_by: [(f32, f32); 3],
     /// the tightest curve of any link (its radius, over 0.08 of a cell), and
     /// how many links curve tighter than 0.25 of a cell (500 m)
     pub tightest: f32,
@@ -300,6 +362,13 @@ pub struct Shape {
     pub kinks: [usize; 4],
     /// where the first few links on a curve cross a river (for pictures)
     pub bent_crossings: Vec<Vec2>,
+    /// the links whose way was found over the ground (`road_ground`)
+    pub sought: usize,
+    /// the slope of the ground along the drawn ways, as the land has it: the
+    /// mean over their length (metres for each metre along), and the share of
+    /// their length steeper than 1 in 12 (`road_ground::slope_along`)
+    pub slope: f32,
+    pub steep: f32,
 }
 
 /// Measure the roads drawn in year `k` (`Shape`).
@@ -328,7 +397,17 @@ pub fn shape(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Shape {
     out.lattice_mean = lines.iter().sum::<usize>() as f32 / lines.len().max(1) as f32;
     out.lattice_longest = lines.iter().copied().max().unwrap_or(0);
     // each link's way, from its lower cell, and how it leaves each end
-    let ways: Vec<Way> = links.iter().map(|&(c, m, _)| network::course(r, g, cen, c, m, k)).collect();
+    let found: Vec<(Way, bool)> = links.iter().map(|&(c, m, _)| g.courses.way_found(r, g, cen, c, m, k)).collect();
+    out.sought = found.iter().filter(|f| f.1).count();
+    let sought: Vec<bool> = found.iter().map(|f| f.1).collect();
+    let ways: Vec<Way> = found.into_iter().map(|f| f.0).collect();
+    let mut by = [(0.0f32, 0.0f32); 3];
+    let (mut slope, mut steep, mut along) = (0.0f32, 0.0f32, 0.0f32);
+    for way in &ways {
+        let (s, st, l) = crate::road_ground::slope_along(g, &way.pts);
+        (slope, steep, along) = (slope + s, steep + st, along + l);
+    }
+    (out.slope, out.steep) = (slope / along.max(1e-9), steep / along.max(1e-9));
     let mut ends: HashMap<usize, Vec<(usize, bool, Vec2)>> = HashMap::new();
     let (mut square, mut crossed) = (0.0f32, 0usize);
     for (i, (&(c, m, _), way)) in links.iter().zip(&ways).enumerate() {
@@ -344,11 +423,14 @@ pub fn shape(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Shape {
         out.bent_on_1900_town += (bent && (town(r, k1900, c) || town(r, k1900, m))) as usize;
         let len = crate::course::length(p);
         out.length += len;
+        let group = if sought[i] { 0 } else if fixed.is_some_and(|f| f.held) { 1 } else { 2 };
+        by[group].1 += len;
         for w in p.windows(2) {
             let d = w[1] - w[0];
             let deg = d.y.atan2(d.x).to_degrees().rem_euclid(45.0);
             if deg.min(45.0 - deg) < 5.0 {
                 out.on_eight += d.length();
+                by[group].0 += d.length();
             }
         }
         let tight = crate::course::tightest(p, 0.08);
@@ -368,6 +450,7 @@ pub fn shape(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Shape {
         }
     }
     out.on_eight /= out.length.max(1e-9);
+    out.on_eight_by = by.map(|(on, all)| (on / all.max(1e-9), all / out.length.max(1e-9)));
     out.square = square / crossed.max(1) as f32;
     let bin = |deg: f32| TURN_BINS.iter().position(|&b| deg <= b).unwrap_or(TURN_BINS.len());
     // the turn between two links at a place: how far the one's way in turns from the other's way out
@@ -535,7 +618,11 @@ mod tests {
     /// a road passes through a meeting place the line turns there less than 5
     /// degrees at most of them, where straight it did at under a quarter; no
     /// link's way crosses a river more often than the way drawn before; and
-    /// the straight runs are shorter than the straight lines' were.
+    /// the straight runs are shorter than the straight lines' were. Over the
+    /// ground (`road_ground`, the new land's, which a game is played on):
+    /// some ways are found over it, none of them moves either, none crosses a
+    /// river more often than its link's straight line, and the roads climb
+    /// less along their course than on the curves alone.
     #[test]
     fn roads_bend_through_their_meeting_places_and_never_move() {
         let mut game = isostate_core::save::Game::new(7, 6, 0);
@@ -556,7 +643,15 @@ mod tests {
         let g0 = crate::world::build_ground(&r);
         let straight = shape(&r, &g0, &cen, last);
         STRAIGHT_IN_TEST.with(|a| a.set(false));
-        eprintln!("straight {straight:?}\ncurves {curved:?}");
+        CURVES_ALONE_IN_TEST.with(|a| a.set(true));
+        let g1 = crate::world::build_ground(&r);
+        let alone = shape(&r, &g1, &cen, last);
+        CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+        eprintln!("straight {straight:?}\ncurves alone {alone:?}\nover the ground {curved:?}");
+        assert!(g.laid.is_some(), "the game is played on the new land");
+        assert_eq!(alone.sought, 0);
+        assert!(curved.sought * 4 > curved.links, "{curved:?}");
+        assert!(curved.slope < alone.slope, "the roads climb {} over the ground and {} on the curves alone", curved.slope, alone.slope);
         assert_eq!(straight.bent, 0);
         assert!(curved.links > 300 && curved.bent * 2 > curved.links, "{curved:?}");
         let through: usize = curved.turns.iter().sum();
@@ -566,8 +661,86 @@ mod tests {
         assert!(curved.run_mean_by_length < straight.run_mean_by_length, "{curved:?}");
     }
 
+    /// What finding the roads' ways costs: for the first run named in
+    /// `ISOSTATE_CURVE_RUNS`, every drawn link's way found for every year of
+    /// the record, on the curves alone and over the ground, twice each in
+    /// turn, by the clock on the wall (one thread); and over the ground, the
+    /// year with the most links drawn for the first time, alone. Run by hand.
+    #[test]
+    #[ignore]
+    fn time_the_courses() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        let path = paths.split(';').next().unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let r = crate::replay::parse(path, &bytes).unwrap();
+        let cen = network::centres(&r);
+        let years = r.filled.min(r.ny);
+        for how in ["curves", "ground", "curves", "ground"] {
+            CURVES_ALONE_IN_TEST.with(|a| a.set(how == "curves"));
+            let g = crate::world::build_ground(&r);
+            // (the ends fixed first, which both do alike)
+            g.courses.fixed(&r, &g, &cen, 0, 1, years - 1);
+            let t0 = std::time::Instant::now();
+            let (mut found, mut most) = (0usize, (0usize, 0usize, 0.0f64));
+            let mut seen = std::collections::HashSet::new();
+            for k in 0..years {
+                let t1 = std::time::Instant::now();
+                let mut new = 0;
+                for (c, m, _) in network::drawn_links(&r, &g.worn, k) {
+                    new += seen.insert(key(c, m)) as usize;
+                    found += g.courses.way_found(&r, &g, &cen, c, m, k).1 as usize;
+                }
+                if new > most.1 {
+                    most = (k, new, t1.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            println!("{how}: every way of {years} years found in {:.0} ms, {found} link-years over the ground; the year of most new links, {} ({} new), {:.0} ms", t0.elapsed().as_secs_f64() * 1000.0, r.y0 + most.0 as i32, most.1, most.2);
+            CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+        }
+    }
+
+    /// Where the ground bends the roads most, to aim pictures at: for the
+    /// first run named in `ISOSTATE_CURVE_RUNS`, in the year
+    /// `ISOSTATE_CURVE_YEAR` (2050 if not named), the twelve links whose way
+    /// over the ground lies furthest from their curve alone, with where the
+    /// link's middle is, how far, and the slope along each way. Run by hand.
+    #[test]
+    #[ignore]
+    fn where_the_ground_bends_most() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        let path = paths.split(';').next().unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let r = crate::replay::parse(path, &bytes).unwrap();
+        let cen = network::centres(&r);
+        let year: i32 = std::env::var("ISOSTATE_CURVE_YEAR").ok().and_then(|v| v.parse().ok()).unwrap_or(2050);
+        let k = ((year - r.y0) as usize).min(r.filled.min(r.ny) - 1);
+        let g = crate::world::build_ground(&r);
+        let g1 = crate::world::build_ground(&r);
+        let mut rows: Vec<(f32, String)> = Vec::new();
+        for (c, m, lv) in network::drawn_links(&r, &g.worn, k) {
+            let (way, found) = g.courses.way_found(&r, &g, &cen, c, m, k);
+            CURVES_ALONE_IN_TEST.with(|a| a.set(true));
+            let alone = g1.courses.way(&r, &g1, &cen, c, m, k);
+            CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+            if !found {
+                continue;
+            }
+            let off = way.pts.iter().map(|&p| crate::newland::passing::off_way(&alone.pts, p)).fold(0.0, f32::max);
+            let (s0, _, l0) = crate::road_ground::slope_along(&g1, &alone.pts);
+            let (s1, _, l1) = crate::road_ground::slope_along(&g, &way.pts);
+            let mid = (Vec2::new(cen[c].0, cen[c].1) + Vec2::new(cen[m].0, cen[m].1)) * 0.5;
+            let kind = g.courses.fixed(&r, &g, &cen, c, m, k).map_or(0, |f| f.kind);
+            rows.push((off, format!("link {c}-{m} level {lv} kind {kind}: middle {:.2},{:.2}, lies {off:.3} off its curve; slope {:.4} on the curve, {:.4} over the ground; length {l0:.3} and {l1:.3}", mid.x, mid.y, s0 / l0.max(1e-9), s1 / l1.max(1e-9))));
+        }
+        rows.sort_by(|x, y| y.0.total_cmp(&x.0));
+        println!("{} links found over the ground in {year}", rows.len());
+        for (_, row) in rows.iter().take(12) {
+            println!("{row}");
+        }
+    }
+
     /// The roads' shape measured on recorded runs (`shape`), straight as
-    /// before and on curves, for each run named in `ISOSTATE_CURVE_RUNS`
+    /// before, on the curves alone and over the ground, for each run named in `ISOSTATE_CURVE_RUNS`
     /// (paths to `run.bin`, apart by `;`), in 1850, 1900 and 2050, with how
     /// far any road's line moves from one year to the next over the whole
     /// run. Run by hand, with
@@ -580,8 +753,10 @@ mod tests {
             let bytes = std::fs::read(path).unwrap();
             let r = crate::replay::parse(path, &bytes).unwrap();
             let cen = network::centres(&r);
-            for straight in [true, false] {
+            for how in ["straight", "curves", "ground"] {
+                let straight = how == "straight";
                 STRAIGHT_IN_TEST.with(|a| a.set(straight));
+                CURVES_ALONE_IN_TEST.with(|a| a.set(how == "curves"));
                 let g = crate::world::build_ground(&r);
                 for year in [1850, 1900, 2050] {
                     let k = (year - r.y0) as usize;
@@ -590,12 +765,13 @@ mod tests {
                     }
                     let t0 = std::time::Instant::now();
                     let s = shape(&r, &g, &cen, k);
-                    println!("{path} {} {year}: {s:?} ({:.0} ms)", if straight { "straight" } else { "curves" }, t0.elapsed().as_secs_f64() * 1000.0);
+                    println!("{path} {how} {year}: {s:?} ({:.0} ms)", t0.elapsed().as_secs_f64() * 1000.0);
                 }
                 let t0 = std::time::Instant::now();
                 let (n, most) = moved(&r, &g, &cen, 0..r.filled.min(r.ny));
-                println!("{path} {}: over every year, {n} links drawn again with a point moved, the furthest by {most} ({:.0} ms)", if straight { "straight" } else { "curves" }, t0.elapsed().as_secs_f64() * 1000.0);
+                println!("{path} {how}: over every year, {n} links drawn again with a point moved, the furthest by {most} ({:.0} ms)", t0.elapsed().as_secs_f64() * 1000.0);
                 STRAIGHT_IN_TEST.with(|a| a.set(false));
+                CURVES_ALONE_IN_TEST.with(|a| a.set(false));
             }
         }
     }
