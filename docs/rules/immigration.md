@@ -80,6 +80,14 @@ a living that stands at about 1.5 baskets a head in 1750, so they come only
 as its towns grow richer than abroad, and stop as abroad grows richer after
 1820. Not measured on the settled island on this branch.
 
+**None to a hungry port**, 26 November 2026: landed with land that stays
+taken and measured with it, so the two are told together in
+[frontier.md](frontier.md), "What the runs showed". On islands 1 to 8 from
+landfall with carriage on prices from 1750, settlers to 2050 fall from
+730,000 to 624,000 on the mean, and years with hunger after 1900 from 1.0 to
+0.6 an island. With settlers off altogether the colony has 168,000 people
+in 1900 against 493,000, and 3.0 years of hunger after 1900.
+
 ## What worries me
 
 - The pull reads each port's own living, so a rich port draws settlers who

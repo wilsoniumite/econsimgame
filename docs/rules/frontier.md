@@ -126,6 +126,44 @@ question (the two starts as equals in the tests).
 See [landfall.md](landfall.md), "What the runs showed": the arms "births as
 today" and "births that answer to land" differ only by `frontier.enabled`.
 
+**Land that stays taken**, 26 November 2026: `examples/landfall.rs` on
+islands 1 to 8 to 2050, `--start landfall --set longrun.freight_from=1750`
+(carriage on prices, the study's first mend, not yet the start's own),
+before the switch and with it (with it, no settlers to a hungry port as
+well). Means of the eight islands; births and deaths a thousand from the
+ages' reckoning, means of the 25 years to the date:
+
+| | before | land stays taken |
+|---|---|---|
+| free share 1900 / 1950 / 2050 | 0.16 / 0.32 / 0.65 | 0.06 / 0.03 / 0.04 |
+| people 1900 / 1950 / 2050 | 558k / 1,280k / 2,338k | 493k / 1,051k / 1,731k |
+| growth 2000 to 2050, a year | 0.36 per cent | 0.28 per cent |
+| births / deaths a thousand, to 1950 | 19.8 / 10.6 | 18.8 / 10.7 |
+| births / deaths a thousand, to 2050 | 14.7 / 11.6 | 13.8 / 11.8 |
+| years with hunger, to 1900 / after | 1.0 / 1.0 | 1.6 / 0.6 |
+| wage in grain 1800 / 1900 / 2050 | 14.3 / 32.3 / 92.5 | 14.6 / 30.2 / 101.1 |
+| runs failed | 0 of 8 | 0 of 8 |
+
+The free share no longer climbs after 1950: in 2050 it is at most 0.02
+above 1950's on every island. It also falls faster in the nineteenth
+century (0.06 in 1900, not 0.16), because land counts as taken from the
+year its hands were most, and a cell's hands rise and fall from year to
+year as its market draws on it; that takes 12 per cent off the colony's
+people in 1900. The settled island cannot feel any of it: the frontier is
+off there.
+
+**Births that read the land filling**, a study arm, not built: the
+transition's `z` read as everybody's living where the land is taken,
+`y * (u + (1 - u) * (1 - free))` with `u` the townsfolk's share (the
+finder's `transition.land_fills`). On the same eight islands, with land
+that stays taken: 390k people in 1900 and 888k in 2050, growing 0.20 per
+cent a year from 2000, but 3.6 years with hunger an island after 1900
+against 0.6 without it. On the settled start (islands 7, 2 and 5) it
+halves the island, 523k people in 2050 against 1,208k, its births falling
+from 1850, since its land is full from 1750. Without it the colony already
+grows under half a per cent a year from 2000 (0.28), so it is not needed
+for that, and it is not built.
+
 ## What worries me
 
 - Free land is measured by the hands on it, and on this island hands spread
@@ -138,6 +176,10 @@ today" and "births that answer to land" differ only by `frontier.enabled`.
   into the twenty-first century on an island whose people lived in towns:
   2.1 million people by 2050 against the settled island's 1.3 million. The
   weight is a judgement, `farmers` 0.5, not a measurement.
+- Land that stays taken reads a cell's best year, and a cell's hands
+  wander from year to year with its market: the most a cell ever had is
+  more than it held for long. A mean over some years would be truer and
+  was not tried.
 - `full` is one number for all land and all centuries. As farming improves a
   cell holds more people, and a later century's free land is less free than
   this says.
