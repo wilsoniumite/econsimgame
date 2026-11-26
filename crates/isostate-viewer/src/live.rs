@@ -744,8 +744,14 @@ impl Played {
     /// Island `seed` under the game's rules with six families, to 2050,
     /// played to the turn into `year` and `months` months of it.
     pub fn to(seed: u64, year: i64, months: usize) -> Played {
+        Played::to_within(seed, year, months, iso::save::content_last_year(iso::params::Rules::Game))
+    }
+
+    /// The same, in a game whose last year is `last` (`content_last_year`
+    /// says 1900 for the game's rules, a game begun with nothing asked).
+    pub fn to_within(seed: u64, year: i64, months: usize, last: i64) -> Played {
         let rules = iso::params::Rules::Game;
-        let mut game = Game::under_to(rules, seed, 6, 0, iso::save::content_last_year(rules)).expect("a game to its last year");
+        let mut game = Game::under_to(rules, seed, 6, 0, last).expect("a game to its last year");
         let mut board = Board::new(&game.sim);
         while game.last_year() + 1 < year {
             game.year().expect("a year");

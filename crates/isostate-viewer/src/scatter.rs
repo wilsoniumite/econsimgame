@@ -1139,6 +1139,32 @@ impl Slots {
             plans.plans.retain(|&(f, _), _| f < firms);
         }
     }
+
+    /// An edit taken back with universities standing after the works
+    /// (`replay::stand_universities`): the `n` that stood from place `from` in
+    /// the list stand from place `to` now, with fewer works before them, and
+    /// keep the ground they had; every works after them is forgotten, as by
+    /// `forget`. (Their plans are let go, and made again for their new places.)
+    pub fn keep_after(&mut self, from: usize, to: usize, n: usize) {
+        fn down<T: Clone>(v: &mut Vec<T>, from: usize, to: usize, n: usize) {
+            if from + n <= v.len() && to <= from {
+                for i in 0..n {
+                    v[to + i] = v[from + i].clone();
+                }
+            }
+            v.truncate(to + n);
+        }
+        down(&mut self.firm_pos, from, to, n);
+        down(&mut self.firm_cap, from, to, n);
+        down(&mut self.firm_water, from, to, n);
+        down(&mut self.firm_plot, from, to, n);
+        down(&mut self.firm_level, from, to, n);
+        down(&mut self.firm_rung, from, to, n);
+        down(&mut self.firm_room, from, to, n);
+        if let Ok(mut plans) = self.plans.lock() {
+            plans.plans.retain(|&(f, _), _| f < to);
+        }
+    }
 }
 
 /// Give every works its ground. A live game calls this each year as firms are

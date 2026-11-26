@@ -247,15 +247,24 @@ pub(crate) fn taken_back(
         crate::live::apply_month(r, m);
     }
     let gone = (r.filled.saturating_sub(to.filled), r.header.firms.len().saturating_sub(to.firms), r.header.towns.len().saturating_sub(to.towns), r.header.events.len().saturating_sub(to.news));
+    // where the universities stood, after the works (they come back as the first of those)
+    let unis_from = r.header.firms.len() - crate::replay::universities_standing(r);
     forget(r, &to);
     let cut = t0.elapsed().as_secs_f32() * 1e3;
     // the works' ground: the works forgotten give theirs up, and the universities standing after the
-    // works are found theirs again
+    // works keep theirs in their new places (the copy's universities are the first of those there were,
+    // since a university is only ever added after the others)
     let slots = std::sync::Arc::make_mut(slots);
-    slots.forget(to.firms);
+    let unis = crate::replay::universities_standing(r);
     // and the first year of each road, which the town's streets are laid by, is gone through again
     g.land.closes.forget_roads_from(to.filled);
-    if crate::replay::universities_standing(r) > 0 {
+    if unis == 0 {
+        slots.forget(to.firms);
+    } else if slots.firm_pos.len() >= unis_from + unis {
+        slots.keep_after(unis_from, to.firms, unis);
+    } else {
+        // (ground never laid out for them: found now)
+        slots.forget(to.firms);
         crate::scatter::place_new_firms(r, g, slots);
     }
     let latest = to.filled.clamp(1, r.ny) - 1;
@@ -384,5 +393,41 @@ mod tests {
             forget(p.r_mut(), &to);
             assert_eq!(differ(p.r(), &copy), Vec::<&str>::new(), "{months} months into 1795: the run forgotten differs from the copy");
         }
+    }
+
+    /// A live game stands its universities as a recorded run does, from the
+    /// year each is founded, after the simulation's own works, and forgetting
+    /// years gives them back as they stood. Island 7 under the game's rules
+    /// (the university, `state.university`, on), whose treasury founds the
+    /// University of Glenwick at the end of 1905: played to the turn into
+    /// 1907, two years more, and forgotten.
+    #[test]
+    fn a_live_game_stands_its_universities_and_forgetting_gives_them_back() {
+        let mut p = Played::to_within(7, 1907, 0, 2050);
+        assert!(isostate_core::university::on(&p.game.sim.params), "the game's rules found universities");
+        let stood = |r: &Replay| (0..r.header.firms.len()).filter(|&f| crate::replay::is_university(r, f)).map(|f| (f, r.header.firms[f].name.clone(), r.header.firms[f].born)).collect::<Vec<_>>();
+        let r = p.r();
+        let unis = stood(r);
+        assert_eq!(unis.len(), 1, "{unis:?}");
+        let (f, name, born) = unis[0].clone();
+        assert_eq!((name.as_str(), born), ("The University of Glenwick", 1905));
+        // at the end of the works, standing from 1905's map to the last year played and not after
+        assert_eq!((f, crate::replay::universities_standing(r)), (r.header.firms.len() - 1, 1));
+        let y0 = r.y0;
+        let k = move |year: i32| (year - y0) as usize;
+        let size = |r: &Replay, year: i32| crate::replay::firm_k(r, f, k(year));
+        assert!(size(r, 1904) == 0.0 && size(r, 1905) > 0.0 && size(r, 1906) > 0.0 && size(r, 1907) == 0.0, "{} {} {} {}", size(r, 1904), size(r, 1905), size(r, 1906), size(r, 1907));
+        // the simulation's works before it are dense, one row of the run's years each, as the year writes them
+        assert_eq!(r.firm_off[f - 1] as usize, (f - 1) * r.ny);
+        let copy = r.clone();
+        let to = p.taken_back();
+        p.play_years(2);
+        let r = p.r();
+        let now = stood(r);
+        assert_eq!(now.len(), 1);
+        assert_eq!(now[0].0, r.header.firms.len() - 1, "the university stands after the works the two years brought");
+        assert!(crate::replay::firm_k(r, now[0].0, k(1908)) > 0.0);
+        forget(p.r_mut(), &to);
+        assert_eq!(differ(p.r(), &copy), Vec::<&str>::new(), "the run forgotten to 1907 differs from the copy");
     }
 }

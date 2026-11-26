@@ -122,7 +122,7 @@ fn chips(
             chosen.version += 1;
             match sandbox::send_as(Tool::Idea, edit, &mut sb, &tl, &data, &live, &mut game) {
                 Ok(()) => {
-                    chosen.before = Some((ideas.town, c.0.clone(), idea.said.clone()));
+                    chosen.before = Some((ideas.town, c.0.clone(), card_words(&idea.said).to_string()));
                     println!("ideas: discovered here by hand; before, {}", idea.said);
                 }
                 Err(why) => toasts.say("orders_refused", why, "By hand", time.elapsed_secs()),
@@ -166,10 +166,18 @@ impl Look {
                 .iter()
                 .map(|g| (g.name.clone(), g.ideas.iter().map(|i| (i.name.clone(), chip_words(i), i.stands, learnt(i), Found::of(i))).collect()))
                 .collect(),
-            chosen: chosen.and_then(|n| ideas.all().find(|i| i.name == n)).map(|i| (i.name.clone(), i.said.clone())),
+            chosen: chosen.and_then(|n| ideas.all().find(|i| i.name == n)).map(|i| (i.name.clone(), card_words(&i.said).to_string())),
             back,
         }
     }
+}
+
+/// An idea's line as the card shows it: the core's line for an idea found
+/// nowhere ends by naming the second click the card asked for until 25
+/// November 2026 ("Discover it here finds it in Glenwick now, by hand."),
+/// which a click on the chip now is, and that sentence is left off.
+fn card_words(said: &str) -> &str {
+    said.split(" Discover it here").next().unwrap_or(said)
 }
 
 /// While the idea chosen in the town was found there by the last edit by
@@ -425,5 +433,8 @@ mod tests {
         let look = Look::of(&ideas(), Some("steel_rail"), None);
         assert_eq!(look.chosen, Some(("steel_rail".to_string(), "steel rail: ...".to_string())));
         assert_eq!(Look::of(&ideas(), Some("no_such_idea"), None).chosen, None);
+        // the core's line for an idea found nowhere names the second click the card no longer asks
+        assert_eq!(card_words("Hot-blast furnace: found nowhere yet. It waits on coal. Discover it here finds it in Glenwick now, by hand."), "Hot-blast furnace: found nowhere yet. It waits on coal.");
+        assert_eq!(card_words("Railways: known here since 1824."), "Railways: known here since 1824.");
     }
 }
