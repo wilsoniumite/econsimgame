@@ -616,15 +616,18 @@ pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>, beside: 
         text.push('\n');
     }
     let mut colony_missed = Vec::new();
-    if !colonies.is_empty() {
-        let (beside_arm, whence) = match (settled.first(), beside) {
+    for arm in &colonies {
+        // the settled island beside it: this sweep's setting of the same swept values (its label
+        // without the start's word), or its first; else the first of the sweep --beside names
+        let plain = arm.label.replacen("landfall, ", "", 1).replacen(", landfall", "", 1);
+        let (beside_arm, whence) = match (settled.iter().find(|s| s.label == plain).or(settled.first()), beside) {
             (Some(s), _) => (Some(*s), "this sweep".to_string()),
             (None, Some((b, dir))) => (b.iter().find(|t| !is_colony(t)), format!("the sweep in {}", dir.display())),
             (None, None) => (None, String::new()),
         };
-        let (colony_text, missed) = colony(&colonies, beside_arm, &whence);
+        let (colony_text, missed) = colony(&[*arm], beside_arm, &whence);
         text.push_str(&colony_text);
-        colony_missed = missed;
+        colony_missed.extend(missed);
     }
     let (growth_text, growth_missed) = growth(&now.iter().collect::<Vec<_>>());
     text.push_str(&growth_text);

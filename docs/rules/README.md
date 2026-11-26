@@ -377,9 +377,22 @@ that took longest, which is how the list was made.
 
 ```bash
 cargo run --release -p isostate-core -- sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game]
-    [--families N] [--end-year Y] [--set key=v1[,v2...]]... [--params FILE] [--content FILE]
-    [--jobs N] [--compare OTHER_DIR] [--standing] [--quiet]
+    [--families N] [--end-year Y] [--start settled|landfall|settled,landfall]
+    [--set key=v1[,v2...]]... [--params FILE] [--content FILE] [--jobs N] [--compare OTHER_DIR]
+    [--standing [--growth] [--colony] [--beside SETTLED_DIR]] [--quiet]
 ```
+
+**Either start, or both.** `--start landfall` sweeps the landfall start
+([landfall.md](landfall.md)) and `--start settled,landfall` both side by side,
+each start a setting of its own (or a block of settings, when `--set` sweeps
+something). The facts keep their names: the start is a column, named in the
+setting's label (`game rules, landfall, 6 families`; `landfall, hurdle=0.1`
+when swept), and in `facts.json` as `"start"` for each setting and run. The
+settled island's labels are as they always were, and a sweep written before 26
+November 2026, which says no start, is read as the settled island's. With
+`--compare` each setting is set against the earlier one of the same label, or
+failing that the first of the same start; where the two are of different
+starts a line above the table says so.
 
 Every seed is run against every combination of the `--set` values, a few runs
 at a time on their own threads (half the machine's cores unless `--jobs` says
@@ -662,6 +675,42 @@ values and do not fail the sweep, whatever the twelve do. `--growth` makes a
 miss fail it, for the stage that mends them; with `--growth` a run that ends
 before 2050, and so has no value, fails too. `--growth` needs `--standing`.
 
+**The two starts.** The twelve are taken among the settings of one start: a
+landfall setting is set against the first landfall setting of the sweep, or an
+earlier sweep's landfall setting, never against the settled island (one town in
+a corner stands nowhere near six towns in 1900, and that says nothing about a
+rule). A landfall setting also gets **the colony's check**: 24 facts of what
+history's colonies of settlement did, each with a band from history, read on
+the mean of the islands and printed with the islands inside the band
+([scorecard.md](scorecard.md), "The colony's check", has the table, its sources
+and what the first run showed). Some of its facts set the colony beside the
+settled island on the same island number (the wage in grain, the first
+railway, the people of 2050): the sweep's own settled setting where it has one
+(`--start settled,landfall`), or the settled sweep that `--beside DIR` names.
+The colony's check is the list of what the landfall start must still learn: a
+fact the runs miss stays as a miss. It is printed and does not fail the sweep;
+`--colony` makes a miss fail it, for the day it is held. The growth after 1900
+is printed for every setting of either start.
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --start settled,landfall --end-year 2050 --standing --out DIR --quiet
+```
+
+Sixteen runs to 2050, 178 seconds on the clock with sixteen at a time on 26
+November 2026 (the machine loaded).
+
+**Every check on both starts.** A rule is checked on both starts: the golden
+test holds both, and a stage runs its standing check on each, the settled
+island against main's sweep as above and landfall against main's landfall
+sweep:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --start landfall --compare MAIN_LANDFALL_SWEEP --out DIR --quiet
+```
+
+A stage with a switch of its own runs `--start settled,landfall --set
+STAGE.enabled=false,true --standing`, which takes the twelve within each start.
+
 
 ### The facts
 
@@ -738,6 +787,21 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --familie
 They are not in the repository (sweep output never is); the two commands make
 them again in a minute, and since the port is held in place by the golden test
 they come out the same, the seconds aside.
+
+The game's own references are main's sweeps, which the gate makes again each
+time a piece lands: the settled island's in
+`.claude/night/reports/merged-game-f6-m`, and, since 26 November 2026, the
+landfall start's beside it in `.claude/night/reports/merged-landfall-f6-m`,
+made the same way with `--start landfall`. Either is one command:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --out .claude/night/reports/merged-game-f6-m --quiet
+isostate-core sweep --seeds 1-8 --rules game --families 6 --start landfall --out .claude/night/reports/merged-landfall-f6-m --quiet
+```
+
+The landfall sweep's eight islands to 1900 took 68 seconds on the clock and 36
+seconds of processor a run, under load, on 26 November 2026, against 65 and 48
+for the settled island's beside it.
 
 ## What the port's baseline says
 
