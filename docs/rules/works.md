@@ -659,9 +659,11 @@ again.
   square metres wait, as in part I, for the stage that lays the old towns out
   anew.
 - **Processor time**: a run to 2050 takes 8 per cent more than main's and 10
-  per cent more than part I's, side by side. Not traced: there are 6 per cent
-  more works than with part I alone, and more sister works, since a full town
-  cell now sends a growing office to a sister.
+  per cent more than part I's, side by side. It is not the squares: their
+  year's allotting with the floor takes 1.7 seconds of a run of island 7 to
+  2050, 1.6 per cent (`examples/squares.rs --time`). Not traced further:
+  there are 6 per cent more works than with part I alone, and more sister
+  works, since a full town cell now sends a growing office to a sister.
 - **The hard spells after 2000 are a little deeper** (the worst year -0.44
   for -0.39 with part I alone and -0.37 on main), as are the towns' share on
   islands 3, 4 and 8 (0.04 under main's). Not traced.
