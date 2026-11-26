@@ -466,6 +466,209 @@ is at its own limit. For offices, builders and care it no longer binds at all.
 - **People** are 3 per cent fewer in 2050, on nearly every island, and the
   towns' share moves by up to 0.06 on one island. Not traced.
 
+## J. The works of a street live in the blocks of houses
+
+`works.in_blocks`, with `works.block_m2` (65) and `works.block_weight` (4):
+off under the port, on under the game's rules, and a switch of its own that
+acts only with part I. Built on 26 November 2026; its measure is
+`examples/works_blocks.rs` (below).
+
+**Why.** A shop, an office and a nurse's round do not stand on ground of
+their own beside the town: they are in it, on the street floor and above.
+Under parts B and I they were works like a foundry, each with its yard, and
+a town's middle came out on the squares as a slab of offices.
+
+**Which works.** By cause, from the content (`works::in_blocks`): a method
+whose site is floor, history's ground a hand at most `block_m2` (65 square
+metres, the content's "shops, offices and warehouses together"), and whose
+good is sold where it is made, to the households round it: a good they buy
+for a need that is not carted between towns or is carted at `block_weight`
+or more (services, at 4). By today's content that is the shops and trades,
+the emporium, the offices, care, and the builders (the masons, carpenters,
+bricklayers, contractors and steel-frame builders, whose work is on others'
+ground and whose own is an office and a yard in the street). Not the
+handloom (10 square metres a hand, but cloth is light to cart), the smithy,
+the brewhouse, the potbank, any mill or the gasworks. Neither half of the
+cause alone sorts them: by the ground alone a storeyed mill (30) and an
+engineering shop (50) would be in the blocks, by the good alone the gasworks.
+
+**In the books** only the methods by history's number (part I) let floor:
+offices, care and the steel-frame builders, none of which can be found before
+1901 (`works::floor_in_books`). The shops and trades, the emporium and the old
+builders stand from 1750 and keep their yards in the books at today's 2,000
+square metres a hand, with the rest of the methods of 1750 to 1900, so that
+nothing of the first era moves; the squares put them in the blocks already.
+On a town's cell such a works' ground is floor let in the cell's house blocks
+(`State::cell_floor`, by cell, as `cell_K_share` is for the yards; which one a
+works counts in is `State::works_floor`, settled once a year at the head of
+the review as its cell joins a town or leaves it). Off a town's cells it has
+a yard as any works.
+
+- **What it pays, and to whom.** As for a yard: the rent it bid when it was
+  founded and, for ground it takes later, what the cell's houses would pay
+  for it (1.25 times the cell's rent that year, never less than it pays now:
+  `ordered`), monthly, to the owner of the cell it stands on, the town's
+  landlords or a family. Nothing new is paid.
+- **What it does to a house's rent.** The floor let takes room from the
+  dwellings as a yard did: a cell's room is its clear room times its `dens`
+  times `towns::room_beside_works` of its yards and its floor together, and
+  the house rent that clears a town's room ([ground.md](ground.md)) rises as
+  that room falls. So the rent of a house is what it was under part I, to the
+  same ground; what changes is that the town's map no longer counts the
+  offices as a works district: `can_stand`, the mines' room, the site of a
+  new town and the record's `works` layer read the yards alone, and
+  `cell_fits` reads both.
+
+**No `cell_limit` but the ground.** A works of a method by history's number
+has no size limit on its cell (`max_K` is unbounded): it grows where it stands
+while its cell holds its ground and it pays for it (`cell_fits`, `ordered`).
+The old methods keep their 0.8 of a cell (1,600 hands of plant), since lifting
+it moves the first era: it binds before 1900. **Sister works** stay as they
+are, and are now opened only when a works' cell is full: its growth goes to a
+works of its concern in the town with room, or to a new one on a cell within
+two.
+
+**On the squares** a works of the blocks on a town's cell holds no square
+(`squares::floored`); each house block says how much of its floor is let and
+to what (`squares::Table::floor`), which the record's log carries
+([squares.md](squares.md), "Floor in the blocks"). Since the squares are read
+by no rule, they put the shops, the emporium and the old builders in the
+blocks from 1750, at the books' own ground for them (2,000 square metres a
+hand of plant), so that in 1900 a builders' or a shops' quarter is let whole.
+
+### What it does (islands 1 to 8, to 2050)
+
+`works_blocks --seeds 1-8` (the census of the squares and of the largest
+works) and a sweep of the three sets of rules side by side: main (part I
+off), part I alone, and part I with J (`isostate-core sweep --seeds 1-8
+--rules game --families 6 --end-year 2050 --set works.by_method=false,true
+--set works.in_blocks=false,true`; 32 runs, none failed; with part I off the
+two arms of J give every fact the same).
+
+The squares, the mean of islands 1 to 8, with J (and part I alone):
+
+| | 1900 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|
+| works' squares | 37,667 (45,827) | 56,138 (57,830) | 64,194 (64,539) | 60,574 (61,981) |
+| of them on a town's cells, shops, offices, care and builders | 0 (8,179) | 0 (2,182) | 0 (576) | 0 (667) |
+| house blocks | 69,931 (62,441) | 89,213 (87,708) | 72,948 (70,267) | 68,285 (65,401) |
+| of them with floor let | 8,159 | 2,214 | 656 | 738 |
+| eighths let to shops / offices / care / builders | 28,620 / 0 / 0 / 35,658 | 299 / 1,243 / 858 / 14,760 | 89 / 1,702 / 2,131 / 994 | 0 / 1,724 / 2,713 / 1,137 |
+| works over houses | 0.54 (0.73) | 0.63 (0.66) | 0.88 (0.92) | 0.89 (0.95) |
+
+Island by island in 2050 the works over the houses are 0.80, 0.94, 0.77,
+0.92, 0.73, 0.90, 0.97 and 1.14 (part I alone: 0.86, 0.85, 0.90, 1.04,
+0.82, 0.99, 1.05, 1.15). By 2050 the shops and trades are gone (six works on
+eight islands: the offices took the services' trade), so what is let is
+offices', care's and the builders' floor, 697 blocks' worth on the mean
+island (5,574 eighths), a twelfth of the floor let in 1900, when the books'
+2,000 square metres a hand of the shops and the old builders let 8,000.
+
+**The standing check** (`--set works.in_blocks=false,true --standing`): 12 of
+12 inside, every one the same number either way (nothing of the first era
+moves), and the growth asks met: the linked wage 1.41 per cent a year from
+1900 to 1970 (1.42 with part I alone), 2050 over 1970 1.17 (1.20), the hands
+on the land 0.121 less in 2050 than in 1900 (0.126).
+
+**From landfall** (island 7, `works_blocks --seeds 7 --start landfall`): no
+works' square on a town's cells is a shop's, an office's, care's or a
+builder's in any year; in 2050 101,805 works' squares, 120,553 house blocks
+(1,049 of them with floor let: 3,799 eighths to offices, 1,937 to care, 2,240
+to builders), 4,396 park, 1,512 pits, 475 derelict, 28,080 open; the largest
+works two offices of Garside of 23,282 and 23,273 clerks, founded in 1973
+and 1975, 0.23 of the town's works' hands.
+
+The rest of the island, the mean of islands 1 to 8, main / part I / part I
+and J:
+
+- **What a wage buys** (the linked wage over 1750's): 1966 to 1975 13.6 /
+  16.2 / 16.0, higher than main's on all eight; 2041 to 2050 15.8 / 19.4 /
+  18.7, higher on all eight.
+- **Towns' share of people** in 2050: 0.582 / 0.590 / 0.573; island by island
+  +0.04 to -0.04 against main.
+- **People** in 2050: 1.263 / 1.225 / 1.226 million.
+- **Hands in care** in 2050: 0.165 / 0.157 / 0.158 of all at work, in
+  history's band (0.15 to 0.22) on the mean; four islands of eight are a
+  little under it (0.139 to 0.146), as with part I alone.
+- **Hard spells**: the real wage's worst year after 1800 is -0.37 / -0.39 /
+  -0.44 (every arm's worst years fall after 2000); famine years 0.4 / 0.6 /
+  0.4 a run.
+- **The works**: 2,304 / 1,471 / 1,559 standing in 2050; the works' share of
+  income 0.158 / 0.141 / 0.158.
+- **Processor time** of a run to 2050, side by side: 186 / 183 / 201 seconds.
+
+### The largest works, and what stops an office
+
+In 2050, islands 1 to 8 (hands at work in December; `works_blocks`):
+
+| | works | an island | median | the five largest |
+|---|---|---|---|---|
+| offices | 266 | 33 | 793 | 33,083, 32,595, 32,108, 31,762, 29,682 |
+| care | 2,735 | 342 | 83 | 3,150, 3,147, 3,037, 1,915, 1,757 |
+| builders | 718 | 90 | 5 | 9,282, 7,457, 5,364, 5,198, 5,143 |
+| shops and trades | 6 | 1 | 80 | 188, 123, 116, 80 |
+
+With part I alone the five largest offices had 37,732 to 45,249 hands. Every
+large town's largest employer is an office, of 0.13 to 0.27 of its works'
+hands and 0.06 to 0.19 of its people in work; the largest share of any town
+of 2,000 works' hands or more is 0.29 (a builder of 611 in Carstrand, island
+8). No town has one employer with a third of its hands.
+
+**Why the largest come in pairs.** The near-equal offices are two works of
+one town on one cell, founded by investors a year or two apart, not sisters
+(island 2's Sunford: 4,973.6 and 4,973.4 clerks, the same 9,056.1 of capacity
+on order). Each year a works loses 4 per cent of its plant (`depreciation`)
+and, while it earns over the hurdle and works its plant at over 0.65, asks
+for up to half its plant again; the year's room (part D) is shared out best
+earner first, no one works taking more than `room_share` of it. The first two
+in the queue both ask for more than their third and both get exactly a
+third: K' = 0.96 K + a, with the same a, which comes to one size, a / 0.04,
+whatever each began at (the gap shrinks by 4 per cent a year; island 4's
+pair had 1,784 of capacity between them in 1920 and 9 in 2050). The third in
+line gets what is left, a little less. Care's works do it too. It is an
+artefact of an equal ration against a proportional wear, not of anything an
+office does.
+
+**What stops an office**, in the rules as they are: the year's room, a share
+of its town's trade in services of which it takes at most a third, against
+its wear; and growth only while its return clears the hurdle and it works
+its plant at over 0.65 (the largest offices' plant runs six or seven times
+their hands at work, by productivity and office computing). The cost of its
+floor does not bind: rent is 1.5 per cent of the works' sales. Neither did
+`cell_limit` (320,000 hands of plant for an office). So an office is held to
+a fixed share of its town's custom, and a town that buys more services grows
+its two first offices in step without end.
+
+**What a one-employer town would need**, and what I would do: nothing yet.
+No town has a third of its hands in one works, and the cap that holds the
+offices is a share of the town's own trade. What I would change is the
+ration, not add a limit: share the year's room in proportion to each works'
+asking (or to its plant) instead of a third to each in the queue, so that
+two works of one town stop converging to one size and the order of the queue
+stops deciding the island's largest works. That is a change to part D, which
+acts before 1900, and so a piece of its own with the first era anchored
+again.
+
+### What worries me in part J
+
+- **The old methods' floor is the books' 2,000 square metres a hand.** On the
+  squares the shops, the emporium and the old builders are in the blocks from
+  1750, but at the books' ground for them, so a builders' quarter of 1900 or
+  1950 is a run of blocks let whole (36,000 eighths, 4,500 blocks, on the
+  mean island in 1900; 110,000 on island 2 in 1950). History's 15 and 30
+  square metres wait, as in part I, for the stage that lays the old towns out
+  anew.
+- **Processor time**: a run to 2050 takes 8 per cent more than main's and 10
+  per cent more than part I's, side by side. Not traced: there are 6 per cent
+  more works than with part I alone, and more sister works, since a full town
+  cell now sends a growing office to a sister.
+- **The hard spells after 2000 are a little deeper** (the worst year -0.44
+  for -0.39 with part I alone and -0.37 on main), as are the towns' share on
+  islands 3, 4 and 8 (0.04 under main's). Not traced.
+- **Care's hands** stand under history's band on four islands of eight.
+- **A record of layout 1** (before 26 November) keeps its squares in a form
+  the viewer no longer reads; it opens without them and says so.
+
 ## What was tried and left out
 
 - **Amalgamating small works, stopping economies of scale at four sizes,

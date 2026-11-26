@@ -1714,7 +1714,11 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
             // (where the floor wanted more blocks than the ground holds, every
             // block of the ground is built and the floor cut to fit, to the eighth)
             let cut = kinds[2] == town - n_park && kinds[2] > n_houses;
-            if kinds[2] != n_houses && !cut || fills && (fill * dry as f64 - n_houses as f64).abs() > 1.0 && n_houses + n_park < town {
+            // (the blocks are counted from the floor wanted, which may be an
+            // eighth or two more than the floor let where the shops' street
+            // floor is spread thin: a block more)
+            let spread = let_out > 0 && kinds[2] == n_houses + 1;
+            if kinds[2] != n_houses && !cut && !spread || fills && (fill * dry as f64 - n_houses as f64).abs() > 1.0 && n_houses + n_park < town {
                 return Err(format!("{year}: town cell {c} has {} squares of houses for {fill:.3} of {dry} dry ({n_houses} by the floor of {let_out} eighths let, {town} of town ground, {n_park} park)", kinds[2]));
             }
             if kinds[3] != n_park || (park * dry as f64 - n_park as f64).abs() > 1.0 {

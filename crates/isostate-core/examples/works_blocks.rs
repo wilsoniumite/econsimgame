@@ -50,7 +50,7 @@ fn parse(args: &[String]) -> Opts {
         i += 2;
     }
     if landfall {
-        o.P = o.P.with_json_overrides(r#"{"landfall":{"enabled":true}}"#).expect("the landfall start");
+        isostate_core::landfall::set_start(&mut o.P, "landfall").expect("the landfall start");
     }
     for s in &sets {
         o.P = o.P.with_json_overrides(s).expect("--set takes JSON, as {\"works\":{\"in_blocks\":false}}");
