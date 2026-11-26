@@ -514,6 +514,8 @@ macro_rules! state_parts {
                 who_works: Default::default(),
                 // haulage (docs/rules/haulage.md): carried across as the roads are
                 hl: Default::default(),
+                // highways (docs/rules/highways.md): carried across as the roads are
+                hw: Default::default(),
             }
         }
 
@@ -647,6 +649,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.tf = carry.tf.clone();
     st.who_works = carry.who_works.clone();
     st.hl = carry.hl.clone();
+    st.hw = carry.hw.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

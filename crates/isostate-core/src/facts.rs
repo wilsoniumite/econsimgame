@@ -1245,6 +1245,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::traffic::facts(r) {
         b.num(name, kind, v);
     }
+    // highways (docs/rules/highways.md): trunk roads, bypasses, through traffic and the treasury's works
+    for (name, kind, v) in crate::highways::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();

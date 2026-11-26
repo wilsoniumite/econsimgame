@@ -413,6 +413,11 @@ pub struct Params {
     /// railway's (not in the Python; see docs/rules/haulage.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub haulage: crate::haulage::HaulageParams,
+    /// From 1909 the treasury betters the ways between the large towns into
+    /// trunk roads, and from 1920 bypasses a town, or widens its high street,
+    /// where the through traffic pays (not in the Python; see docs/rules/highways.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub highways: crate::highways::HighwayParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -641,6 +646,7 @@ pub fn default_params() -> Params {
         lorry: crate::lorry::LorryParams::default(),
         pace: crate::pace::PaceParams::default(),
         haulage: crate::haulage::HaulageParams::default(),
+        highways: crate::highways::HighwayParams::default(),
     }
 }
 

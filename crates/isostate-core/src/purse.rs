@@ -559,6 +559,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     // (and the university's staff and rooms)
     let uni_year = sums.university + st.purse.uni.sum_rooms;
     let spend = sums.schools + sums.pensions + uni_year;
+    // (and the state's road-making, docs/rules/highways.md; nothing while it is off)
+    let works_year = crate::highways::paid_in(st, year);
+    let spend = if works_year != 0.0 { spend + works_year } else { spend };
     let halves = |key: &dyn Fn(usize) -> f64| -> (f64, f64) {
         // towns ranked by `key`, split where half the people are reached
         let mut ts: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.pop[t] > 0.0 && t < sums.town_before.len()).collect();
@@ -721,6 +724,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     // ---- the seat, and the university (docs/rules/state.md, "The university"):
     // the year put away, its foundings, the year's students moved, next year's staff
     crate::university::choose_seat(st, year);
+    // highways (docs/rules/highways.md): what the works in hand will want next year
+    let works_next = crate::highways::spend_next(st, P);
     let mut uni_news = Vec::new();
     let uc = crate::university::close_year(st, C, P, year, &mut uni_news);
     let p = &mut st.purse;
@@ -751,6 +756,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     let spend_next = (teach_dec + pens_dec) * scale * (1.0 + g);
     // the university's rooms, ordered at December's prices
     let spend_next = if uc.rooms_next != 0.0 { spend_next + uc.rooms_next * (1.0 + g) } else { spend_next };
+    // and the state's road-making in hand, at December's prices
+    let spend_next = if works_next != 0.0 { spend_next + works_next * (1.0 + g) } else { spend_next };
     let base_next = base_now * (1.0 + g) + teach_next;
     let keep = sp.reserve_months / 12.0;
     let (mut rate, mut cut) = (0.0, 1.0);
