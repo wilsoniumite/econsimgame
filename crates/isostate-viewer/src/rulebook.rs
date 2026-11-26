@@ -49,6 +49,28 @@ pub struct RulesParams<'w> {
     pub sandbox: Option<Res<'w, crate::sandbox::Sandbox>>,
     /// the rules as the game's thread last told them
     pub known: Option<Res<'w, Known>>,
+    /// what waits and what could be taken back (`Standing::last`): a rule set by the last edit by
+    /// hand has Take it back on its row (take_back.rs)
+    pub live: Option<Res<'w, Live>>,
+}
+
+/// The name a rule was set by the last edit by hand, while it can be taken
+/// back, and the month the island would go back to.
+fn set_last(rules: &RulesParams) -> Option<(String, String)> {
+    let s = &rules.live.as_ref()?.standing;
+    match crate::take_back::last_edit(s)? {
+        Edit::Rule { name, .. } => Some((name.clone(), crate::take_back::date_of(s.back?))),
+        _ => None,
+    }
+}
+
+/// Take it back, under the row of the name the last edit by hand set.
+fn back_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, name: &str, undo: Option<&(String, String)>) {
+    let Some((_, date)) = undo.filter(|u| u.0 == name) else { return };
+    p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), flex_wrap: FlexWrap::Wrap, padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), ..default() }).with_children(|row| {
+        chip_button(row, f, crate::take_back::CARD_CHIP, false, HAND_INK, crate::take_back::TakeBackChip);
+        row.spawn(text(f, &format!("puts the island back to {date}, before it was set by hand"), 11.5, MUTED));
+    });
 }
 
 /// The rules as the game's thread last told them, the ideas not yet found
@@ -336,7 +358,7 @@ fn chips(p: &mut ChildSpawnerCommands, f: &Handle<Font>, e: &Entry) -> bool {
 
 /// One name's row: the name, a dot and the game's figure where it differs,
 /// then its chips; or its value in muted words where it offers nothing.
-fn name_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, e: &Entry, label: &str) {
+fn name_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, e: &Entry, label: &str, undo: Option<&(String, String)>) {
     p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), ..default() }).with_children(|col| {
         let fixed = e.fixed.is_some();
         col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), flex_wrap: FlexWrap::Wrap, ..default() }).with_children(|line| {
@@ -354,6 +376,7 @@ fn name_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, e: &Entry, label: &s
             };
             col.spawn(text(f, &said, 12.0, MUTED));
         }
+        back_row(col, f, &e.name, undo);
     });
 }
 
@@ -381,9 +404,10 @@ pub fn dial_chips(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesP
         return;
     }
     let Some(known) = rules.known.as_ref().filter(|k| !k.entries().is_empty()) else { return };
+    let undo = set_last(rules);
     for name in ["pay.bend", "pay.follow_years"] {
         if let Some(e) = known.entry(name) {
-            name_row(p, f, e, plain(name).unwrap_or(name));
+            name_row(p, f, e, plain(name).unwrap_or(name), undo.as_ref());
         }
     }
 }
@@ -412,10 +436,11 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesParams
         return;
     };
     p.spawn(text(f, ABOUT, 12.5, MUTED));
+    let undo = set_last(rules);
     heading(p, f, "Most asked");
     for name in PINNED {
         if let Some(e) = known.entry(name) {
-            name_row(p, f, e, plain(name).unwrap_or(name));
+            name_row(p, f, e, plain(name).unwrap_or(name), undo.as_ref());
         }
     }
     heading(p, f, "Every rule");
@@ -451,10 +476,13 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, rules: &RulesParams
                     }
                 }
             });
+            if let Some(s) = switch {
+                back_row(block, f, &s.name, undo.as_ref());
+            }
             if open {
                 for e in &names {
                     let short = e.name.strip_prefix(&format!("{rule}.")).unwrap_or(&e.name);
-                    name_row(block, f, e, plain(&e.name).unwrap_or(short));
+                    name_row(block, f, e, plain(&e.name).unwrap_or(short), undo.as_ref());
                 }
             }
         });

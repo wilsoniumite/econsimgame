@@ -47,6 +47,7 @@ mod saves;
 mod scatter;
 mod script;
 mod shots;
+mod take_back;
 mod terrain;
 mod town_ideas;
 mod traffic;
@@ -1084,6 +1085,7 @@ fn main() {
         .add_plugins(inspector::plugin)
         .add_plugins(town_ideas::plugin)
         .add_plugins(rulebook::plugin)
+        .add_plugins(take_back::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(traffic::plugin)
         .add_plugins(cursor::plugin)
@@ -2338,6 +2340,13 @@ fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: 
         }
     }
     if let Some((_, f)) = best {
+        // a university stands as a works but is its town's, whose card tells of it (and in a live game
+        // its place in the list of works moves as the simulation's works come before it)
+        if replay::is_university(r, f) {
+            if let Some(t) = usize::try_from(r.header.firms[f].town).ok().filter(|&t| t < r.header.towns.len()) {
+                return Some(Pick::Town(t));
+            }
+        }
         return Some(Pick::Firm(f));
     }
     for t in 0..r.n_towns.min(r.header.towns.len()) {

@@ -92,6 +92,10 @@ pub fn forget(r: &mut Replay, to: &TakenBack) {
         }
     }
 
+    // the universities, which stood after the works (and were cut with them above), stand again as
+    // they stood then
+    crate::replay::stand_universities(r, &to.unis, kept);
+
     // towns: the slots are the run's, but the names are sent as each is founded
     r.header.towns.truncate(to.towns);
 
@@ -245,10 +249,15 @@ pub(crate) fn taken_back(
     let gone = (r.filled.saturating_sub(to.filled), r.header.firms.len().saturating_sub(to.firms), r.header.towns.len().saturating_sub(to.towns), r.header.events.len().saturating_sub(to.news));
     forget(r, &to);
     let cut = t0.elapsed().as_secs_f32() * 1e3;
-    // the works' ground: the works forgotten give theirs up
-    std::sync::Arc::make_mut(slots).forget(to.firms);
+    // the works' ground: the works forgotten give theirs up, and the universities standing after the
+    // works are found theirs again
+    let slots = std::sync::Arc::make_mut(slots);
+    slots.forget(to.firms);
     // and the first year of each road, which the town's streets are laid by, is gone through again
     g.land.closes.forget_roads_from(to.filled);
+    if crate::replay::universities_standing(r) > 0 {
+        crate::scatter::place_new_firms(r, g, slots);
+    }
     let latest = to.filled.clamp(1, r.ny) - 1;
     let r = &*r;
 

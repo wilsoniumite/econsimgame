@@ -1063,22 +1063,51 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         rent_scale,
         holds,
     };
-    stand_universities(&mut r, &unis);
+    let ny = r.ny;
+    stand_universities(&mut r, &unis, ny);
     Ok(r)
 }
 
-/// A university as the record's header has it (the core's `university::header`).
-#[derive(Deserialize, Clone, Debug)]
-struct UniRecord {
-    town: i32,
-    cell: usize,
-    founded: i32,
+/// A university as the record's header has it (the core's `university::header`),
+/// or as a live game's thread reads it off the simulation (`live::universities`).
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct UniRecord {
+    pub town: i32,
+    pub cell: usize,
+    pub founded: i32,
     #[serde(default)]
-    closed: Option<i32>,
-    name: String,
+    pub closed: Option<i32>,
+    pub name: String,
     /// its students at each year's end: (year, students)
     #[serde(default)]
-    students: Vec<(i32, f32)>,
+    pub students: Vec<(i32, f32)>,
+}
+
+/// Whether works `f` is a university standing as a works (`stand_universities`).
+pub fn is_university(r: &Replay, f: usize) -> bool {
+    r.header.firms.get(f).is_some_and(|x| x.owner.is_none() && x.reason.is_none() && x.name.starts_with("The University of") && r.header.methods.get(x.method).is_some_and(|m| m.name == "offices"))
+}
+
+/// How many universities stand at the end of the run's works.
+pub fn universities_standing(r: &Replay) -> usize {
+    (0..r.header.firms.len()).rev().take_while(|&f| is_university(r, f)).count()
+}
+
+/// Take the universities off the end of a live game's works, before the
+/// year's new works are added after the simulation's own (`live::apply_year`
+/// wants each new works at the place the simulation gave it), to be stood
+/// again after them (`stand_universities`).
+pub fn sit_universities(r: &mut Replay) {
+    let n = r.header.firms.len() - universities_standing(r);
+    if n == r.header.firms.len() {
+        return;
+    }
+    let off = r.firm_off.get(n).map_or(r.firm_k.len(), |&o| o.max(0) as usize);
+    r.header.firms.truncate(n);
+    r.firm_first.truncate(n);
+    r.firm_len.truncate(n);
+    r.firm_off.truncate(n);
+    r.firm_k.truncate(off);
 }
 
 /// Students to a standard works' size: a university of 400 is drawn as one
@@ -1091,13 +1120,18 @@ const STUDENTS_A_SIZE: f32 = 400.0;
 /// `works::site` plans a kind it does not know), on its town's centre square,
 /// its size each year by its students. A run with no offices among its methods
 /// (the port's content) has no university to stand. A live game's works are
-/// the simulation's own slots, and a university is not drawn there yet.
-fn stand_universities(r: &mut Replay, unis: &[UniRecord]) {
+/// the simulation's own slots, so there they stand after the simulation's
+/// works and are sat down and stood again as each year comes
+/// (`sit_universities`), with sizes only for the years played (`upto`, the
+/// years filled; a recorded run's are all of them), so that one founded at a
+/// year's turn stands from the end of the year it is founded in, as in a
+/// recorded run.
+pub fn stand_universities(r: &mut Replay, unis: &[UniRecord], upto: usize) {
     let Some(m) = r.header.methods.iter().position(|x| x.name == "offices") else { return };
     let k0 = r.header.methods[m].k0.max(1e-6);
     for u in unis {
         let first = (u.founded - r.y0).max(0) as usize;
-        let last = u.closed.map_or(r.ny, |y| ((y - r.y0).max(0) as usize).min(r.ny));
+        let last = u.closed.map_or(r.ny, |y| ((y - r.y0).max(0) as usize).min(r.ny)).min(upto);
         if first >= last {
             continue;
         }
