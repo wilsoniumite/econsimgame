@@ -49,6 +49,7 @@ mod ranges;
 mod rails;
 mod replay;
 mod rivers;
+mod road_course;
 mod rulebook;
 mod sandbox;
 mod saves;

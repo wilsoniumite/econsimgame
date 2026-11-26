@@ -247,29 +247,28 @@ pub struct RoadCheck {
 pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck {
     let mut c = RoadCheck { off_surface: (0.0, Vec2::ZERO), off_ribbon: (f32::MIN, Vec2::ZERO), ..Default::default() };
     let waters = network::Waters::new(r, g);
-    let height_along = network::height_along;
     let segs = network::drawn_links(r, &g.worn, k);
     let v2 = |p: (f32, f32)| Vec2::new(p.0, p.1);
-    // every link: what carries it over water, and where water lies under it with nothing to carry it
+    // every link: what carries it over water, and where water lies under it with nothing to carry it,
+    // read along its course as it is drawn (`network::course`): a curve, or round a meander or a lake
     #[allow(clippy::type_complexity)]
-    let mut main: Vec<(Vec2, Vec2, Vec<Vec3>, Vec<isostate_gen::bridge::RoadBridge>, Vec<(f32, f32)>)> = Vec::new();
+    let mut main: Vec<(Vec<Vec2>, Vec<Vec3>, Vec<isostate_gen::bridge::RoadBridge>, Vec<(Vec2, Vec2, f32)>)> = Vec::new();
     for &(a, b, lv) in &segs {
-        let (pa, pb) = (v2(cen[a]), v2(cen[b]));
-        // (this check reads every road as the straight line between its middles: a way that
-        // goes round a meander, where the run keeps its crossings, is checked as if straight)
-        let bridges = network::road_bridges(g, pa, pb, lv == 3, r.crossed(a, b, k), false, |_| isostate_gen::houses::Detail::Play);
-        let runs = network::causeway_runs(g, pa, pb);
-        let ribbon = network::road_line(g, cen[a], cen[b]);
+        let way = network::course(r, g, cen, a, b, k);
+        let bridges = network::bridges_of(&way, lv == 3, r.crossed(a, b, k), |_| isostate_gen::houses::Detail::Play);
+        let runs = network::causeways(g, &way);
+        let ribbon = network::way_line(g, &way);
         // the foot of a ramp that stands above the road it comes down to, where the river's level is
         // above the bank's ground: the roadway ends in a step there, which a cart goes down
         for br in &bridges {
             for tb in [-br.ramp(), 1.0 + br.ramp()] {
-                let tl = (br.point(tb) - pa).dot(pb - pa) / pa.distance_squared(pb).max(1e-9);
-                let step = br.roadway_at(tb, &|x, z| world::height_at(g, x, z)).unwrap_or(0.0) - height_along(&ribbon, tl.clamp(0.0, 1.0));
-                if (0.0..=1.0).contains(&tl) && step > LIFT {
+                let foot = br.point(tb);
+                let (d, _) = nearest_on_line(&way.pts, foot);
+                let step = br.roadway_at(tb, &|x, z| world::height_at(g, x, z)).unwrap_or(0.0) - ribbon_at(&ribbon, foot);
+                if d < 0.01 && step > LIFT {
                     c.ramp_steps += 1;
                     if step > c.ramp_step.0 {
-                        c.ramp_step = (step, br.point(tb));
+                        c.ramp_step = (step, foot);
                     }
                 }
             }
@@ -277,31 +276,34 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
         c.links += 1;
         c.bridges += bridges.len();
         c.causeways += runs.len();
-        let len = pa.distance(pb);
-        let n = ((len / 0.005).ceil() as usize).max(1);
         let (mut wet_here, mut drowned_here) = (false, false);
         let mut stretch: Option<(Vec2, bool, f32, f32)> = None;
-        for i in 0..=n {
-            let t = i as f32 / n as f32;
-            let p = pa + (pb - pa) * t;
-            let carried = runs.iter().any(|&(t0, t1)| (t0..=t1).contains(&t)) || bridges.iter().any(|br| (-br.ramp()..=1.0 + br.ramp()).contains(&br.t_of(p)));
-            let water = if carried { None } else { waters.at(g, p) };
-            if let Some((top, sea)) = water {
-                let step = len / n as f32;
-                if sea { c.wet_sea += step } else { c.wet_river += step }
-                let under = if height_along(&ribbon, t) < top { step } else { 0.0 };
-                c.drowned += under;
-                drowned_here |= under > 0.0;
-                wet_here = true;
-                match &mut stretch {
-                    Some(s) => {
-                        s.2 += step;
-                        s.3 += under;
+        for w in way.pts.windows(2) {
+            let (pa, pb) = (w[0], w[1]);
+            let len = pa.distance(pb);
+            let n = ((len / 0.005).ceil() as usize).max(1);
+            for i in 0..=n {
+                let t = i as f32 / n as f32;
+                let p = pa + (pb - pa) * t;
+                let carried = on_causeway(&runs, p).is_some() || bridges.iter().any(|br| (-br.ramp()..=1.0 + br.ramp()).contains(&br.t_of(p)));
+                let water = if carried { None } else { waters.at(g, p) };
+                if let Some((top, sea)) = water {
+                    let step = len / n as f32;
+                    if sea { c.wet_sea += step } else { c.wet_river += step }
+                    let under = if ribbon_at(&ribbon, p) < top { step } else { 0.0 };
+                    c.drowned += under;
+                    drowned_here |= under > 0.0;
+                    wet_here = true;
+                    match &mut stretch {
+                        Some(s) => {
+                            s.2 += step;
+                            s.3 += under;
+                        }
+                        None => stretch = Some((p, sea, step, under)),
                     }
-                    None => stretch = Some((p, sea, step, under)),
+                } else if let Some(s) = stretch.take() {
+                    c.wet.push((s.0, s.1, s.2, s.3, lv == 3));
                 }
-            } else if let Some(s) = stretch.take() {
-                c.wet.push((s.0, s.1, s.2, s.3, lv == 3));
             }
         }
         if let Some(s) = stretch.take() {
@@ -314,7 +316,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             c.main_bridges += bridges.len();
             c.wet_main_links += wet_here as usize;
             c.drowned_main_links += drowned_here as usize;
-            main.push((pa, pb, ribbon, bridges, runs));
+            main.push((way.pts, ribbon, bridges, runs));
         }
     }
     // the main roads' meeting places that lie under a bridge's roadway, which carts keep away from
@@ -328,30 +330,31 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     // every cart's path, both ways, every 0.005 cells
     let routes = trains::road_routes(r, g, cen, k, &mut trains::RoadMemo::new(r, g));
     c.rounds = routes.len();
-    let mut crossed = vec![false; main.iter().map(|m| m.3.len()).sum()];
-    // the surface a cart should ride at `t` along a main link, worked out here afresh and not
-    // read from `network::driven`, which the carts' paths are made from: the highest of the
-    // ribbon, the roadway of each of its bridges and the top of a causeway
+    let mut crossed = vec![false; main.iter().map(|m| m.2.len()).sum()];
+    // the surface a cart should ride at a point of a main link's middle line, worked out here afresh
+    // and not read from `network::driven_on`, which the carts' paths are made from: the highest of
+    // the ribbon, the roadway of each of its bridges and the top of a causeway
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let surface_at = |li: usize, t: f32| -> f32 {
-        let (a, b, ribbon, bridges, runs) = &main[li];
-        let p = *a + (*b - *a) * t;
-        let mut h = height_along(ribbon, t);
+    let surface_at = |li: usize, p: Vec2| -> f32 {
+        let (_, ribbon, bridges, runs) = &main[li];
+        let mut h = ribbon_at(ribbon, p);
         for br in bridges {
             h = h.max(br.roadway_at(br.t_of(p), &height).unwrap_or(h));
         }
-        if runs.iter().any(|&(t0, t1)| (t0..=t1).contains(&t)) {
-            h = h.max(network::CAUSEWAY_TOP);
+        if let Some(top) = on_causeway(runs, p) {
+            h = h.max(top);
         }
         h
     };
-    // the main road nearest a point: the link whose middle line it is nearest, how far, and how far along
-    // (looked for among the links that pass within 0.1 of the point's cell, which hold the
-    // nearest wherever it is that near, as it always is for a cart; among all of them elsewhere)
+    // the main road nearest a point: the link whose middle line it is nearest, how far, the point of
+    // the line nearest it and the line's direction there (looked for among the links that pass within
+    // 0.1 of the point's cell, which hold the nearest wherever it is that near, as it always is for a
+    // cart; among all of them elsewhere)
     let cell = |q: Vec2| (q.y.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + q.x.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
     let mut near_cell: Vec<Vec<usize>> = vec![Vec::new(); r.n];
-    for (li, (a, b, ..)) in main.iter().enumerate() {
-        let (lo, hi) = (a.min(*b) - Vec2::splat(0.1), a.max(*b) + Vec2::splat(0.1));
+    for (li, (pts, ..)) in main.iter().enumerate() {
+        let (lo, hi) = pts.iter().fold((Vec2::splat(f32::MAX), Vec2::splat(f32::MIN)), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+        let (lo, hi) = (lo - Vec2::splat(0.1), hi + Vec2::splat(0.1));
         for y in lo.y.floor().max(0.0) as usize..=(hi.y.floor().max(0.0) as usize).min(r.h - 1) {
             for x in lo.x.floor().max(0.0) as usize..=(hi.x.floor().max(0.0) as usize).min(r.w - 1) {
                 near_cell[y * r.w + x].push(li);
@@ -359,16 +362,13 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
         }
     }
     let all: Vec<usize> = (0..main.len()).collect();
-    let nearest = |q: Vec2| -> Option<(f32, usize, f32)> {
-        let mut near: Option<(f32, usize, f32)> = None;
+    let nearest = |q: Vec2| -> Option<(f32, usize, Vec2, Vec2)> {
+        let mut near: Option<(f32, usize, Vec2, Vec2)> = None;
         let here = &near_cell[cell(q)];
         for &li in if here.is_empty() { &all } else { here } {
-            let (a, b) = (&main[li].0, &main[li].1);
-            let ab = *b - *a;
-            let t = ((q - *a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
-            let d = q.distance(*a + ab * t);
+            let (d, (at, dir)) = nearest_on_line(&main[li].0, q);
             if near.is_none_or(|n| d < n.0) {
-                near = Some((d, li, t));
+                near = Some((d, li, at, dir));
             }
         }
         near
@@ -381,22 +381,21 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             // the road the cart is on, from its path's own point on the middle line; the
             // ribbon and the roadway are level from side to side, so this is its height to the side too
             let q0 = Vec2::new(pos.x, pos.z);
-            let Some((d0, li, t)) = nearest(q0) else { continue };
+            let Some((d0, li, at0, dir0)) = nearest(q0) else { continue };
             // (where the surface steps, at the foot of a ramp that ends above the road, a cart
             // going down the step is between the heights on either side of it)
-            let off_on = |lj: usize, tj: f32| -> f32 {
-                let around = [surface_at(lj, (tj - 3e-4).max(0.0)), surface_at(lj, tj), surface_at(lj, (tj + 3e-4).min(1.0))];
+            let off_on = |lj: usize, at: Vec2, dir: Vec2| -> f32 {
+                let around = [surface_at(lj, at - dir * 6e-4), surface_at(lj, at), surface_at(lj, at + dir * 6e-4)];
                 let (lo, hi) = (around.into_iter().reduce(f32::min).unwrap_or(0.0), around.into_iter().reduce(f32::max).unwrap_or(0.0));
                 (lo - (pos.y - LIFT)).max(pos.y - LIFT - hi).max(0.0)
             };
             // where roads meet, every road that meets there is as near as the nearest, and
             // their ribbons may end a little apart in height: the cart rides the one it is on
-            let mut off = off_on(li, t);
+            let mut off = off_on(li, at0, dir0);
             for &lj in &near_cell[cell(q0)] {
-                let (a, b) = (main[lj].0, main[lj].1);
-                let tj = ((q0 - a).dot(b - a) / (b - a).length_squared().max(1e-9)).clamp(0.0, 1.0);
-                if lj != li && q0.distance(a + (b - a) * tj) <= d0 + 1e-6 {
-                    off = off.min(off_on(lj, tj));
+                let (dj, (atj, dirj)) = nearest_on_line(&main[lj].0, q0);
+                if lj != li && dj <= d0 + 1e-6 {
+                    off = off.min(off_on(lj, atj, dirj));
                 }
             }
             if off > c.off_surface.0 {
@@ -406,7 +405,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
                 let at = pos + side(yaw, dir);
                 let q = Vec2::new(at.x, at.z);
                 // the ribbon nearest where the cart stands, to one side of the middle line
-                let Some((d, _, _)) = nearest(q) else { continue };
+                let Some((d, ..)) = nearest(q) else { continue };
                 let off = d - network::road_width(3) * 0.5;
                 if off > c.off_ribbon.0 {
                     c.off_ribbon = (off, q);
@@ -414,10 +413,10 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
                 // the cart as drawn: its wheels and hooves on the surface under each of them
                 let (drawn, rot) = pose(p, p.len * i as f32 / n as f32, dir);
                 let mut highest = f32::MIN;
-                let on_bridge = main[li].3.iter().any(|br| br.holds(q));
+                let on_bridge = main[li].2.iter().any(|br| br.holds(q));
                 for (x, z) in FEET {
                     let f = drawn + rot * Vec3::new(x, 0.0, z);
-                    let Some((_, fl, ft)) = nearest(Vec2::new(f.x, f.z)) else { continue };
+                    let Some((_, fl, ft, _)) = nearest(Vec2::new(f.x, f.z)) else { continue };
                     let gap = f.y - surface_at(fl, ft);
                     if -gap > c.feet_under.0 {
                         c.feet_under = (-gap, Vec2::new(f.x, f.z));
@@ -439,8 +438,8 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
                     }
                 }
                 // on a bridge (between its banks, where the parapets stand): the wheels clear of them
-                let first = main[..li].iter().map(|m| m.3.len()).sum::<usize>();
-                for (bi, br) in main[li].3.iter().enumerate() {
+                let first = main[..li].iter().map(|m| m.2.len()).sum::<usize>();
+                for (bi, br) in main[li].2.iter().enumerate() {
                     let tb = br.t_of(q);
                     let out = (q - br.point(tb)).length();
                     if (0.0..=1.0).contains(&tb) && out < br.width() {
@@ -454,8 +453,48 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             }
         }
     }
-    c.cart_bridges = main.iter().flat_map(|m| m.3.iter()).zip(&crossed).filter(|(_, x)| **x).map(|(br, _)| *br).collect();
+    c.cart_bridges = main.iter().flat_map(|m| m.2.iter()).zip(&crossed).filter(|(_, x)| **x).map(|(br, _)| *br).collect();
     c
+}
+
+/// How far a point is from a line of points, and the point of the line
+/// nearest it with the line's direction there.
+fn nearest_on_line(pts: &[Vec2], q: Vec2) -> (f32, (Vec2, Vec2)) {
+    let mut best = (f32::MAX, (pts[0], Vec2::X));
+    for w in pts.windows(2) {
+        let ab = w[1] - w[0];
+        let t = ((q - w[0]).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+        let at = w[0] + ab * t;
+        let d = q.distance(at);
+        if d < best.0 {
+            best = (d, (at, ab.normalize_or(Vec2::X)));
+        }
+    }
+    best
+}
+
+/// The height of a road's ribbon (`network::way_line`) at the point of its middle line nearest `p`.
+fn ribbon_at(ribbon: &[Vec3], p: Vec2) -> f32 {
+    let mut best = (f32::MAX, ribbon[0].y);
+    for w in ribbon.windows(2) {
+        let (a, b) = (Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z));
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared().max(1e-12)).clamp(0.0, 1.0);
+        let d = p.distance(a + ab * t);
+        if d < best.0 {
+            best = (d, w[0].y + (w[1].y - w[0].y) * t);
+        }
+    }
+    best.1
+}
+
+/// The top of the causeway a point of a road's middle line lies on, if any (`network::causeways`).
+fn on_causeway(runs: &[(Vec2, Vec2, f32)], p: Vec2) -> Option<f32> {
+    runs.iter().filter(|&&(s, e, _)| {
+        let se = e - s;
+        let u = (p - s).dot(se) / se.length_squared().max(1e-12);
+        (-1e-4..=1.0 + 1e-4).contains(&u) && p.distance(s + se * u.clamp(0.0, 1.0)) < 1e-3
+    }).map(|r| r.2).reduce(f32::max)
 }
 
 /// `ISOSTATE_ROADS=1`: the check of 1800, 1850 and 1900 (or the last year
@@ -481,6 +520,14 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
         for line in network::water_check(r, g, cen, k) {
             eprintln!("{line}");
         }
+        // the roads' courses (`road_course::shape`): how straight they run and how they turn
+        let s = crate::road_course::shape(r, g, cen, k);
+        eprintln!(
+            "courses {}: {} links ({} on curves), {:.0} cells long; lattice lines {} of {:.2} links on average, the longest {}; straight runs (turning less than {} degrees) {} of {:.2} cells on average, {:.2} by length, the longest {:.2}; turns where a road passes through, by {:?} degrees: {:?}, at junctions {:?}; {:.3} of the length within 5 degrees of the eight directions; the tightest curve {:.3} cells, {} links tighter than 0.25; {} river crossings, {} links crossing more often than before; bridges and fords {:.3} square; {} links held straight on town ground, {} on curves with a square of town ground of 1900; places a road passes through that turn more than 5 degrees, by why (town, river, a corner over 120 degrees, years apart): {:?}",
+            s.year, s.links, s.bent, s.length, s.lattice_lines, s.lattice_mean, s.lattice_longest, crate::road_course::STRAIGHT_ON, s.runs, s.run_mean, s.run_mean_by_length, s.run_longest, crate::road_course::TURN_BINS, s.turns, s.junction_turns, s.on_eight, s.tightest, s.tight_links, s.crossings, s.extra_crossings, s.square, s.held, s.bent_on_1900_town, s.kinks
+        );
+        let (moved, most) = crate::road_course::moved(r, g, cen, 0..=k);
+        eprintln!("  from the first year to {}: {moved} links drawn again with a point moved, the furthest by {most:.4}", s.year);
         let c = check(r, g, cen, k);
         let at = |p: Vec2| format!("{:.2},{:.2}", p.x, p.y);
         eprintln!(
