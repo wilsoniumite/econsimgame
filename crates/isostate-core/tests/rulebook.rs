@@ -221,13 +221,18 @@ fn the_dial_is_offered_in_multiples_and_set_by_hand_to_tenfold() {
 fn the_walk_of_the_games_rules_is_quick() {
     let P = game_params();
     let _ = rulebook(&P);
-    let t0 = std::time::Instant::now();
-    let n = 5;
+    // The quickest of up to twenty walks, each timed alone, stopping at the first under the limit:
+    // what the walk itself costs, not how long the machine kept it waiting (see the limit below).
     let mut book = Vec::new();
-    for _ in 0..n {
+    let mut ms = f64::INFINITY;
+    for _ in 0..20 {
+        let t0 = std::time::Instant::now();
         book = rulebook(&P);
+        ms = ms.min(t0.elapsed().as_secs_f64() * 1e3);
+        if ms < 500.0 {
+            break;
+        }
     }
-    let ms = t0.elapsed().as_secs_f64() * 1e3 / n as f64;
     let count = |k: fn(&Entry) -> bool| book.iter().filter(|e| k(e)).count();
     eprintln!(
         "the walk of game_params(): {} entries, {} switches ({} throwable), {} other switches, {} numbers ({} offering nothing), 1 choice, {} others, {} fixed; {:.1} ms",
@@ -251,6 +256,9 @@ fn the_walk_of_the_games_rules_is_quick() {
     // 35 ms alone in the dev profile on 19 November 2026. It is held to half a second, not to
     // 50 ms as it was, since the core's tests now run all at once (crates/isostate-core/run_tests.py)
     // and the others beside it took it to 111 to 138 ms with nothing wrong; half a second still
-    // catches a walk grown ten times slower, which is what this is for.
+    // catches a walk grown ten times slower, which is what this is for. Since 26 November 2026 it
+    // is the quickest walk that is held to it, not the mean of five: with every program running
+    // at once on a machine busy with other builds the mean reached 532 to 901 ms and stopped two
+    // landings at the gate (timber's first run, the build-speed batch's), with nothing wrong.
     assert!(ms < 500.0, "the walk took {ms:.1} ms");
 }
