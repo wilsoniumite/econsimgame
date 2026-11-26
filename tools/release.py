@@ -92,9 +92,11 @@ def check_checkout(version, refuse):
     loose = [l for l in loose.splitlines() if l.startswith("??")]
     if loose:
         say(f"  {len(loose)} files git does not know are in the checkout; they cannot reach the program")
-    fetched = run(["git", "fetch", "--quiet", "--tags", "origin", "main"], check=False)
-    if fetched.returncode != 0:
-        refuse("origin could not be asked where main stands: " + fetched.stderr.strip())
+    # a practice asks nothing of origin and changes no ref: it goes by where origin's main was last seen
+    if not refuse.practice:
+        fetched = run(["git", "fetch", "--quiet", "--tags", "origin", "main"], check=False)
+        if fetched.returncode != 0:
+            refuse("origin could not be asked where main stands: " + fetched.stderr.strip())
     head = git("rev-parse", "HEAD")
     main = git("rev-parse", "--verify", "--quiet", "origin/main", check=False)
     if head != main:
