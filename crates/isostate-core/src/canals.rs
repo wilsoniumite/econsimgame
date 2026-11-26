@@ -583,6 +583,11 @@ impl<'a> Water<'a> {
     /// by boat: the two are not neighbours, or the step does not cost what the
     /// ground between them costs.
     pub(crate) fn afloat(&self, i: usize, p: usize, n: usize) -> bool {
+        // haulage (docs/rules/haulage.md): with the railway a layer of its own
+        // the search says how it reached each cell, and a train is not a boat
+        if let Some(by) = self.st.hl.by.get(i).filter(|b| b.len() == self.st.N) {
+            return by[n] == tr::BY_BOAT;
+        }
         let g = &self.st.graph;
         // a boat is boarded and left only where there is a canal
         if g.boat[p].is_empty() || g.boat[n].is_empty() {
@@ -597,7 +602,7 @@ impl<'a> Water<'a> {
     }
 
     /// Cells of canal between `p` and `n`, a stretch by boat.
-    fn length(&mut self, p: usize, n: usize) -> f64 {
+    pub(crate) fn length(&mut self, p: usize, n: usize) -> f64 {
         let g = &self.st.graph;
         self.trees.entry(p).or_insert_with(|| boat_tree(g, p)).get(&n).map_or(0.0, |x| x.0)
     }

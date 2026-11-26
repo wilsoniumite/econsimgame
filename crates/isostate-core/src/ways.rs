@@ -487,6 +487,8 @@ impl Net {
         let layer = (way.layer)(st);
         let mut laid: Vec<bool> = layer.iter().map(|&r| r > 0).collect();
         let mut g = st.graph.clone();
+        // haulage (docs/rules/haulage.md): the promoters reckon on the railway as the port's graph has it
+        g.flatten_train();
         if let Some(rivals) = way.rivals {
             rivals(st, P, &mut g);
         }

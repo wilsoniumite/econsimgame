@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
 use crate::facts::Kind;
+use crate::haulage::Step;
 use crate::params::Params;
 use crate::sim::RunResult;
 use crate::state::State;
@@ -144,7 +145,28 @@ pub struct TrafficYear {
     /// Squares of land with a railway, and with a canal.
     pub rail_squares: usize,
     pub canal_squares: usize,
+    /// haulage (docs/rules/haulage.md), watched whatever its switch: weight
+    /// times squares by mode (`MODES`) of the loads whose whole haul is under
+    /// 20 km, 20 to 60 km and over 60 km (`HAUL_BANDS`).
+    pub by_haul: [[f64; 4]; 3],
+    /// Weight times squares by rail, by the length of the stretch a load rode
+    /// the railway without leaving it, in the same three bands.
+    pub rail_stretch: [f64; 3],
+    /// Weight put on a train at a town's own square, and anywhere else.
+    pub boarded: [f64; 2],
 }
+
+/// The bands of a haul's length, in squares: under 10 (20 km), 10 to 30 (60
+/// km), 30 and over.
+pub const HAUL_BANDS: [f64; 2] = [10.0, 30.0];
+
+/// The band of a haul of `squares`.
+pub fn haul_band(squares: f64) -> usize {
+    HAUL_BANDS.iter().filter(|&&b| squares >= b).count()
+}
+
+/// The bands' names, as the facts have them.
+pub const HAUL_NAMES: [&str; 3] = ["under_20_km", "20_60_km", "over_60_km"];
 
 /// `State::tf`: empty while the rule is off.
 #[derive(Clone, Debug, Default)]
@@ -165,7 +187,7 @@ pub struct TrafficState {
 
 /// The direction (`world::NEIGH8`'s place, the cost graph's edge) from square
 /// `p` to square `n`, if they are neighbours.
-fn direction(W: usize, p: usize, n: usize) -> Option<usize> {
+pub(crate) fn direction(W: usize, p: usize, n: usize) -> Option<usize> {
     let dy = (n / W) as isize - (p / W) as isize;
     let dx = (n % W) as isize - (p % W) as isize;
     if dx.abs() > 1 || dy.abs() > 1 || (dx == 0 && dy == 0) {
@@ -176,7 +198,7 @@ fn direction(W: usize, p: usize, n: usize) -> Option<usize> {
 
 /// The mode of the step from `p` to its neighbour `n` (direction `k` from `p`)
 /// in the cost graph the paths were found on.
-fn step_mode(st: &State, p: usize, k: usize, n: usize) -> u8 {
+pub(crate) fn step_mode(st: &State, p: usize, k: usize, n: usize) -> u8 {
     let (g, w) = (&st.graph, &st.world);
     if g.railed.get(p * 8 + k).copied().unwrap_or(false) {
         return RAIL;
@@ -202,38 +224,57 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
     let mut through = vec![0.0f64; N];
     let mut y = TrafficYear { year, ..TrafficYear::default() };
     if st.cell_flow_year.len() == N {
-        let boats = st.graph.has_boats();
         let mut water = crate::canals::Water::new(st);
+        // haulage (docs/rules/haulage.md): a stretch by train when the railway is a layer of its own
+        let mut rails = crate::haulage::Rails::new(st);
         let st: &State = st;
-        // one step of a path: from n to p, its predecessor in town i's tree
-        let mut hop = |i: usize, p: usize, n: usize, f: f64, trade: bool, by: &mut Vec<[f64; 4]>, y: &mut TrafficYear| {
+        let mut is_town = vec![false; N];
+        for t in (0..T).filter(|&t| st.town_active[t]) {
+            is_town[st.town_node[t]] = true;
+        }
+        // one step of a path: from n to p, its predecessor in town i's tree; and what it was
+        let mut hop = |i: usize, p: usize, n: usize, f: f64, trade: bool, by: &mut Vec<[f64; 4]>, y: &mut TrafficYear, through: &mut Vec<f64>| -> Step {
             if f <= 0.0 {
-                return;
+                return Step::default();
             }
+            let s = crate::haulage::step(st, &mut water, &mut rails, i, p, n);
             let mut squares = 0.0;
-            if boats && water.afloat(i, p, n) {
-                let way = water.route(p, n);
-                for s in way.windows(2) {
-                    if let Some((c, k)) = link(W, s[0], s[1]) {
-                        by[c * 4 + k][BOAT as usize] += f;
+            if s.jump {
+                let way = if s.mode == RAIL { rails.route(p, n) } else { water.route(p, n) };
+                for c in way.windows(2) {
+                    if let Some((c, k)) = link(W, c[0], c[1]) {
+                        by[c * 4 + k][s.mode as usize] += f;
                         squares += slot_len(k);
                     }
                 }
-                y.weight_squares[BOAT as usize] += f * squares;
-            } else if let Some(k) = direction(W, p, n) {
-                let m = step_mode(st, p, k, n);
-                if let Some((c, s)) = link(W, p, n) {
-                    by[c * 4 + s][m as usize] += f;
+                // the squares a train passes between where it was boarded and left,
+                // as `haulage::wear` lays them for `update_roads` (a boat's are not)
+                if s.mode == RAIL {
+                    for &c in way.iter().skip(1).take(way.len().saturating_sub(2)) {
+                        through[c] += f;
+                    }
                 }
-                squares = tr::step_len(k);
-                y.weight_squares[m as usize] += f * squares;
+            } else if s.squares > 0.0 {
+                if let Some((c, k)) = link(W, p, n) {
+                    by[c * 4 + k][s.mode as usize] += f;
+                }
+                squares = s.squares;
             }
+            y.weight_squares[s.mode as usize] += f * squares;
             if trade {
                 y.trade_weight_squares += f * squares;
             }
+            Step { squares, ..s }
         };
+        // a step by rail that runs on into its predecessor's without leaving the train
+        let runs_on = |a: &Step, b: &Step| a.mode == RAIL && b.mode == RAIL && !a.jump && !b.jump;
         // each district's goods to its market, as `transport::tree_traffic` lays them
         let mut acc = vec![0.0f64; N];
+        let mut own = vec![0.0f64; N];
+        let mut steps = vec![Step::default(); N];
+        let mut start_in = vec![0.0f64; N];
+        let mut far = vec![[0.0f64; 4]; N];
+        let mut run = vec![0.0f64; N];
         for i in 0..T {
             if !st.town_active[i] || st.pred[i].len() != N {
                 continue;
@@ -241,6 +282,8 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
             let mut any = false;
             for c in 0..N {
                 acc[c] = if st.catch[c] == i as i64 { st.cell_flow_year[c] } else { 0.0 };
+                own[c] = acc[c];
+                start_in[c] = acc[c];
                 any |= acc[c] > 0.0;
             }
             if !any {
@@ -250,15 +293,56 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
             for &n in st.settle[i].iter().rev() {
                 let n = n as usize;
                 through[n] += acc[n];
+                steps[n] = Step::default();
                 let p = st.pred[i][n];
                 if p >= 0 {
-                    hop(i, p as usize, n, acc[n], false, &mut by, &mut y);
+                    steps[n] = hop(i, p as usize, n, acc[n], false, &mut by, &mut y, &mut through);
                     acc[p as usize] += acc[n];
                 }
+            }
+            // handling (watched whatever its switch): each load's haul by its whole
+            // length, and each stretch it rode the railway by its own, parents first
+            for &n in st.settle[i].iter() {
+                let n = n as usize;
+                let p = st.pred[i][n];
+                if p < 0 || acc[n] <= 0.0 {
+                    continue;
+                }
+                let p = p as usize;
+                let s = steps[n];
+                far[n] = far[p];
+                far[n][s.mode as usize] += s.squares;
+                let on = st.pred[i][p] >= 0 && runs_on(&s, &steps[p]);
+                run[n] = if s.mode == RAIL { s.squares + if on { run[p] } else { 0.0 } } else { 0.0 };
+                if on {
+                    // it rides on through p, so it does not board there
+                    start_in[p] -= acc[n];
+                }
+                if own[n] > 0.0 {
+                    let whole: f64 = far[n].iter().sum();
+                    let band = &mut y.by_haul[haul_band(whole)];
+                    for m in 0..4 {
+                        band[m] += own[n] * far[n][m];
+                    }
+                }
+            }
+            for &n in st.settle[i].iter() {
+                let n = n as usize;
+                if st.pred[i][n] >= 0 && acc[n] > 0.0 && steps[n].mode == RAIL {
+                    // what boards here: all that leaves by rail, less what rides on through
+                    let w = start_in[n] + (acc[n] - own[n]);
+                    y.rail_stretch[haul_band(run[n])] += w * run[n];
+                    y.boarded[if is_town[n] { 0 } else { 1 }] += w;
+                }
+            }
+            for &n in st.settle[i].iter() {
+                far[n as usize] = [0.0; 4];
+                run[n as usize] = 0.0;
             }
         }
         // the trade between towns, as `transport::pair_traffic` lays it
         if st.trade_F_year.rows == T && st.town_cost.rows == T {
+            let mut path: Vec<(usize, Step)> = Vec::new();
             for i in 0..T {
                 if st.pred[i].len() != N {
                     continue;
@@ -270,16 +354,35 @@ pub fn year(st: &mut State, P: &Params, year: i64, warm: bool) {
                         continue;
                     }
                     y.sent_trade += f;
+                    path.clear();
                     let mut n = st.town_node[j] as i64;
-                    let mut steps = 0;
-                    while n != root && n >= 0 && steps < 100_000 {
+                    let mut count = 0;
+                    while n != root && n >= 0 && count < 100_000 {
                         through[n as usize] += f;
                         let p = st.pred[i][n as usize];
                         if p >= 0 {
-                            hop(i, p as usize, n as usize, f, true, &mut by, &mut y);
+                            let s = hop(i, p as usize, n as usize, f, true, &mut by, &mut y, &mut through);
+                            path.push((n as usize, s));
                         }
                         n = p;
-                        steps += 1;
+                        count += 1;
+                    }
+                    // handling: the haul's whole length, and its stretches by rail
+                    let whole: f64 = path.iter().map(|x| x.1.squares).sum();
+                    let band = haul_band(whole);
+                    let mut stretch = 0.0;
+                    for (k, &(c, s)) in path.iter().enumerate() {
+                        y.by_haul[band][s.mode as usize] += f * s.squares;
+                        if s.mode == RAIL {
+                            if stretch == 0.0 {
+                                y.boarded[if is_town[c] { 0 } else { 1 }] += f;
+                            }
+                            stretch += s.squares;
+                            if !path.get(k + 1).is_some_and(|x| runs_on(&s, &x.1)) {
+                                y.rail_stretch[haul_band(stretch)] += f * stretch;
+                                stretch = 0.0;
+                            }
+                        }
                     }
                 }
             }
@@ -399,6 +502,26 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         for (lv, name) in [(1, "track"), (2, "made_road"), (3, "turnpike")] {
             out.push((format!("{name}_km_{y}"), Kind::Count, t.road_squares[lv] as f64 * 2.0));
         }
+    }
+    // haulage (docs/rules/haulage.md), watched whatever its switch, every tenth
+    // year from 1900: the road's and the railway's shares of all freight; of the
+    // hauls of each length, the share of their freight that went by road; of the
+    // railway's freight, the share ridden in stretches of each length; and of
+    // the weight put on a train, the share put on at a town's own square
+    let share = |a: f64, b: f64| if b > 0.0 { a / b } else { f64::NAN };
+    for y in (1900..=y1).step_by(10).filter(|&y| y >= y0) {
+        let Some(t) = st.tf.years.iter().find(|t| t.year == y) else { continue };
+        let all: f64 = t.weight_squares.iter().sum();
+        out.push((format!("road_share_of_freight_{y}"), Kind::Share, share(t.weight_squares[CART as usize], all)));
+        out.push((format!("rail_share_of_freight_{y}"), Kind::Share, share(t.weight_squares[RAIL as usize], all)));
+        for (b, name) in HAUL_NAMES.iter().enumerate() {
+            out.push((format!("road_share_hauls_{name}_{y}"), Kind::Share, share(t.by_haul[b][CART as usize], t.by_haul[b].iter().sum())));
+        }
+        let rail: f64 = t.rail_stretch.iter().sum();
+        for (b, name) in HAUL_NAMES.iter().enumerate() {
+            out.push((format!("rail_freight_{name}_{y}"), Kind::Share, share(t.rail_stretch[b], rail)));
+        }
+        out.push((format!("rail_boarded_at_towns_{y}"), Kind::Share, share(t.boarded[0], t.boarded[0] + t.boarded[1])));
     }
     out
 }
