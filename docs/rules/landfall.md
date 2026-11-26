@@ -276,7 +276,10 @@ and the railway in 1900 from 2,692 km to 2,086, with half the trunk lines.
 The people, the share in towns, the first railway (1829 against 1828) and
 the shares of income stay; the chained wage of 1900 over 1750 is 6.32
 against 5.96, and carters over hands 0.046 against 0.091. It is
-[longrun.md](longrun.md)'s table again, on today's island. So the setting
+[longrun.md](longrun.md)'s table again, on today's island. Run on to 2050
+with the probe, the settled island with the setting is richer and smaller:
+the wage in grain 128 against 78 and the linked wage 20.5 against 15.9 in
+2050, a million people against 1.27 million, and 15 towns against 30. So the setting
 cannot simply go to both starts: it would take half the settled island's
 towns.
 
