@@ -334,10 +334,21 @@
 # moves against main, by the squares' log in the record; the landfall start
 # and its rules are off in game_params(), and the squares' shadow is read by
 # no rule.
+# Taken: works.by_method (works.md, part I): offices, steel-frame builders and
+# care take history's ground a hand, every works gives ground back as machines
+# take its hands' tasks, and the squares keep a works' squares while its hands
+# leave; nothing acts before 1901
+# Taken: 1901-2050 all four: the works of a street live in the blocks of
+# houses (works.in_blocks, works.md part J): from 1901 the offices, care and
+# steel-frame builders on a town's cells let floor in its house blocks, which
+# takes room from the houses as a yard did and leaves the cell's yards to
+# other works, and those methods have no cell limit; on the squares the shops,
+# offices, care and builders hold floor in the blocks, not squares, and the
+# log carries it (layout 2); 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x5875ceddf2e1f730
-1901-2050 books    0x7d790c5aace7b340
-1901-2050 news     0xf39bc02c0208303d
-1901-2050 run.bin  0xbab63b3e26770556
+1901-2050 economy  0x1bae9ccaa3229ca5
+1901-2050 books    0x5e2e57fd02254c4c
+1901-2050 news     0xb5d341d96ce3e8a5
+1901-2050 run.bin  0x146834886cb77203

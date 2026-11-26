@@ -889,7 +889,7 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     if !lite && rec.squares_first.len() == n_years + 1 {
         header["squares"] = json!({
             "layout": crate::squares::LOG_LAYOUT, "side": crate::squares::SIDE, "metres": crate::squares::METRES,
-            "kinds": crate::squares::KINDS,
+            "kinds": crate::squares::KINDS, "floor": crate::squares::FLOOR_USES,
         });
     }
     clean(&mut header);

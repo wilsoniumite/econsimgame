@@ -11,7 +11,10 @@
 //!   piece, grown from the square it first stood on;
 //! - a pit's surface (which working);
 //! - on a town's ground, house blocks (with their shops), a park, and the
-//!   town's open ground, which is the rest;
+//!   town's open ground, which is the rest; with `works.in_blocks` a house
+//!   block says how much of its floor is let to shops, offices, care and the
+//!   builders (`Table::floor`), and those works hold no square of their own
+//!   on a town's cells;
 //! - derelict ground, where a works closed and the books call the cell derelict.
 //!
 //! A way takes no square. A cell with nothing built keeps no table.
@@ -58,19 +61,23 @@ pub const METRES: f64 = 125.0;
 pub struct SquaresParams {
     /// The simulation keeps squares of 125 m where something is built.
     pub enabled: bool,
+    /// With the ground by method (`works.by_method`): a works keeps the squares
+    /// it holds while its ground in the books is at this share of them or more
+    /// (`keep_squares`): its buildings stand while some of its hands leave.
+    pub keep: f64,
 }
 
 impl Default for SquaresParams {
     /// Off: what the port runs with.
     fn default() -> SquaresParams {
-        SquaresParams { enabled: false }
+        SquaresParams { enabled: false, keep: 0.7 }
     }
 }
 
 impl SquaresParams {
     /// The game's squares.
     pub fn game() -> SquaresParams {
-        SquaresParams { enabled: true }
+        SquaresParams { enabled: true, ..SquaresParams::default() }
     }
 }
 
@@ -103,6 +110,30 @@ const ID_MASK: u32 = (1 << KIND_SHIFT) - 1;
 /// (`Tenant::kind` names them), as the record's header lists them.
 pub const KINDS: [&str; 7] = ["none", "works", "houses", "park", "pit", "derelict", "open"];
 
+/// The uses of floor let in a house block (`Table::floor`'s high four bits),
+/// as the record's header lists them: shops (the shops and trades and the
+/// emporium), offices, care, and the builders' yards and offices.
+pub const FLOOR_USES: [&str; 5] = ["none", "shops", "offices", "care", "trades"];
+
+/// The use of floor a works of method m lets (`FLOOR_USES`): by its good,
+/// and for the good services by its ground a hand (an office's desk at 12 m²
+/// or less, a shop's counter above it).
+pub fn floor_use(C: &Content, m: usize) -> u8 {
+    let history = match C.m_ground_history.get(m) {
+        Some(&h) if h > 0.0 => h,
+        _ => C.m_ground.get(m).copied().unwrap_or(0.0),
+    };
+    match C.good_name[C.method_out[m]].as_str() {
+        "care" => 3,
+        "building" => 4,
+        _ if history <= 12.0 => 2,
+        _ => 1,
+    }
+}
+
+/// The most eighths of a square's floor shops take while there are house
+/// blocks of the cell left to take: the street floor of a block of four.
+const SHOP_EIGHTHS: u8 = 2;
 impl Tenant {
     /// The tenant as a table holds it.
     pub fn code(self) -> u32 {
@@ -162,6 +193,11 @@ pub struct Table {
     /// nearest point of the cell's ways when the square was taken: a bearing in
     /// 256ths of a turn, 0 toward the east (the map's x) and 64 toward the south (its y).
     pub face: [u8; PER_CELL],
+    /// On a square of house blocks, the floor in it let to shops, offices,
+    /// care and the builders (works.in_blocks, docs/rules/works.md part J):
+    /// the use in the high four bits (`FLOOR_USES`), the eighths of the
+    /// square's floor in that use in the low four (0 to 8). 0 on every other square.
+    pub floor: [u8; PER_CELL],
     /// The square lies under the sea or a lake.
     pub water: [bool; PER_CELL],
     /// How bad the ground is to build on: steep and wet (`ground_cost`).
@@ -195,6 +231,9 @@ pub struct Change {
     pub year: i16,
     /// `Table::face`: which side its way lies on (0 where it was given up).
     pub face: u8,
+    /// `Table::floor`: the floor of a house block let to works, its use and
+    /// eighths (0 on every other square).
+    pub floor: u8,
 }
 
 impl Change {
@@ -206,14 +245,14 @@ impl Change {
         self.at as usize % PER_CELL
     }
 
-    /// Tenant, year and face in one number, 0 for a square nothing holds.
-    pub fn pack(tenant: u32, year: i16, face: u8) -> u64 {
-        if tenant == 0 { 0 } else { tenant as u64 | (year as u16 as u64) << 32 | (face as u64) << 48 }
+    /// Tenant, year, face and floor in one number, 0 for a square nothing holds.
+    pub fn pack(tenant: u32, year: i16, face: u8, floor: u8) -> u64 {
+        if tenant == 0 { 0 } else { tenant as u64 | (year as u16 as u64) << 32 | (face as u64) << 48 | (floor as u64) << 56 }
     }
 
     /// The change that makes square `at` what `packed` says.
     pub fn unpack(at: u32, packed: u64) -> Change {
-        Change { at, tenant: packed as u32, year: (packed >> 32) as u16 as i16, face: (packed >> 48) as u8 }
+        Change { at, tenant: packed as u32, year: (packed >> 32) as u16 as i16, face: (packed >> 48) as u8, floor: (packed >> 56) as u8 }
     }
 }
 
@@ -335,6 +374,7 @@ fn new_table(st: &State, book: &SquareBook, c: usize) -> Table {
         tenant: [0; PER_CELL],
         year: [0; PER_CELL],
         face: [0; PER_CELL],
+        floor: [0; PER_CELL],
         water: [false; PER_CELL],
         bad: [0.0; PER_CELL],
         wet: [0; PER_CELL],
@@ -593,7 +633,7 @@ fn tell(b: &mut SquareBook) {
     b.changes.clear();
     for t in &mut b.tables {
         for k in 0..PER_CELL {
-            let now = Change::pack(t.tenant[k], t.year[k], t.face[k]);
+            let now = Change::pack(t.tenant[k], t.year[k], t.face[k], t.floor[k]);
             if now != t.told[k] {
                 t.told[k] = now;
                 b.changes.push(Change::unpack((t.cell * PER_CELL + k) as u32, now));
@@ -671,12 +711,20 @@ fn share_out(x: &[f64], held: &[usize], total: usize) -> Vec<usize> {
     n
 }
 
-/// Squares each works should hold this year, by works, from the books.
+/// Whether works f stands in the blocks of its town (works.in_blocks,
+/// docs/rules/works.md part J): a works of the blocks on a town's cell, which
+/// holds no square of its own but floor in the house blocks (`Table::floor`).
+pub fn floored(st: &State, C: &Content, P: &Params, f: usize) -> bool {
+    st.urban.get(st.f_cell[f]).copied().unwrap_or(false) && crate::works::in_blocks(C, P, st.f_method[f])
+}
+
+/// Squares each works should hold this year, by works, from the books. A
+/// works in the blocks (`floored`) holds none.
 pub fn works_targets(st: &State, C: &Content, P: &Params) -> Vec<usize> {
     let F = st.F_count;
     let mut by_cell: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for f in 0..F {
-        if st.f_alive[f] {
+        if st.f_alive[f] && !floored(st, C, P, f) {
             by_cell.entry(st.f_cell[f]).or_default().push(f);
         }
     }
@@ -688,11 +736,45 @@ pub fn works_targets(st: &State, C: &Content, P: &Params) -> Vec<usize> {
         let x: Vec<f64> = x.iter().map(|v| v * scale).collect();
         let total = (sum * scale).round() as usize;
         let held: Vec<usize> = fs.iter().map(|&f| st.sq.works.get(f).map_or(0, |h| h.squares.len())).collect();
-        for (j, n) in share_out(&x, &held, total).into_iter().enumerate() {
+        let mut n = share_out(&x, &held, total);
+        if P.works.enabled && P.works.by_method {
+            keep_squares(&x, &held, &mut n, P.squares.keep);
+        }
+        for (j, n) in n.into_iter().enumerate() {
             want[fs[j]] = n;
         }
     }
     want
+}
+
+/// Works ground by method (`works.by_method`, docs/rules/works.md, part I): a
+/// works keeps the squares it holds while its ground in the books stays at
+/// `keep` of them or more, as a building stands while some of its hands are
+/// laid off; below that it gives back down to its ground. Where the cell has
+/// not room for what is kept, the works that keep most over their ground give
+/// it up first. `x` is each works' ground in squares, `held` what it holds,
+/// `n` the squares `share_out` gave it.
+pub fn keep_squares(x: &[f64], held: &[usize], n: &mut [usize], keep: f64) {
+    for j in 0..n.len() {
+        if held[j] > n[j] && x[j] >= keep * held[j] as f64 {
+            n[j] = held[j];
+        }
+    }
+    let mut over = n.iter().sum::<usize>().saturating_sub(PER_CELL);
+    if over == 0 {
+        return;
+    }
+    let mut order: Vec<usize> = (0..n.len()).filter(|&j| n[j] as f64 > x[j].round()).collect();
+    order.sort_by(|&a, &b| (n[b] as f64 - x[b]).total_cmp(&(n[a] as f64 - x[a])).then(a.cmp(&b)));
+    for j in order {
+        let floor = (x[j].round() as usize).min(n[j]);
+        let back = (n[j] - floor).min(over);
+        n[j] -= back;
+        over -= back;
+        if over == 0 {
+            break;
+        }
+    }
 }
 
 /// Squares each working should hold this year, from the books, within what the works leave.
@@ -726,11 +808,114 @@ pub fn pit_targets(st: &State, works_on: &[usize]) -> BTreeMap<(usize, usize), u
 /// `ground` squares are the town's (the cell less its works and pits) and
 /// `dry` of them are not under water. The books count a cell as 4 km² of land
 /// whatever the sea takes of it; the houses and the park are reckoned on the
-/// dry ground, so that a town on the shore does not build in the sea.
-pub fn town_split(fill: f64, park: f64, dry: usize, ground: usize) -> (usize, usize) {
+/// dry ground, so that a town on the shore does not build in the sea. There
+/// are never fewer house blocks than `least`, the blocks the floor let to
+/// works fills (works.in_blocks), while the ground holds them.
+pub fn town_split(fill: f64, park: f64, dry: usize, ground: usize, least: usize) -> (usize, usize) {
     let n_park = ((park * dry as f64).round() as usize).min(ground);
-    let n_houses = ((fill * dry as f64).round() as usize).min(ground - n_park);
+    let n_houses = ((fill * dry as f64).round() as usize).max(least).min(ground - n_park);
     (n_park, n_houses)
+}
+
+/// The eighths of a cell's house blocks' floor each use should have this year
+/// (`FLOOR_USES`), from the books' ground of the works in its blocks
+/// (`floored`), `want`: each works' ground in squares, times eight. With the
+/// ground by method a use keeps the floor it holds while its ground stays at
+/// `squares.keep` of it, as a works keeps its squares (`keep_squares`). `held`
+/// is what each use holds now.
+pub fn floor_targets(want: &[f64; 5], held: &[usize; 5], P: &Params) -> [usize; 5] {
+    let mut n = [0usize; 5];
+    for u in 1..5 {
+        n[u] = want[u].max(0.0).round() as usize;
+        if P.works.by_method && held[u] > n[u] && want[u] >= P.squares.keep * held[u] as f64 {
+            n[u] = held[u];
+        }
+    }
+    n
+}
+
+/// The eighths of floor each use holds in a table's house blocks.
+fn floor_held(t: &Table) -> [usize; 5] {
+    let mut held = [0usize; 5];
+    for k in 0..PER_CELL {
+        if matches!(Tenant::of(t.tenant[k]), Tenant::Houses(_)) {
+            held[(t.floor[k] >> 4) as usize % 5] += (t.floor[k] & 0x0f) as usize;
+        }
+    }
+    held
+}
+
+/// Lets the floor of one table's house blocks, `floor` eighths to each use: a
+/// use that holds more gives back from its worst squares first; one that
+/// holds less takes the best house blocks for a shop (beside the way, toward
+/// the town's middle), shops `SHOP_EIGHTHS` of a block's floor while there
+/// are blocks left and the other uses whole blocks. What does not fit is
+/// counted in `short`.
+fn let_floor(t: &mut Table, fr: &Frame, floor: &[usize; 5], short: &mut u64) {
+    let mut memo = [f32::NAN; PER_CELL];
+    let house = |t: &Table, k: usize| matches!(Tenant::of(t.tenant[k]), Tenant::Houses(_));
+    for k in 0..PER_CELL {
+        if !house(t, k) {
+            t.floor[k] = 0;
+        }
+    }
+    let mut held = floor_held(t);
+    for u in 1..5u8 {
+        let mut over = held[u as usize].saturating_sub(floor[u as usize]);
+        if over == 0 {
+            continue;
+        }
+        held[u as usize] -= over;
+        let mut mine: Vec<(f32, usize)> = (0..PER_CELL).filter(|&k| t.floor[k] >> 4 == u && t.floor[k] & 0x0f > 0).map(|k| (scored(&mut memo, t, fr, k, Want::Shop), k)).collect();
+        mine.sort_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
+        for &(_, k) in &mine {
+            let e = t.floor[k] & 0x0f;
+            let back = (e as usize).min(over);
+            t.floor[k] = if e as usize == back { 0 } else { u << 4 | (e - back as u8) };
+            over -= back;
+            if over == 0 {
+                break;
+            }
+        }
+    }
+    for u in [2u8, 3, 4, 1] {
+        let mut left = floor[u as usize].saturating_sub(held[u as usize]);
+        for cap in [if u == 1 { SHOP_EIGHTHS } else { 8 }, 8] {
+            if left == 0 {
+                break;
+            }
+            // free blocks and its own first; a use other than the shops may take
+            // a block whose street floor alone is shops', and the shops let
+            // theirs again in their turn, which is last
+            let shops_street = |t: &Table, k: usize| u != 1 && t.floor[k] >> 4 == 1 && t.floor[k] & 0x0f <= SHOP_EIGHTHS;
+            // (its own blocks in part let first, so that a use fills its blocks)
+            let mut open: Vec<(bool, bool, f32, usize)> = (0..PER_CELL)
+                .filter(|&k| house(t, k) && (t.floor[k] == 0 || t.floor[k] >> 4 == u && t.floor[k] & 0x0f < cap || shops_street(t, k)))
+                .map(|k| (shops_street(t, k), t.floor[k] >> 4 != u, scored(&mut memo, t, fr, k, Want::Shop), k))
+                .collect();
+            open.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(b.2.total_cmp(&a.2)).then(a.3.cmp(&b.3)));
+            for &(street, _, _, k) in &open {
+                if street {
+                    held[1] -= (t.floor[k] & 0x0f) as usize;
+                    t.floor[k] = 0;
+                }
+                let e = t.floor[k] & 0x0f;
+                let add = ((cap - e) as usize).min(left);
+                t.floor[k] = u << 4 | (e + add as u8);
+                left -= add;
+                if left == 0 {
+                    break;
+                }
+            }
+        }
+        *short += left as u64;
+    }
+}
+
+/// The house blocks the floor of `floor` eighths, by use, fills: each use's
+/// in whole blocks, since a block's floor is let to one use.
+pub fn floor_blocks(floor: &[usize; 5]) -> usize {
+    floor.iter().skip(1).map(|e| e.div_ceil(8)).sum()
 }
 
 fn derelict_ok(st: &State, c: usize) -> bool {
@@ -1002,7 +1187,16 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
         }
     }
 
-    // 3. town ground: every town cell is the town's, less its works and pits
+    // 3. town ground: every town cell is the town's, less its works and pits.
+    // The works in its blocks (works.in_blocks) let floor in its house blocks:
+    // what each use wants of it, in eighths of a square
+    let mut floor_want: BTreeMap<usize, [f64; 5]> = BTreeMap::new();
+    for f in 0..F {
+        if st.f_alive[f] && floored(st, C, P, f) {
+            let w = floor_want.entry(st.f_cell[f]).or_insert([0.0; 5]);
+            w[floor_use(C, st.f_method[f]) as usize] += crate::works::land_held(st, C, P, f) * (PER_CELL * 8) as f64;
+        }
+    }
     let mut town_of = vec![-1i64; N];
     for (i, list) in st.town_ground.iter().enumerate() {
         for &c in list {
@@ -1036,6 +1230,7 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
             }
             t.houses.clear();
             t.park.clear();
+            t.floor = [0; PER_CELL];
             continue;
         }
         let i = i as u32;
@@ -1077,7 +1272,20 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
         let parks: Vec<u8> = t.park.iter().copied().filter(|&k| still(t, k, Tenant::Park)).collect();
         t.houses = houses;
         t.park = parks;
-        let (n_park, n_houses) = town_split(fill, park, dry, ground);
+        // the floor each use should have, and the house blocks that takes;
+        // where the ground holds fewer blocks than the floor fills, each use is cut in proportion
+        let mut floor = floor_targets(&floor_want.get(&c).copied().unwrap_or([0.0; 5]), &floor_held(t), P);
+        let all: usize = floor.iter().sum();
+        let (n_park, n_houses) = town_split(fill, park, dry, ground, floor_blocks(&floor));
+        if floor_blocks(&floor) > n_houses {
+            // (leaving each use a block it may fill in part)
+            let uses = floor.iter().skip(1).filter(|&&e| e > 0).count();
+            let room = 8 * n_houses.saturating_sub(uses);
+            for u in 1..5 {
+                floor[u] = floor[u] * room / all;
+            }
+            st.sq.short += (all - floor.iter().sum::<usize>()) as u64;
+        }
         for (list, n) in [(0, n_park), (1, n_houses)] {
             let lst = if list == 0 { &mut t.park } else { &mut t.houses };
             while lst.len() > n {
@@ -1102,6 +1310,7 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
                 if want == Want::Park { t.park.push(k as u8) } else { t.houses.push(k as u8) }
             }
         }
+        let_floor(t, &fr, &floor, &mut st.sq.short);
     }
 
     // 4. a cell with nothing built keeps no table
@@ -1123,7 +1332,8 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
 
 /// What the record's header says of its squares (`record::pack`), so that a
 /// reader knows how to read `sq_log`; a later layout gets a higher number.
-pub const LOG_LAYOUT: u32 = 1;
+/// Layout 2 (works.in_blocks) carries each square's floor let to works.
+pub const LOG_LAYOUT: u32 = 2;
 
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     while v >= 0x80 {
@@ -1150,17 +1360,19 @@ fn get_varint(bytes: &[u8], i: &mut usize) -> Result<u64, String> {
 /// changes in any order, each square once). Cell by cell in rising order,
 /// each cell as: the cell less the one before it in the year (the first less
 /// 0), then the number of runs, then each run of changes that give its
-/// squares to one tenant with one year: a head, `((id << 3 | kind) << 1 | dated)`
-/// with `id` and `kind` as in `Tenant::code` (0 for squares given up), then
-/// the year less the log's year, zigzagged (`2y` for y >= 0, `-2y - 1` below),
-/// where `dated` is 1, then the number of squares, then each square: its place
-/// in the cell (`k`), and its face but where it was given up. Every number but
-/// the squares and faces, which are single bytes, is a varint of seven bits a
-/// byte, low first. A year's ordinary change, a square taken for a tenant
-/// that takes others in its cell that year, is two bytes.
+/// squares to one tenant with one year and one floor: a head,
+/// `((id << 3 | kind) << 1 | dated) << 1 | floored` with `id` and `kind` as
+/// in `Tenant::code` (0 for squares given up), then the year less the log's
+/// year, zigzagged (`2y` for y >= 0, `-2y - 1` below), where `dated` is 1,
+/// then the floor (`Table::floor`) as one byte where `floored` is 1, then the
+/// number of squares, then each square: its place in the cell (`k`), and its
+/// face but where it was given up. Every number but the squares, faces and
+/// floor, which are single bytes, is a varint of seven bits a byte, low
+/// first. A year's ordinary change, a square taken for a tenant that takes
+/// others in its cell that year, is two bytes.
 pub fn encode_year(changes: &[Change], year: i64) -> Vec<u8> {
-    // a square given up has no year
-    let key = |c: &Change| (c.cell(), c.tenant, if c.tenant == 0 { 0 } else { c.year }, c.at);
+    // a square given up has no year and no floor
+    let key = |c: &Change| (c.cell(), c.tenant, if c.tenant == 0 { 0 } else { c.year }, if c.tenant == 0 { 0 } else { c.floor }, c.at);
     let mut sorted: Vec<Change> = changes.to_vec();
     sorted.sort_unstable_by_key(key);
     let mut out = Vec::with_capacity(sorted.len() * 2 + 16);
@@ -1169,20 +1381,24 @@ pub fn encode_year(changes: &[Change], year: i64) -> Vec<u8> {
     while i < sorted.len() {
         let cell = sorted[i].cell();
         let end = i + sorted[i..].iter().take_while(|c| c.cell() == cell).count();
-        let run_of = |c: &Change| (c.tenant, if c.tenant == 0 { 0 } else { c.year });
+        let run_of = |c: &Change| if c.tenant == 0 { (0, 0, 0) } else { (c.tenant, c.year, c.floor) };
         let runs = 1 + (i + 1..end).filter(|&j| run_of(&sorted[j]) != run_of(&sorted[j - 1])).count();
         put_varint(&mut out, (cell - prev) as u64);
         prev = cell;
         put_varint(&mut out, runs as u64);
         while i < end {
-            let (tenant, y) = run_of(&sorted[i]);
-            let n = sorted[i..end].iter().take_while(|c| run_of(c) == (tenant, y)).count();
+            let (tenant, y, floor) = run_of(&sorted[i]);
+            let n = sorted[i..end].iter().take_while(|c| run_of(c) == (tenant, y, floor)).count();
             let dated = tenant != 0 && y as i64 != year;
-            let head = ((((tenant >> KIND_SHIFT) as u64) | ((tenant & ID_MASK) as u64) << 3) << 1) | dated as u64;
+            let floored = floor != 0;
+            let head = ((((((tenant >> KIND_SHIFT) as u64) | ((tenant & ID_MASK) as u64) << 3) << 1) | dated as u64) << 1) | floored as u64;
             put_varint(&mut out, head);
             if dated {
                 let d = y as i64 - year;
                 put_varint(&mut out, if d >= 0 { 2 * d as u64 } else { (-2 * d - 1) as u64 });
+            }
+            if floored {
+                out.push(floor);
             }
             put_varint(&mut out, n as u64);
             for c in &sorted[i..i + n] {
@@ -1207,6 +1423,7 @@ pub fn decode_year(bytes: &[u8], year: i64) -> Result<Vec<Change>, String> {
         let runs = get_varint(bytes, &mut i)?;
         for _ in 0..runs {
             let head = get_varint(bytes, &mut i)?;
+            let (floored, head) = (head & 1 == 1, head >> 1);
             let (kind, id) = (((head >> 1) & 7) as u32, head >> 4);
             if kind > 6 || id > ID_MASK as u64 {
                 return Err(format!("the squares' log names a tenant of kind {kind} and number {id}, which is none"));
@@ -1218,6 +1435,13 @@ pub fn decode_year(bytes: &[u8], year: i64) -> Result<Vec<Change>, String> {
             } else {
                 year
             };
+            let floor = if floored {
+                let Some(&b) = bytes.get(i) else { return Err("the squares' log ends in the middle of a run's floor".into()) };
+                i += 1;
+                b
+            } else {
+                0
+            };
             let n = get_varint(bytes, &mut i)?;
             for _ in 0..n {
                 let step = if tenant == 0 { 1 } else { 2 };
@@ -1226,9 +1450,9 @@ pub fn decode_year(bytes: &[u8], year: i64) -> Result<Vec<Change>, String> {
                 let at = cell.checked_mul(PER_CELL as u64).map(|a| a + b[0] as u64).filter(|&a| a <= u32::MAX as u64);
                 let Some(at) = at else { return Err(format!("the squares' log names cell {cell}, past any map")) };
                 out.push(if tenant == 0 {
-                    Change { at: at as u32, tenant: 0, year: 0, face: 0 }
+                    Change { at: at as u32, tenant: 0, year: 0, face: 0, floor: 0 }
                 } else {
-                    Change { at: at as u32, tenant, year: y.clamp(i16::MIN as i64, i16::MAX as i64) as i16, face: b[1] }
+                    Change { at: at as u32, tenant, year: y.clamp(i16::MIN as i64, i16::MAX as i64) as i16, face: b[1], floor }
                 });
             }
         }
@@ -1260,6 +1484,10 @@ pub struct Census {
     pub works_split: usize,
     pub split: u64,
     pub short: u64,
+    /// House blocks with floor let to works (works.in_blocks), and the eighths
+    /// of a square's floor let, by use (`FLOOR_USES`).
+    pub floored: usize,
+    pub floor: [usize; 5],
 }
 
 pub fn census(st: &State) -> Census {
@@ -1276,7 +1504,13 @@ pub fn census(st: &State) -> Census {
             match tn {
                 Tenant::None => continue,
                 Tenant::Works(_) => n.works += 1,
-                Tenant::Houses(_) => n.houses += 1,
+                Tenant::Houses(_) => {
+                    n.houses += 1;
+                    if t.floor[q] & 0x0f > 0 {
+                        n.floored += 1;
+                        n.floor[(t.floor[q] >> 4) as usize % 5] += (t.floor[q] & 0x0f) as usize;
+                    }
+                }
                 Tenant::Park(_) => n.park += 1,
                 Tenant::Pit(_) => n.pit += 1,
                 Tenant::Derelict(_) => n.derelict += 1,
@@ -1351,8 +1585,13 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
     let mut works_on = vec![0usize; N];
     // each cell's works share as the books have it
     let mut ks = vec![0.0f64; N];
+    // and the floor its house blocks let to works in them (works.in_blocks), by use
+    let mut floor_want: BTreeMap<usize, [f64; 5]> = BTreeMap::new();
     for f in 0..st.F_count {
-        if st.f_alive[f] {
+        if st.f_alive[f] && floored(st, C, P, f) {
+            let w = floor_want.entry(st.f_cell[f]).or_insert([0.0; 5]);
+            w[floor_use(C, st.f_method[f]) as usize] += crate::works::land_held(st, C, P, f) * (PER_CELL * 8) as f64;
+        } else if st.f_alive[f] {
             ks[st.f_cell[f]] += crate::works::land_held(st, C, P, f);
         }
     }
@@ -1363,6 +1602,9 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         }
         if !st.f_alive[f] {
             return Err(format!("{year}: works {f} is closed and holds {} squares", h.squares.len()));
+        }
+        if floored(st, C, P, f) {
+            return Err(format!("{year}: works {f} stands in the blocks of its town and holds {} squares", h.squares.len()));
         }
         if h.cell != st.f_cell[f] {
             return Err(format!("{year}: works {f} holds squares of cell {} and stands on {}", h.cell, st.f_cell[f]));
@@ -1382,8 +1624,10 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         // a works holds its share of the cell to within a square
         let x = crate::works::land_held(st, C, P, f) * PER_CELL as f64;
         let n = h.squares.len() as f64;
-        // (a cell over-full is scaled down)
-        if (n - x).abs() >= 1.0 + 1e-9 && ks[h.cell] <= 1.0 && b.short == 0 {
+        // (a cell over-full is scaled down), or keeps more while its ground in the
+        // books is at `squares.keep` of what it holds (works.by_method)
+        let kept = P.works.enabled && P.works.by_method && n > x && x >= P.squares.keep * n - 1e-9;
+        if (n - x).abs() >= 1.0 + 1e-9 && !kept && ks[h.cell] <= 1.0 && b.short == 0 {
             return Err(format!("{year}: works {f} holds {n} squares for {x:.2} of ground"));
         }
     }
@@ -1409,6 +1653,9 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         let mut kinds = [0usize; 7];
         for k in 0..PER_CELL {
             let tn = Tenant::of(t.tenant[k]);
+            if t.floor[k] != 0 && (!matches!(tn, Tenant::Houses(_)) || t.floor[k] & 0x0f > 8 || t.floor[k] >> 4 > 4 || t.floor[k] & 0x0f == 0) {
+                return Err(format!("{year}: square {k} of cell {c} is {tn:?} with floor {:#04x}", t.floor[k]));
+            }
             let held = matches!(tn, Tenant::Works(_) | Tenant::Pit(_));
             if held != (claimed[ti * PER_CELL + k] == 1) || claimed[ti * PER_CELL + k] > 1 {
                 return Err(format!("{year}: square {k} of cell {c} is {tn:?} and held by {} holdings", claimed[ti * PER_CELL + k]));
@@ -1427,9 +1674,13 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
         if kinds.iter().skip(1).sum::<usize>() == 0 {
             return Err(format!("{year}: cell {c} keeps a table with nothing on it"));
         }
-        // the works' squares come to the cell's works share within a square
+        // the works' squares come to the cell's works share within a square, or
+        // as far over it as works keep squares while their ground ebbs
+        // (works.by_method, squares.keep)
         let share = ks[c].min(1.0);
-        if (works_on[c] as f64 - share * PER_CELL as f64).abs() > 1.0 && b.short == 0 {
+        let over = if P.works.enabled && P.works.by_method { (share * PER_CELL as f64 / P.squares.keep).min(PER_CELL as f64) } else { share * PER_CELL as f64 };
+        let n = works_on[c] as f64;
+        if (n < share * PER_CELL as f64 - 1.0 || n > over + 1.0) && b.short == 0 {
             return Err(format!("{year}: cell {c} has {} squares of works for {share:.4} of the cell", works_on[c]));
         }
         // a pit's squares come to its surface within a square
@@ -1446,9 +1697,29 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
             let fill = crate::ground::built_share(st, C, P, year, c);
             let park = crate::ground::park_of(st, P, c);
             let dry = (0..PER_CELL).filter(|&k| !t.water[k] && Tenant::of(t.tenant[k]).town().is_some()).count();
-            let (n_park, n_houses) = town_split(fill, park, dry, town);
-            if kinds[2] != n_houses || (fill * dry as f64 - n_houses as f64).abs() > 1.0 && n_houses + n_park < town {
-                return Err(format!("{year}: town cell {c} has {} squares of houses for {fill:.3} of {dry} dry", kinds[2]));
+            // the floor let to the works in its blocks: each use its ground in
+            // eighths of a square, within an eighth, or kept within `squares.keep`
+            let held = floor_held(t);
+            let want = floor_want.get(&c).copied().unwrap_or([0.0; 5]);
+            for u in 1..5 {
+                let (h, w) = (held[u] as f64, want[u]);
+                let kept = P.works.by_method && h > w && w >= P.squares.keep * h - 1e-9;
+                if (h - w).abs() >= 1.0 + 1e-9 && !kept && b.short == 0 {
+                    return Err(format!("{year}: town cell {c} lets {h} eighths of floor to {} for {w:.2}", FLOOR_USES[u]));
+                }
+            }
+            let let_out: usize = held.iter().sum();
+            let (n_park, n_houses) = town_split(fill, park, dry, town, floor_blocks(&held));
+            let fills = (fill * dry as f64).round() as usize >= n_houses;
+            // (where the floor wanted more blocks than the ground holds, every
+            // block of the ground is built and the floor cut to fit, to the eighth)
+            let cut = kinds[2] == town - n_park && kinds[2] > n_houses;
+            // (the blocks are counted from the floor wanted, which may be an
+            // eighth or two more than the floor let where the shops' street
+            // floor is spread thin: a block more)
+            let spread = let_out > 0 && kinds[2] == n_houses + 1;
+            if kinds[2] != n_houses && !cut && !spread || fills && (fill * dry as f64 - n_houses as f64).abs() > 1.0 && n_houses + n_park < town {
+                return Err(format!("{year}: town cell {c} has {} squares of houses for {fill:.3} of {dry} dry ({n_houses} by the floor of {let_out} eighths let, {town} of town ground, {n_park} park)", kinds[2]));
             }
             if kinds[3] != n_park || (park * dry as f64 - n_park as f64).abs() > 1.0 {
                 return Err(format!("{year}: town cell {c} has {} squares of park for {park:.3} of {dry} dry", kinds[3]));
@@ -1459,11 +1730,18 @@ pub fn check(st: &State, C: &Content, P: &Params, year: i64) -> Result<(), Strin
     }
     // a cell with no table has nothing the books count in whole squares
     for c in 0..N {
-        if b.index[c] == 0 && (ks[c].min(1.0) * PER_CELL as f64 > 1.0 || st.urban[c]) {
+        if b.index[c] == 0 && (ks[c].min(1.0) * PER_CELL as f64 > 1.0 || st.urban[c] || floor_want.contains_key(&c)) {
             return Err(format!("{year}: cell {c} keeps no table and holds {:.4} of works{}", ks[c], if st.urban[c] { " and is a town's" } else { "" }));
         }
     }
-    // every works holds its squares
+    // every works holds its squares. What a works keeps while its ground ebbs
+    // (works.by_method) hangs on what it held before the year's allotting, so
+    // the targets reckoned again from what it holds after can differ where a
+    // cell is full; with that rule the check of each works against its ground,
+    // above, is the one that holds
+    if P.works.enabled && P.works.by_method {
+        return Ok(());
+    }
     let want = works_targets(st, C, P);
     for f in 0..st.F_count {
         if st.f_alive[f] {

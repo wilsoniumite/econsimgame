@@ -34,6 +34,25 @@
 //! - H. a works keeps back what its order still costs before it pays a dividend
 //!   (`keep_order`, `kept_for_order`, read in `econ::step_month`).
 //!
+//! And one part with the life cycle, switched apart:
+//!
+//! - I. the ground a works takes is by its method (`by_method`): each hand of
+//!   its plant takes the method's square metres where the content gives
+//!   history's number (`Content::m_ground`, methods that cannot stand before
+//!   1901), fewer hands as it grows more productive, and a works keeps the
+//!   ground it holds while its hands leave until it needs under `keep` of it
+//!   (`ground_need`, `settle_ground`). The methods of 1750 to 1900 keep
+//!   today's 2,000 square metres a hand, history's number written beside it.
+//! - J. the works of a street live in the blocks of houses (`in_blocks`): a
+//!   method whose site is floor (history's ground a hand at most `block_m2`)
+//!   and whose good is sold where it is made, to the households round it (a
+//!   good they buy for a need, carted at `block_weight` or more or not at all),
+//!   takes no ground of its own on a town's cells: its ground is floor let in
+//!   the blocks (`State::cell_floor`, `floor_in_books`), and on the squares it
+//!   holds none (`squares::Table::floor`). Shops, offices, care and the
+//!   builders. A works of a method by history's number (part I) is held by
+//!   the ground it can get and pay for, not by `cell_limit`.
+//!
 //! Nothing here pays or charges anyone outside the purses `econ::money_total`
 //! counts: an order is paid from the works' cash, its backers' or its family's,
 //! as before, and the land a works grows onto is rented at the cell's rent that
@@ -89,6 +108,30 @@ pub struct WorksParams {
     /// town's prices, before it pays a dividend (`kept_for_order`). Off: the
     /// port's, which pays out the cash meant for plant still on its way.
     pub keep_order: bool,
+    /// I. The ground a works takes is by its method: each hand of its plant
+    /// takes the method's square metres (`Content::m_ground`) where the content
+    /// gives history's number, and a works keeps the ground it holds while its
+    /// hands leave, paying rent on it, until it needs under `keep` of it. On the
+    /// squares every works keeps its squares the same way. Off: every method
+    /// takes 2,000 square metres a hand (`hands_per_cell`) and the squares
+    /// follow the books' ground to the square.
+    pub by_method: bool,
+    /// I. A works gives ground back once what its plant needs falls under this
+    /// share of what it holds, and then gives back down to what it needs.
+    pub keep: f64,
+    /// J. The works of a street live in the blocks of houses: on a town's
+    /// cells a works of such a method takes no ground of its own but floor let
+    /// in the blocks (`in_blocks`), and a works of a method by history's number
+    /// has no `cell_limit`. Off: every works has a yard of its own, as part I
+    /// leaves it.
+    pub in_blocks: bool,
+    /// J. The most ground a hand (history's number, `Content::m_ground` or
+    /// `m_ground_history`) a method of the blocks may take: the content's 65
+    /// for shops, offices and warehouses together.
+    pub block_m2: f64,
+    /// J. A good is sold where it is made when it is not carted between towns
+    /// or is carted at this weight or more (services, at 4).
+    pub block_weight: f64,
 }
 
 impl Default for WorksParams {
@@ -109,16 +152,25 @@ impl Default for WorksParams {
             walk: 0.02,
             spread_first: false,
             keep_order: false,
+            by_method: false,
+            keep: 0.8,
+            in_blocks: false,
+            block_m2: 65.0,
+            block_weight: 4.0,
         }
     }
 }
 
 impl WorksParams {
-    /// The game's life cycle, with the two mends of the pass over the rules.
+    /// The game's life cycle, with the two mends of the pass over the rules and
+    /// the ground by method.
     pub fn game() -> WorksParams {
-        WorksParams { enabled: true, spread_first: true, keep_order: true, ..WorksParams::default() }
+        WorksParams { enabled: true, spread_first: true, keep_order: true, by_method: true, in_blocks: true, ..WorksParams::default() }
     }
 }
+
+/// Square metres of a cell of two kilometres.
+pub const CELL_M2: f64 = 4.0e6;
 
 /// The state's two tables, sized once the run knows its towns and methods
 /// (`sim::init_before_firms`). Left empty when the life cycle is off.
@@ -131,6 +183,13 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
     // up part-way (`new_year` calls this then) has works already on their land,
     // and their leases cover it
     st.works_lease = (0..st.f_alive.len()).map(|f| if st.f_alive[f] { land_held(st, C, P, f) } else { 0.0 }).collect();
+    if P.works.by_method && st.works_hands.len() != st.f_alive.len() {
+        st.works_hands.resize(st.f_alive.len(), 1.0);
+    }
+    if P.works.by_method && P.works.in_blocks {
+        st.works_floor.resize(st.f_alive.len(), false);
+        st.cell_floor.resize(st.N, 0.0);
+    }
 }
 
 // ---------------------------------------------------------------- B. land
@@ -143,26 +202,208 @@ pub fn land_take(C: &Content, P: &Params, m: usize, K: f64) -> f64 {
     if w.enabled && w.hands_per_cell > 0.0 {
         // by its hands at the method's book labour: a smithy of five men takes a
         // yard, a mill of a thousand hands half a cell
-        K * C.m_labor[m] / w.hands_per_cell
+        K * C.m_labor[m] / hands_a_cell(C, P, m)
     } else {
         K / (P.footprint_K_mult * C.m_K0[m])
     }
 }
 
+/// I. Whether method m takes ground by history's number (`Content::m_ground`)
+/// and keeps it while its hands leave. A method whose content gives no number,
+/// or whose books keep today's while history's waits (`m_ground_history`), does
+/// not: it takes 2,000 square metres a hand as before.
+pub fn by_method(C: &Content, P: &Params, m: usize) -> bool {
+    P.works.enabled
+        && P.works.by_method
+        && C.m_ground.get(m).is_some_and(|&g| g > 0.0)
+        && C.m_ground_history.get(m).is_none_or(|&h| h <= 0.0)
+}
+
+/// J. Whether method m is one of the works of a street, which live in the
+/// blocks of houses: its site is floor (history's ground a hand, the
+/// content's `ground` or, where the books keep today's, `ground_history`, at
+/// most `block_m2`) and its good is sold where it is made, to the households
+/// round it (they buy it for a need, and it is not carted between towns or is
+/// carted at `block_weight` or more). By the content of today: the shops and
+/// trades, the emporium, the offices, care, and the builders (the masons,
+/// carpenters, bricklayers, contractors and steel-frame builders, whose work
+/// is on others' ground). Not a handloom (cloth is light to cart), a smithy
+/// (tools), a brewhouse (beer) or a mill. The squares put every such works on
+/// a town's cells into the blocks (`squares::Table::floor`); the books only
+/// those whose ground is by history's number (`floor_in_books`).
+pub fn in_blocks(C: &Content, P: &Params, m: usize) -> bool {
+    let w = &P.works;
+    if !(w.enabled && w.by_method && w.in_blocks) {
+        return false;
+    }
+    let history = match C.m_ground_history.get(m) {
+        Some(&h) if h > 0.0 => h,
+        _ => C.m_ground.get(m).copied().unwrap_or(0.0),
+    };
+    let g = C.method_out[m];
+    let for_a_need = (0..C.S).any(|s| C.props[(g, s)] > 0.0);
+    let sold_here = !C.traded.get(g).copied().unwrap_or(true) || C.weight[g] >= w.block_weight;
+    history > 0.0 && history <= w.block_m2 && for_a_need && sold_here
+}
+
+/// J. Whether the books let works of method m floor in the blocks on a town's
+/// cells: a method of the blocks (`in_blocks`) whose ground is by history's
+/// number (`by_method`): the offices, care and the steel-frame builders, none
+/// found before 1901. The shops and trades, the emporium and the old builders
+/// keep their yards in the books, at today's 2,000 square metres a hand, with
+/// the rest of the methods of 1750 to 1900, until the old towns are laid out
+/// anew; the squares put them in the blocks already.
+pub fn floor_in_books(C: &Content, P: &Params, m: usize) -> bool {
+    by_method(C, P, m) && in_blocks(C, P, m)
+}
+
+/// J. The share of its cell that works f's ground counts in: the floor let in
+/// the cell's blocks where it is such a works on a town's cell (`State::works_floor`),
+/// the works' yards (`cell_K_share`) otherwise.
+pub fn ground_mut(st: &mut State, f: usize) -> &mut f64 {
+    let c = st.f_cell[f];
+    if st.works_floor.get(f).copied().unwrap_or(false) { &mut st.cell_floor[c] } else { &mut st.cell_K_share[c] }
+}
+
+/// J. Where a works opened on `cell` keeps its ground: floor in the blocks
+/// where its method lets floor in the books and the cell is a town's.
+pub fn opened_on_floor(st: &mut State, C: &Content, P: &Params, f: usize) {
+    if f < st.works_floor.len() {
+        st.works_floor[f] = floor_in_books(C, P, st.f_method[f]) && st.urban.get(st.f_cell[f]).copied().unwrap_or(false);
+    }
+}
+
+/// The hands of method m's plant that fill a cell: `hands_per_cell`, or with
+/// the ground by method a cell over the method's square metres a hand.
+pub fn hands_a_cell(C: &Content, P: &Params, m: usize) -> f64 {
+    if by_method(C, P, m) { CELL_M2 / C.m_ground[m] } else { P.works.hands_per_cell }
+}
+
 /// The share of its cell works f holds. Under the port that is its built
 /// capacity alone. Here the ground is taken when the building starts, so
 /// capacity on order counts too: the works pays rent on it from that day, and
-/// nobody else can plan on the same yard meanwhile.
+/// nobody else can plan on the same yard meanwhile. With the ground by method
+/// (I) a works of such a method holds what it leases, which it keeps while
+/// its hands leave (`give_back`), and never less than its plant needs.
 pub fn land_held(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
+    let need = ground_need(st, C, P, f);
+    match st.works_lease.get(f) {
+        Some(&lease) if by_method(C, P, st.f_method[f]) => need.max(lease),
+        _ => need,
+    }
+}
+
+/// The ground works f's plant needs now. Under the port and for a method that
+/// keeps today's books, `land_take` of its capacity. For a method that takes
+/// ground by history's number (I), the ground of its hands at full work: its
+/// plant's hands at the method's book labour, fewer as the works' productivity
+/// rises (a works twice as productive does the book's work with half the
+/// hands), and never more than the book's.
+pub fn ground_need(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
     let K = if P.works.enabled { st.f_K[f] + st.f_order_K[f] } else { st.f_K[f] };
-    land_take(C, P, st.f_method[f], K)
+    let m = st.f_method[f];
+    let book = land_take(C, P, m, K);
+    if by_method(C, P, m) {
+        book * machines_factor(st, f) / st.f_prod[f].max(1.0)
+    } else {
+        book * hands_kept(st, P, f)
+    }
+}
+
+/// Works f's hands a unit over its hands a unit by hand: less than 1 where
+/// machines do some of their tasks (`tasks::works_month`), 1 where none do,
+/// and so in every year before the first machine for a task is found.
+fn machines_factor(st: &State, f: usize) -> f64 {
+    st.tasks.f_factor.get(f).copied().unwrap_or(1.0).min(1.0)
+}
+
+/// I. The share of its plant's hands works f of a method that keeps today's
+/// books holds ground for (`State::works_hands`): 1 until machines take some of
+/// their tasks, and 1 with the rule off.
+pub fn hands_kept(st: &State, P: &Params, f: usize) -> f64 {
+    if P.works.enabled && P.works.by_method { st.works_hands.get(f).copied().unwrap_or(1.0) } else { 1.0 }
+}
+
+/// I. Once a year, before the review, each works settles the ground it holds
+/// with what its hands at work need now. Buildings do not vanish in a month: a
+/// works whose hands leave keeps its sheds and pays for them, and only one
+/// that has lost a fifth of its hands lets the ground go, back down to what
+/// they need, its rent falling with it. One whose hands need more takes it at
+/// the cell's rent (`lease_more`).
+///
+/// A works of a method by history's number holds the ground of its plant's
+/// hands at full work, at its productivity and less what machines do of their
+/// tasks (`ground_need`), and settles its lease with that. A works of a method
+/// that keeps today's books holds 2,000 square metres a hand of its plant, as
+/// before, less the hands machines took: its share of hands kept
+/// (`State::works_hands`) follows the machines' cut a fifth at a time. No
+/// machine for a task stands before 1901, so in the years to 1900 the share is
+/// 1 and such a works holds what it held before this rule.
+pub fn settle_ground(st: &mut State, C: &Content, P: &Params) {
+    if !(P.works.enabled && P.works.by_method) || st.works_lease.len() != st.f_alive.len() {
+        return;
+    }
+    if st.works_hands.len() != st.f_alive.len() {
+        st.works_hands.resize(st.f_alive.len(), 1.0);
+    }
+    for f in 0..st.F_count {
+        if !st.f_alive[f] {
+            continue;
+        }
+        let m = st.f_method[f];
+        let c = st.f_cell[f];
+        let lease = st.works_lease[f];
+        if by_method(C, P, m) {
+            // J. a works of the blocks whose cell joined its town or left it
+            // since last year moves its ground between the floor let in the
+            // blocks and the yards
+            if f < st.works_floor.len() {
+                let now = floor_in_books(C, P, m) && st.urban[c];
+                if now != st.works_floor[f] {
+                    let held = land_held(st, C, P, f);
+                    let from = ground_mut(st, f);
+                    *from = (*from - held).max(0.0);
+                    st.works_floor[f] = now;
+                    *ground_mut(st, f) += held;
+                }
+            }
+            let need = ground_need(st, C, P, f);
+            if lease > 0.0 && need < P.works.keep * lease {
+                st.f_rent[f] *= need / lease;
+                st.works_lease[f] = need;
+                let g = ground_mut(st, f);
+                *g = (*g - (lease - need)).max(0.0);
+            } else if need > lease {
+                *ground_mut(st, f) += need - lease;
+                lease_more(st, f, need);
+            }
+            continue;
+        }
+        let (kept, now) = (st.works_hands[f], machines_factor(st, f));
+        if now < P.works.keep * kept || now > kept {
+            let plant = land_take(C, P, m, st.f_K[f] + st.f_order_K[f]);
+            st.works_hands[f] = now;
+            if now < kept {
+                st.f_rent[f] *= now / kept;
+                st.works_lease[f] *= now / kept;
+                st.cell_K_share[c] = (st.cell_K_share[c] - plant * (kept - now)).max(0.0);
+            } else {
+                st.cell_K_share[c] += plant * (now - kept);
+                lease_more(st, f, plant * now);
+            }
+        }
+    }
 }
 
 /// The largest a works grows where it stands. Beyond it, more capacity means a
 /// sister works on another cell.
 pub fn max_K(C: &Content, P: &Params, m: usize) -> f64 {
     let w = &P.works;
-    if w.enabled && w.hands_per_cell > 0.0 {
+    if w.in_blocks && by_method(C, P, m) {
+        // J. held by the ground it can get and pay for (`cell_fits`, the rent of
+        // `ordered`), not by a share of its cell
+        f64::INFINITY
+    } else if w.enabled && w.hands_per_cell > 0.0 {
         let per_unit = land_take(C, P, m, 1.0);
         if per_unit > 0.0 { w.cell_limit / per_unit } else { f64::INFINITY }
     } else {
@@ -173,7 +414,9 @@ pub fn max_K(C: &Content, P: &Params, m: usize) -> f64 {
 /// Whether `cell` has room for K more capacity of method m. The port never
 /// asks (it looks only at how full the cell is already).
 pub fn cell_fits(st: &State, C: &Content, P: &Params, cell: usize, m: usize, K: f64) -> bool {
-    !P.works.enabled || st.cell_K_share[cell] + land_take(C, P, m, K) <= 1.0
+    // J. the floor let in the cell's blocks is ground taken too
+    let floor = st.cell_floor.get(cell).copied().unwrap_or(0.0);
+    !P.works.enabled || st.cell_K_share[cell] + floor + land_take(C, P, m, K) <= 1.0
 }
 
 /// `cell_fits` for someone who will be told why not (the family's site list).
@@ -396,6 +639,8 @@ pub fn new_year(st: &mut State, C: &Content, P: &Params, pbar: &Mat, alive: &mut
         init(st, C, P);
     }
     st.works_added.fill(0.0);
+    // I. the ground works no longer need goes back before anyone asks for more
+    settle_ground(st, C, P);
     if !rationed(P) {
         return;
     }
@@ -454,19 +699,35 @@ pub fn ordered(st: &mut State, C: &Content, P: &Params, f: usize, dK: f64) {
     if st.works_added.rows > 0 {
         st.works_added[(i, m)] += dK;
     }
-    // the ground is taken now, so the next works to ask this year finds the cell that much fuller
-    st.cell_K_share[c] += land_take(C, P, m, dK);
+    // the ground is taken now, so the next works to ask this year finds the cell
+    // that much fuller; a works that kept ground while its hands left (I) builds
+    // on that first
+    if by_method(C, P, m) && f < st.works_lease.len() {
+        let after = ground_need(st, C, P, f);
+        let before = (land_take(C, P, m, st.f_K[f] + st.f_order_K[f] - dK) * machines_factor(st, f) / st.f_prod[f].max(1.0)).max(st.works_lease[f]);
+        *ground_mut(st, f) += (after - before).max(0.0);
+    } else {
+        st.cell_K_share[c] += land_take(C, P, m, dK) * hands_kept(st, P, f);
+    }
     if f < st.works_lease.len() {
-        let need = land_take(C, P, m, st.f_K[f] + st.f_order_K[f]);
-        let lease = st.works_lease[f];
-        if need > lease {
-            let priced = st.wbar.get(i).is_some_and(|&w| w > 0.0);
-            // a cell's worth of ground a month: at the rate it pays now, at the cell's rent this year
-            let own = if lease > 0.0 { st.f_rent[f] / lease } else { 0.0 };
-            let cell = if priced { 1.25 * st.land_rent_only[c] } else { 0.0 };
-            st.f_rent[f] += own.max(cell) * (need - lease);
-            st.works_lease[f] = need;
-        }
+        let need = ground_need(st, C, P, f);
+        lease_more(st, f, need);
+    }
+}
+
+/// Works f's lease grows to `need` where it is less: the new ground is rented
+/// at what the cell's land earns this year, and never for less than the works
+/// pays for the ground it has (`ordered` says why).
+fn lease_more(st: &mut State, f: usize, need: f64) {
+    let lease = st.works_lease[f];
+    if need > lease {
+        let (i, c) = (st.f_town[f], st.f_cell[f]);
+        let priced = st.wbar.get(i).is_some_and(|&w| w > 0.0);
+        // a cell's worth of ground a month: at the rate it pays now, at the cell's rent this year
+        let own = if lease > 0.0 { st.f_rent[f] / lease } else { 0.0 };
+        let cell = if priced { 1.25 * st.land_rent_only[c] } else { 0.0 };
+        st.f_rent[f] += own.max(cell) * (need - lease);
+        st.works_lease[f] = need;
     }
 }
 

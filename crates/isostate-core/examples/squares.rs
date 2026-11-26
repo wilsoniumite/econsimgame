@@ -3,7 +3,9 @@
 //! the time the squares take at a year's end, and pictures of a town's squares.
 //!
 //!     cargo run --profile work -p isostate-core --example squares -- [--seeds 1-8] [--to 2050]
-//!         [--families 6] [--check] [--time] [--out DIR]
+//!         [--families 6] [--check] [--time] [--out DIR] [--set JSON]
+//!
+//! `--set` lays JSON over the game's rules, as `{"works":{"by_method":false}}`.
 //!
 //! Each island runs under the game's rules on its own thread.
 //!
@@ -19,7 +21,11 @@
 //! - `--out DIR`: for the first island, DIR/squares-SEED-big.png and
 //!   DIR/squares-SEED-small.png, the squares of the largest town of the last
 //!   year and of a small one, from above, in 1800, 1850, 1900, 1950, 2000 and
-//!   2050 (those the run reaches), side by side.
+//!   2050 (those the run reaches), side by side; `--years 1950,2040` takes
+//!   those years instead. A house block with floor let to works
+//!   (works.in_blocks, `Table::floor`) is drawn in the colour of its use,
+//!   deeper the more of its floor is let: shops gold, offices steel blue, care
+//!   rose, the builders brown.
 #![allow(non_snake_case)]
 
 use std::collections::BTreeMap;
@@ -82,8 +88,8 @@ fn png(w: usize, h: usize, rgb: &[u8]) -> Vec<u8> {
 #[derive(Clone, Default)]
 struct Shot {
     year: i64,
-    /// By cell with a table: tenants, and whether each square is under water.
-    cells: BTreeMap<usize, (Vec<u32>, Vec<bool>)>,
+    /// By cell with a table: tenants, whether each square is under water, and its floor let.
+    cells: BTreeMap<usize, (Vec<u32>, Vec<bool>, Vec<u8>)>,
     road: Vec<u8>,
     town_ground: Vec<Vec<usize>>,
     town_pop: Vec<f64>,
@@ -94,7 +100,7 @@ fn shot(st: &State, year: i64) -> Shot {
     for (c, &k) in st.sq.index.iter().enumerate() {
         if k > 0 {
             let t = &st.sq.tables[k as usize - 1];
-            cells.insert(c, (t.tenant.to_vec(), t.water.to_vec()));
+            cells.insert(c, (t.tenant.to_vec(), t.water.to_vec(), t.floor.to_vec()));
         }
     }
     Shot { year, cells, road: st.road.clone(), town_ground: st.town_ground.clone(), town_pop: st.urban_pop.clone() }
@@ -117,8 +123,12 @@ struct Out {
     run_s: f64,
 }
 
-fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: bool) -> Out {
+#[allow(clippy::too_many_arguments)]
+fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: bool, set: Option<&str>, years: &[i64]) -> Out {
     let mut P = game_params();
+    if let Some(s) = set {
+        P = P.with_json_overrides(s).expect("--set takes JSON, as {\"works\":{\"by_method\":false}}");
+    }
     P.seed = seed;
     P.n_families = families;
     P.end_year = Some(to);
@@ -187,7 +197,7 @@ fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: b
         if year % 10 == 0 || year == s.end_year {
             out.census.push((year, squares::census(&s.st)));
         }
-        if pictures && year % 50 == 0 && year >= 1800 {
+        if pictures && (if years.is_empty() { year % 50 == 0 && year >= 1800 } else { years.contains(&year) }) {
             out.shots.push(shot(&s.st, year));
         }
     }
@@ -198,8 +208,8 @@ fn run(seed: u64, to: i64, families: usize, check: bool, time: bool, pictures: b
     out
 }
 
-fn colour(tn: Tenant, under: bool) -> [u8; 3] {
-    let base = match tn {
+fn colour(tn: Tenant, under: bool, floor: u8) -> [u8; 3] {
+    let mut base = match tn {
         Tenant::None => [214, 222, 196],
         Tenant::Works(f) => {
             // works in slate blues and violets, one shade each
@@ -212,6 +222,20 @@ fn colour(tn: Tenant, under: bool) -> [u8; 3] {
         Tenant::Derelict(_) => [150, 138, 110],
         Tenant::Open(_) => [236, 222, 168],
     };
+    // floor let to works, by its use and its eighths
+    let e = (floor & 0x0f) as f32 / 8.0;
+    if e > 0.0 {
+        let to: [u8; 3] = match floor >> 4 {
+            1 => [232, 180, 40],
+            2 => [70, 110, 190],
+            3 => [222, 92, 150],
+            _ => [120, 84, 50],
+        };
+        let k = 0.35 + 0.6 * e;
+        for j in 0..3 {
+            base[j] = (base[j] as f32 * (1.0 - k) + to[j] as f32 * k) as u8;
+        }
+    }
     if under {
         // under water: the colour with blue laid over it
         if tn == Tenant::None {
@@ -280,11 +304,11 @@ fn picture(o: &Out, i: usize, path: &str) {
             for cx in x0..=x1 {
                 let c = cy * W + cx;
                 for k in 0..PER_CELL {
-                    let (code, under) = match s.cells.get(&c) {
-                        Some((t, wa)) => (t[k], wa[k]),
-                        None => (0, false),
+                    let (code, under, floor) = match s.cells.get(&c) {
+                        Some((t, wa, fl)) => (t[k], wa[k], fl[k]),
+                        None => (0, false, 0),
                     };
-                    let col = colour(Tenant::of(code), under);
+                    let col = colour(Tenant::of(code), under, floor);
                     let (sx, sy) = ((cx - x0) * SIDE + k % SIDE, (cy - y0) * SIDE + k / SIDE);
                     ten[sy * (pw / px) + sx] = code;
                     for yy in 0..px {
@@ -379,6 +403,8 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut seeds: Vec<u64> = vec![7];
     let (mut to, mut families, mut check, mut time, mut out_dir) = (2050i64, 6usize, false, false, None::<String>);
+    let mut set: Option<String> = None;
+    let mut years: Vec<i64> = Vec::new();
     let mut k = 0;
     while k < args.len() {
         match args[k].as_str() {
@@ -406,6 +432,14 @@ fn main() {
                 k += 1;
                 out_dir = Some(args[k].clone());
             }
+            "--set" => {
+                k += 1;
+                set = Some(args[k].clone());
+            }
+            "--years" => {
+                k += 1;
+                years = args[k].split(',').map(|y| y.parse().unwrap()).collect();
+            }
             a => panic!("unknown argument {a}"),
         }
         k += 1;
@@ -413,7 +447,8 @@ fn main() {
     let first = seeds[0];
     let pictures = out_dir.is_some();
     let outs: Vec<Out> = std::thread::scope(|sc| {
-        let hs: Vec<_> = seeds.iter().map(|&s| sc.spawn(move || run(s, to, families, check, time, pictures && s == first))).collect();
+        let (set, years) = (set.as_deref(), &years[..]);
+        let hs: Vec<_> = seeds.iter().map(|&s| sc.spawn(move || run(s, to, families, check, time, pictures && s == first, set, years))).collect();
         hs.into_iter().map(|h| h.join().unwrap()).collect()
     });
     for o in &outs {

@@ -280,14 +280,15 @@ fn the_log_reads_back_what_was_written() {
     let year = 1900;
     let at = |cell: u32, k: u32| cell * PER_CELL as u32 + k;
     let changes = vec![
-        Change { at: at(0, 0), tenant: Tenant::Works(0).code(), year: 1900, face: 3 },
-        Change { at: at(0, 1), tenant: 0, year: 0, face: 0 },
-        Change { at: at(0, 255), tenant: Tenant::Works(0).code(), year: 1900, face: 255 },
-        Change { at: at(7, 9), tenant: Tenant::Houses(41).code(), year: 1645, face: 64 },
-        Change { at: at(7, 10), tenant: Tenant::Houses(41).code(), year: 1900, face: 0 },
-        Change { at: at(7, 11), tenant: Tenant::Open(41).code(), year: 1901, face: 1 },
-        Change { at: at(40_000, 128), tenant: Tenant::Works((1 << 28) - 1).code(), year: 2050, face: 9 },
-        Change { at: at(40_000, 129), tenant: Tenant::Pit(3).code(), year: 1900, face: 200 },
+        Change { at: at(0, 0), tenant: Tenant::Works(0).code(), year: 1900, face: 3, floor: 0 },
+        Change { at: at(0, 1), tenant: 0, year: 0, face: 0, floor: 0 },
+        Change { at: at(0, 255), tenant: Tenant::Works(0).code(), year: 1900, face: 255, floor: 0 },
+        Change { at: at(7, 9), tenant: Tenant::Houses(41).code(), year: 1645, face: 64, floor: 0x22 },
+        Change { at: at(7, 10), tenant: Tenant::Houses(41).code(), year: 1900, face: 0, floor: 0x28 },
+        Change { at: at(7, 11), tenant: Tenant::Open(41).code(), year: 1901, face: 1, floor: 0 },
+        Change { at: at(7, 12), tenant: Tenant::Houses(41).code(), year: 1900, face: 5, floor: 0 },
+        Change { at: at(40_000, 128), tenant: Tenant::Works((1 << 28) - 1).code(), year: 2050, face: 9, floor: 0 },
+        Change { at: at(40_000, 129), tenant: Tenant::Pit(3).code(), year: 1900, face: 200, floor: 0 },
     ];
     let mut shuffled = changes.clone();
     shuffled.reverse();

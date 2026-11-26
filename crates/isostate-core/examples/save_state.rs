@@ -316,7 +316,7 @@ bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, roy
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
 bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode, squares, squares_first });
-bin_struct!(Change { at, tenant, year, face });
+bin_struct!(Change { at, tenant, year, face, floor });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
@@ -592,7 +592,7 @@ state_parts! {
     engel: "engel", machine_stock: "machines", machine_cap_lift: "machines",
     harvest_mult: "harvest", harvest_now: "harvest", harvest_town_now: "harvest", harvest_year: "harvest", harvest_town: "harvest",
     harvest_past: "harvest", harvest_dearth_year: "harvest", harvest_rent_gap: "harvest", harvest_rent_gap_year: "harvest",
-    chron: "chronicle", works_added: "works", works_lease: "works", rw: "railways",
+    chron: "chronicle", works_added: "works", works_lease: "works", works_hands: "works", works_floor: "works", cell_floor: "cells", rw: "railways",
     cart_bill: "carting", carters: "carting", cart_months: "carting", cart_years: "carting",
     pp_growth: "people", pp_income_term: "people", pp_emigrants: "people", pp_foundings: "people", pp_gave: "people", pp_dcatch_was: "people",
     pp_moved: "people", pp_found_next: "people",
@@ -760,7 +760,7 @@ fn size_table(seed: u64, label: &str, sim: &Sim) -> Vec<Part> {
     let st = &sim.st;
     let fmax = st.f_alive.len().max(1);
     let firm_raw: usize = ps.iter().filter(|p| p.group == "firms" && p.name != "F_count" && p.name != "new_firms_year" && p.name != "closed_year").map(|p| p.raw).sum::<usize>()
-        + ps.iter().filter(|p| matches!(p.name, "f_owner" | "f_paid" | "works_lease")).map(|p| p.raw).sum::<usize>();
+        + ps.iter().filter(|p| matches!(p.name, "f_owner" | "f_paid" | "works_lease" | "works_hands" | "works_floor")).map(|p| p.raw).sum::<usize>();
     let firm_unused = firm_raw as f64 * (1.0 - st.F_count as f64 / fmax as f64);
     let months = st.series.data.first().map(|d| d.len()).unwrap_or(0);
     let series_unused = st.series.data.len() * months.saturating_sub(sim.t) * 8;

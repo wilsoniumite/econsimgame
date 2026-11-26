@@ -263,7 +263,9 @@ pub fn create_firm(
     if st.firm_at[cell] < 0 {
         st.firm_at[cell] = fid as i64;
     }
-    st.cell_K_share[cell] += works::land_take(C, P, m, K);
+    // works (part J): a works of the blocks on a town's cell lets floor there, not a yard
+    works::opened_on_floor(st, C, P, fid);
+    *works::ground_mut(st, fid) += works::land_take(C, P, m, K);
     works::opened(st, C, P, fid, K); // works: the year's room and the lease
     crate::tasks::opened(st, C, P, fid); // tasks: built at its town's target
     Some(fid)
@@ -649,7 +651,8 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     st.f_died[fid] = year;
     let c = st.f_cell[fid];
     let m = st.f_method[fid];
-    st.cell_K_share[c] = (st.cell_K_share[c] - held).max(0.0);
+    let g = works::ground_mut(st, fid);
+    *g = (*g - held).max(0.0);
     if works::leaves_derelict(C, P, m, st.f_K[fid]) && st.cell_K_share[c] < 0.05 && !st.urban[c] {
         st.derelict_timer[c] = 6;
     }
