@@ -81,7 +81,7 @@ pub fn kept(P: &Params, year: i64, level: u8) -> bool {
     P.lorry.keep && year >= KEEP_FROM && level >= 2
 }
 
-/// The lorry's series, after the others, only while the lorry may be found (a
+/// The lorry's series, after the reckoning of pay's and before the ages', only while the lorry may be found (a
 /// run with it off keeps the list it kept): `lorry_share`, the share of the
 /// carting's hauling the lorries in place did in the month, each town by its
 /// carting's work (nought before the find), which the viewer's Traffic view

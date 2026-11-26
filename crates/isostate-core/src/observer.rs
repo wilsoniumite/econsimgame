@@ -173,14 +173,15 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     crate::linked::add_series(&mut reg, P, n_months);
     // pay (docs/rules/pay.md): each class's pay, reckoned from 1900
     crate::pay::add_series(&mut reg, P, n_months);
+    // the lorry (docs/rules/lorry.md): the hauling done by lorry, while the lorry may be
+    // found (before the ages, whose series come after everyone's: tests/ages.rs)
+    crate::lorry::add_series(&mut reg, P, n_months);
     // ages (docs/rules/ages.md): the people's ages, reckoned beneath the played totals
     crate::ages::add_series(&mut reg, P, n_months);
     // state (docs/rules/state.md): the rate on pay, and what the treasury pays out
     crate::purse::add_series(&mut reg, P, n_months);
     // who works (docs/rules/who-works.md): the share in work, all and by age, from 1901
     crate::who_works::add_series(&mut reg, P, n_months);
-    // the lorry (docs/rules/lorry.md): the hauling done by lorry, while the lorry may be found
-    crate::lorry::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);

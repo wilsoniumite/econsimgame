@@ -268,10 +268,13 @@
 # carters' hauling, its saving is had by the road under it, and from 1901 no
 # made road falls back for want of traffic; the content's list of ideas has
 # the motor vehicle; 1750-1900 held, since nothing of it acts before 1901
+# Taken: 1901-2050 economy and run.bin: the lorry's series lorry_share now
+# comes before the ages' (tests/ages.rs holds the ages' series after
+# everyone's); 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x626a31a726487b4a
+1901-2050 economy  0x0ca459d13372cb20
 1901-2050 books    0x4ff44e5186d35f38
 1901-2050 news     0x9f6ac10774f8c3a3
-1901-2050 run.bin  0x1805777c3de1e316
+1901-2050 run.bin  0xe0be14d695c5af14
