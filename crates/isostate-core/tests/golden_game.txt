@@ -282,10 +282,18 @@
 # the railway a layer of its own in the cost graph with the wharf's charge to
 # get on and off, and a road worn by its own traffic; 1901-2050 moved,
 # 1750-1900 held
+# Taken: 1901-2050 economy, books, news and run.bin: the state's ways
+# (highways.trunk, highways.bypass; docs/rules/highways.md) on under the
+# game's rules: from 1909 the treasury betters the ways between the large
+# towns into trunk roads with their fords bridged, and from 1920 bypasses a
+# town on one or widens its high street, where what they save pays; its works
+# are road works of the towns' stone and men paid out of the treasury, and the
+# record marks trunk roads and bypasses in the road byte; 1750-1900 held,
+# since nothing of it acts before 1909
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x7b0d79a68ec2993d
-1901-2050 books    0x7219adb5b277f86c
-1901-2050 news     0xe88c8c4d8a7b2f8e
-1901-2050 run.bin  0xb9f4bf567bc16a0a
+1901-2050 economy  0x5a4c184a4950e682
+1901-2050 books    0x3c5c693e83e30fc8
+1901-2050 news     0x7279d914b0a180ba
+1901-2050 run.bin  0x91174fa62cf5aa36

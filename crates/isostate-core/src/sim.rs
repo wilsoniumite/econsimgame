@@ -416,6 +416,8 @@ pub fn update_roads(st: &mut State, _C: &Content, P: &Params, year: i64) {
         }
     }
     let worn = &wear;
+    // highways (docs/rules/highways.md): the weight by road, which the state's sums read
+    crate::highways::note_wear(st, P, worn);
     let [t1, t2, t3] = P.road_thresholds;
     let thr = [0.0, t1, t2, t3];
     // roads (docs/probes/dx-roads.md): from 1750 only a track is worn for nothing;
@@ -487,6 +489,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     crate::roads::yearly(st, C, P, year, warm);
     // crossings (docs/rules/crossings.md): the year's traffic over water, and the bridges it pays for
     crate::crossings::yearly(st, C, P, year, warm);
+    // highways (docs/rules/highways.md): the year's through traffic, and the state's ways that pay
+    crate::highways::yearly(st, C, P, year, warm);
     // canals (docs/rules/canals.md): what the year's goods put on the water, on the
     // paths they took (before the paths are worked out again)
     crate::canals::year_traffic(st, C, P, year, warm);
@@ -696,6 +700,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     crate::roads::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     // crossings (docs/rules/crossings.md): bridges that are built open
     crate::crossings::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // highways (docs/rules/highways.md): the treasury pays its works, and finished ones open
+    crate::highways::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         check_money(st, sim.year, month)?;

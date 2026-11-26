@@ -603,4 +603,8 @@ pub struct State {
     /// The year the cost graph was last made at the close of, and how each
     /// cell was reached in each town's tree while the railway is a layer of its own.
     pub hl: crate::haulage::HaulageState,
+
+    // ---------------- highways (docs/rules/highways.md; empty while it neither acts nor watches)
+    /// The trunk roads and bypasses, the works in hand, and the through traffic watched.
+    pub hw: crate::highways::HighwayState,
 }

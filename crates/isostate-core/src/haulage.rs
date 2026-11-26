@@ -91,7 +91,10 @@ pub fn on(st: &State, P: &Params) -> bool {
 /// The year's cost graph (`land::update_transport`): the port's, or from 1901
 /// under `haulage.handling` the one whose railway is a layer of its own.
 pub fn build_graph(st: &State, P: &Params, port: &[bool], road_mult: &[f64; 4]) -> tr::Graph {
-    tr::build_graph_trains(&st.world, &st.road, &st.rail, port, &st.cover, road_mult, on(st, P).then(|| station(P)))
+    let mut g = tr::build_graph_trains(&st.world, &st.road, &st.rail, port, &st.cover, road_mult, on(st, P).then(|| station(P)));
+    // highways (docs/rules/highways.md): a trunk road's squares cheaper, a town's streets slow
+    crate::highways::graph(st, P, &mut g, road_mult);
+    g
 }
 
 /// Whether, in town `i`'s tree, cell `n` was reached off a train boarded at its predecessor.

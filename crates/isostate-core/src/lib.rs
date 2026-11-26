@@ -48,6 +48,7 @@ pub mod hands;
 pub mod harvest;
 pub mod haulage;
 pub mod heaps;
+pub mod highways;
 pub mod inspect;
 // IDEAS-PLATE: the island's ideas as a timeline, for the game's panel
 pub mod island_ideas;
