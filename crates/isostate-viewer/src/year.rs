@@ -567,6 +567,8 @@ pub struct Scenery {
     /// the year's meshes, one to each of the table's list (`list`)
     meshes: Vec<meshkit::Builder>,
     rails: Vec<trains::TrainPath>,
+    /// the carters' rounds (`trains::year_rounds`), handed to the carts with the year
+    rounds: Vec<trains::TrainPath>,
     /// each mesh's corners and fingerprint in the order of the list, where a
     /// scripted run checks what is on screen (`PRINT_YEAR_MESHES`)
     prints: Option<Vec<(usize, u64)>>,
@@ -643,6 +645,9 @@ impl Shown {
 #[allow(clippy::too_many_arguments)]
 fn build_scenery(table: &[YearMesh], r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
+    // the ways of the roads first drawn this year, found side by side and kept, so that all that
+    // follows a road, here and on the main thread, reads them (`road_course::Courses::find_year`)
+    world::timed("year ways", || g.courses.find_year(r, g, cen, k));
     // (task C, the land) one reckoning of the year's land for the ground's textures and the scenery
     let land = world::timed("year land", || world::year_land(r, g, k));
     let cells = terrain::year_parcels(r, g, k, &land);
@@ -650,6 +655,8 @@ fn build_scenery(table: &[YearMesh], r: &Replay, g: &Ground, slots: &scatter::Sl
     let t1 = t0.elapsed().as_secs_f32();
     let mut nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
+    // the carters' rounds, along the roads just drawn, for the carts to take with the year
+    let rounds = trains::year_rounds(r, g, cen, k);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread); {} vertices of houses for a camera {:.1} off", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3, ym.houses.pos.len(), lod.dist);
     }
@@ -670,7 +677,7 @@ fn build_scenery(table: &[YearMesh], r: &Replay, g: &Ground, slots: &scatter::Sl
     // (a scripted run that checks what is on screen: each mesh's fingerprint, taken here,
     // off the main thread, and kept as the record of what the renderer was handed)
     let prints = PRINT_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed).then(|| meshes.iter().map(print_of).collect());
-    Scenery { k, lod, cells, field: land.field, meshes, rails, prints, sums: Vec::new(), pieces: Vec::new() }
+    Scenery { k, lod, cells, field: land.field, meshes, rails, rounds, prints, sums: Vec::new(), pieces: Vec::new() }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -699,7 +706,7 @@ pub fn rebuild_year(
     look: Res<TheLook>,
     handles: Res<Handles>,
     ta: Res<TrainAssets>,
-    mut rails: ResMut<Rails>,
+    (mut rails, mut carts): (ResMut<Rails>, ResMut<crate::carts::Roads>),
     mut builds: ResMut<Builds>,
     orbit: Res<Orbit>,
     mut shown: ResMut<Shown>,
@@ -764,7 +771,7 @@ pub fn rebuild_year(
         if for_camera {
             // the rest of what was built is not wanted. It is 300 MB of trees and more, and
             // letting go of it here cost the frame 10 ms: it is let go of off the main thread
-            let rest = (rest, sc.cells, sc.field, sc.rails);
+            let rest = (rest, sc.cells, sc.field, sc.rails, sc.rounds);
             AsyncComputeTaskPool::get().spawn(async move { drop(rest) }).detach();
         } else {
             // (what is not sent, being the same as on screen, is let go of off the main thread too)
@@ -778,6 +785,8 @@ pub fn rebuild_year(
             if let Some(mut img) = images.get_mut(&handles.year_field) {
                 img.data = Some(sc.field);
             }
+            // the carts go out on the year's roads as the roads go on screen (`carts::place`)
+            carts.hand(sc.k, sc.rounds);
             // trains: one for every eight units of line, up to three, spread along it. While
             // the lines are as they were the trains run on from where they are: a new year
             // does not send every train back to where it started, nor does a year built

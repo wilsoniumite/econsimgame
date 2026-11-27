@@ -22,7 +22,7 @@ use crate::network;
 use crate::replay::Replay;
 use crate::trains::{self, TrainPath};
 use crate::world::{self, Ground};
-use crate::{Data, Timeline};
+use crate::Data;
 
 /// How far above the surface it rides a cart is drawn (its wheels' feet).
 pub const LIFT: f32 = 0.002;
@@ -45,11 +45,33 @@ struct CartAssets {
     mat: Handle<StandardMaterial>,
 }
 
+/// The carters' rounds the carts are on, and the year they are of. A year's
+/// rounds are found with its scenery, off the main thread
+/// (`trains::year_rounds`), and handed over with it (`year::rebuild_year`):
+/// the carts go out on a year's roads as those roads go on screen, and no
+/// road's way is looked for on the main thread for them.
 #[derive(Resource, Default)]
-struct Roads(Vec<TrainPath>);
+pub struct Roads {
+    paths: Vec<TrainPath>,
+    year: Option<usize>,
+    /// a year's rounds handed over and not yet taken (`place`)
+    handed: Option<(usize, Vec<TrainPath>)>,
+}
+
+impl Roads {
+    /// Hand over year `k`'s rounds.
+    pub fn hand(&mut self, k: usize, rounds: Vec<TrainPath>) {
+        self.handed = Some((k, rounds));
+    }
+
+    /// The year whose roads are on screen, the carts on them: none before the first year's scenery is.
+    pub fn year(&self) -> Option<usize> {
+        self.year
+    }
+}
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Roads>().add_systems(Startup, setup).add_systems(Update, (place, drive).chain());
+    app.init_resource::<Roads>().add_systems(Startup, setup).add_systems(Update, (place, drive).chain().after(crate::year::rebuild_year));
 }
 
 fn setup(mut commands: Commands, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -91,31 +113,33 @@ fn nearest_on(paths: &[TrainPath], at: Vec2) -> Option<(usize, f32)> {
     best.map(|b| (b.1, b.2))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>, mut last: Local<Option<usize>>, mut memo: Local<Option<trains::RoadMemo>>) {
+/// Put the carts out on a year's rounds when they are handed over, and on a
+/// year the carts are already on, leave them going. (Until 27 November 2026
+/// the rounds were found here, on the main thread, the frame the clock's year
+/// changed: a third of a second when a record of 2050 opened, and 28 to 40 ms
+/// at the turn to a year not seen before, for the roads' ways that the
+/// year's scenery was finding at the same time.)
+fn place(mut commands: Commands, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Traffic);
     let Some(assets) = assets else { return };
-    let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
-    if *last == Some(k) {
+    let Some((k, rounds)) = roads.handed.take() else { return };
+    if roads.year == Some(k) {
+        // (the year built again whole, in a live game when a year arrives: its rounds are the same)
         return;
     }
-    *last = Some(k);
+    let r = &data.r;
+    roads.year = Some(k);
+    roads.paths = rounds;
     for e in &old {
         commands.entity(e).despawn();
     }
-    // what is the same in every year is kept from one to the next (`trains::RoadMemo`)
-    roads.0 = world::timed("year carts", || {
-        let memo = memo.get_or_insert_with(|| trains::RoadMemo::new(r, &data.g));
-        trains::road_routes(r, &data.g, &data.cen, k, memo)
-    });
     // a cart asked for at a spot, for a picture: the first of the round nearest it, held still there
     let spots = pinned_spots();
-    let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.0, at)).collect();
+    let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.paths, at)).collect();
     // traffic (the core's docs/rules/traffic.md): where the run keeps what each way carried,
     // a round's carts follow the carting along it (`traffic::carts_by_weight`)
-    let by_traffic = r.traffic.kept().then(|| crate::traffic::carts_by_weight(&roads.0.iter().map(|p| crate::traffic::cart_weight_along(r, k, p)).collect::<Vec<f32>>()));
-    for (pi, p) in roads.0.iter().enumerate() {
+    let by_traffic = r.traffic.kept().then(|| crate::traffic::carts_by_weight(&roads.paths.iter().map(|p| crate::traffic::cart_weight_along(r, k, p)).collect::<Vec<f32>>()));
+    for (pi, p) in roads.paths.iter().enumerate() {
         // one or two carts on each carter's round, or one to three by its carting
         let count = by_traffic.as_ref().map_or(1 + (world::hash2(pi as i32, 7, 43) < 0.35) as usize, |c| c[pi]);
         for i in 0..count {
@@ -143,7 +167,7 @@ fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Opt
 fn drive(time: Res<Time>, roads: Res<Roads>, mut q: Query<(&mut Cart, &mut Transform)>) {
     let dt = time.delta_secs().min(0.1);
     for (mut c, mut tf) in &mut q {
-        let Some(p) = roads.0.get(c.path) else { continue };
+        let Some(p) = roads.paths.get(c.path) else { continue };
         c.s += c.dir * c.speed * dt;
         if c.s > p.len {
             c.s = p.len;

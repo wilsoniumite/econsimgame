@@ -24,7 +24,7 @@ use crate::meshkit::{self, Builder};
 use crate::overlay::{MapOverlay, Overlay, Scale};
 use crate::replay::Replay;
 use crate::world::{self, Ground};
-use crate::{Data, Timeline};
+use crate::Data;
 
 /// The traffic a run keeps, `[year][cell][slot]` and `[year][cell]`; all empty
 /// where the run kept none.
@@ -375,19 +375,26 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 }
 
 /// Lay the ribbons again when the view, the year or the scale changes; hide
-/// them when another view or the plain map is shown.
+/// them when another view or the plain map is shown. Nothing is worked out
+/// while the view is not shown.
+///
+/// The ribbons are of the year whose roads are on screen (`carts::Roads::year`),
+/// which is the clock's but for the second or two a new year's scenery takes
+/// to be built: so they lie on the roads drawn, and every course they follow
+/// was found with that year's scenery, off the main thread
+/// (`road_course::Courses::find_year`), and is only read here.
 #[allow(clippy::too_many_arguments)]
-fn lay(ov: Res<MapOverlay>, tl: Res<Timeline>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, mut last: Local<Option<(usize, usize, [u32; 2], i32)>>) {
+fn lay(ov: Res<MapOverlay>, roads: Res<crate::carts::Roads>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, mut last: Local<Option<(usize, usize, [u32; 2], i32)>>) {
     let _frames = crate::frames::span(crate::frames::Sys::MapView);
     let Ok((mesh, mut vis)) = q.single_mut() else { return };
     let shown = ov.kind == Some(Overlay::Traffic) && data.r.traffic.kept();
-    let Some(sc) = ov.scale.filter(|_| shown) else {
+    let (Some(sc), Some(k)) = (ov.scale.filter(|_| shown), roads.year()) else {
         vis.set_if_neq(Visibility::Hidden);
         *last = None;
         return;
     };
     let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
+    let k = k.min(r.ny - 1);
     let (step, near) = nearer(orbit.dist);
     let key = (k, r.filled, [sc.lo.to_bits(), sc.hi.to_bits()], step);
     vis.set_if_neq(Visibility::Inherited);
