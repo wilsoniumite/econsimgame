@@ -37,6 +37,11 @@ fn the_settled_island_is_the_game_as_it_was() {
     landfall::set_start(&mut P, "settled").unwrap();
     assert_eq!(P, game_params());
     assert!(landfall::set_start(&mut P, "colony").unwrap_err().contains("the starts are settled and landfall"));
+    // the hands' rule is one for both starts: landfall's guard of 1.06 went once carriage
+    // and pits were mended (docs/rules/landfall.md, "The trap")
+    let mut L = game_params();
+    landfall::set_start(&mut L, "landfall").unwrap();
+    assert_eq!(L.hands, game_params().hands);
     // with hamlets off the founding asks what the people's rule asks
     assert_eq!(frontier::founding_needs(&P, 1.0), (P.people.found_people, P.people.donor_max));
 }
@@ -73,8 +78,8 @@ fn landfall_is_one_harbour_in_a_corner_of_the_same_island() {
 #[test]
 fn a_landfall_run_settles_its_people_and_its_settlers_by_age() {
     // played under --start landfall: births that answer to free land (frontier.enabled),
-    // hamlets (frontier.hamlets), settlers (immigration.enabled), a short town's wage at
-    // most doubling in a year (hands.short_rise), and the ages watched (ages.watch)
+    // hamlets (frontier.hamlets), settlers (immigration.enabled), and the ages watched
+    // (ages.watch)
     let P = landfall_params(7, 1765);
     assert!(P.frontier.enabled && P.frontier.hamlets && P.immigration.enabled && P.ages.watch);
     let mut sim = sim::start(&P, game_content());
@@ -111,11 +116,11 @@ fn landfall_carts_at_prices_from_1750() {
     assert_eq!((P.longrun.freight_from, game_params().longrun.freight_from), (1750, 1900));
     assert_eq!(sweep::set_field(&P, "longrun.freight_from", &sweep::parse_value("1900")).unwrap().longrun.freight_from, 1900);
     // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
-    // hands.short_rise 1.06, longrun.enabled), once with the freight on prices from 1750 and
+    // longrun.enabled), once with the freight on prices from 1750 and
     // once from 1900: the colony's prices fall as its people outgrow its money, and so does
     // its carriage, with fewer of its hands on the road (to 1770: the merchants' debt of the
     // first years lifts the colony's prices to about 1760 before they fall)
-    assert!(P.longrun.enabled && P.frontier.enabled && P.immigration.enabled && P.hands.short_rise < 2.0);
+    assert!(P.longrun.enabled && P.frontier.enabled && P.immigration.enabled);
     let mut seen = Vec::new();
     for from in [1750, 1900] {
         P.longrun.freight_from = from;
@@ -141,7 +146,7 @@ fn landfall_pits_work_at_the_size_of_their_market() {
     assert!(P.mines.glut && !game_params().mines.glut && !default_params().mines.glut);
     assert!(!sweep::set_field(&P, "mines.glut", &sweep::parse_value("false")).unwrap().mines.glut);
     // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
-    // hands.short_rise 1.06, longrun.freight_from 1750, mines.enabled, prices.enabled), once
+    // longrun.freight_from 1750, mines.enabled, prices.enabled), once
     // with the pits at the size of their market and once without. Without, island 7's
     // new iron-ore pit of 1751 and colliery of 1753 raise far more than the colony asks,
     // the merchants buy it all, and in some December they owe more than twice the money;
