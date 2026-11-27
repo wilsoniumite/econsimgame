@@ -4,6 +4,10 @@
 //! setting by name, a line a year:
 //!
 //!     cargo run --profile work -p isostate-core --example century_probe -- SEED OUT.jsonl [--start settled|landfall] [--set key=value]... [--end YEAR]
+//!         [--stock-months GOOD=MONTHS]...
+//!
+//! (`--stock-months` sets the months of a good's sales its merchants aim to hold,
+//! in the content, for a trial: 0 is a good that does not keep.)
 //!
 //! **The merchants.** The probe sets `State::watch_merchants`, and `econ::step_month`
 //! keeps each town's merchants' month (`econ::MERCHANT_TERMS`), summed here over
@@ -55,6 +59,9 @@ fn main() {
     let out = a[1].clone();
     let mut i = 2;
     let mut sets: Vec<(String, String)> = Vec::new();
+    // a trial of the content, for a mend named and not built: a good's months of
+    // stock its merchants aim at (0: a good that does not keep, as electricity)
+    let mut months: Vec<(String, f64)> = Vec::new();
     while i < a.len() {
         match a[i].as_str() {
             "--start" => {
@@ -64,6 +71,11 @@ fn main() {
             "--set" => {
                 let (k, v) = a[i + 1].split_once('=').expect("--set key=value");
                 sets.push((k.to_string(), v.to_string()));
+                i += 1;
+            }
+            "--stock-months" => {
+                let (g, v) = a[i + 1].split_once('=').expect("--stock-months good=months");
+                months.push((g.to_string(), v.parse().expect("months")));
                 i += 1;
             }
             "--end" => {
@@ -80,6 +92,12 @@ fn main() {
     let mut fy = std::fs::File::create(&out).unwrap();
     let mut sim = sim::start(&P, game_content());
     sim.st.watch_merchants = true;
+    for (g, v) in &months {
+        let gi = sim.content.gi(g);
+        let n = sim.content.G;
+        sim.content.stock_months.resize(n, None);
+        sim.content.stock_months[gi] = Some(*v);
+    }
     let C = sim.content.clone();
     let T = sim.st.T_max;
     let grain = C.gi("grain");
