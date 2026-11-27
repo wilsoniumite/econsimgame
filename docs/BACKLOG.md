@@ -513,7 +513,7 @@ Her note of 27 November (at the foot) on a wage sinking toward subsistence. What
 
 ## One cost of ground (her notes of 27 November)
 
-Her notes are at the foot. Nothing is built for them and nothing is started. What is said to be so was read on `main` the same day.
+Her notes are at the foot. The design study is done (its answer is at the end of this section) and the page of island settings is built; no stage of the ground's cost is started. What is said to be so was read on `main` the same day.
 
 - **What she asked:** that roads, rails, rivers, and the boundaries of cities and buildings share one system underneath. The land has a construction cost from its grade and its substrate, each thing to be built has its own method of grade against cost, and terraforming and landscaping come in ("a thing I think we need"). Then: knocking down what stands in the way as a cost of its own; owners who cannot always be made to sell; an upgraded road keeping the cuts already made in the land.
 - **What is so:** the same ground is priced five ways. Railways and canals share a card on the 2 km cells (`ways::BuildCost`: lowland, hills, mountains, a river, a slope, a cell already laid). Roads' courses are sought over the 125 m squares with prices of their own (`courses.rs`: a metre climbed is worth so many metres of level road, a ruling gradient by the kind of road, wet ground). Crossings price a ford by the metre of water and build a bridge once (`crossings.rs`). Building ground has a score for steep and wet squares that orders which are taken, and nobody pays it (`squares::ground_cost`). Carting prices the use of a way and not its building. The land holds heights in metres, wet ground, rivers and seven rocks. Nothing moves earth, and no ground is ever changed by work.
@@ -531,6 +531,13 @@ Her notes are at the foot. Nothing is built for them and nothing is started. Wha
   - Her map note 7 (watersheds, floods, dams, reservoirs, irrigation) is the same thread.
 - **A page of island settings on the start menu** (her note of 27 November, at the foot): *built 27 November*, with its land, its riches and its people, and a small map that redraws ([rules/land.md](rules/land.md)). Meanders that answer to the bank's material are listed above for later, as she asked.
 - **The order:** a design study first, as for leaving the grid. Then in stages, each built switched off and turned on in a planned move, since what gets built and when changes on every island: the ground's price as a map view; roads on it; earth kept; railways and canals; plots; digging as a task; shaping land, and water that answers. Roads are the first user. The mend of the road faults of 27 November (hard corners where roads meet, roads side by side on hills, short zigzags, villages beside their roads) keeps its fixes of the look (a road runs on through a place, a village is laid out from its crossroads, the works' clearance reads the courses) and gives up its invented numbers for the finder on the ground's price.
+- **The study's answer (27 November), taken up by the managing session:** the smallest of three designs. *A built way is a line that may not climb steeper than its kind allows and pays for its distance from the ground. A worn way pays only for hauling over the ground.* Its parts: one reader of the ground (`crossings::metres_at`, read on the line itself), one sum of earth cut and filled, one price for a cubic metre (a constant first, a navvies' method later), a short card for each built kind (turnpike, trunk road, railway, canal), and one finder (`courses::seek`). Lanes are worn and not built. Earth moved is kept as the level of each corner of a course, so an upgrade pays only for the difference. Refused: a design that brought about a hundred new numbers, and a market in earth with laws and payers.
+  - Found: the ground is priced thirteen ways and not five (eleven in the core, two in the game's drawing). A railway's card only steers its line; its money ignores the ground, its bridges are never paid for, and its navvies are paid and not taken from the towns.
+  - The cause of the short zigzags: the search reads heights at the middles of the 125 m squares, so a road that runs level along a hillside is charged a climb each time it clips a higher square. And nothing makes ground that is already a road cheaper to follow, so roads run side by side.
+  - Two of Claude's guesses were broken. The cost of hauling alone never makes a lane wind: winding comes from a cart's limit, a builder's grade paid in earth, and ground already worn. Earthworks laid over the ground as ribbons hide a cutting, so the game must cut and fill its own drawn ground.
+  - Not known: the price of earth, to within ten times (the figures to hand: a hand-month for 110 or for 250 cubic metres).
+  - Waiting: plots that pay for their levelling (the small squares first), what stands in a way's path being bought, owners who refuse (the political mode). Rivers and the core's heights are left as they are.
+- **The stages:** 1, the true line (heights read on the line itself; it adds no number). 2, the carter's way (worn ways found by hauling alone, the heaviest link first so that lanes join; it deletes 19 numbers and adds 4). 3, the builder's way (a built way's grade paid in earth). 4, the trunk road's bill (the first small planned move). Then a stop, to look at the island. After it: railways and canals measured on the same finder and then charged, the drawn ground cut and filled, and digging as a navvies' method. The look of the roads (a road runs on through a place, a village is laid out from its crossroads) was begun on 27 November and paused the same day at her asking, since stages 1 and 2 change the courses it would dress; it is taken up after stage 2.
 
 ## Towards a release (26 November)
 
@@ -543,6 +550,12 @@ A release on Steam is the far goal (her note of 26 November, at the foot). Nothi
 - **The licences of what a build carries** (Bevy and the other crates), gathered into the build beside the repository's own, which are at the root since 26 November.
 - **Saves that outlive an update,** settings (the size of the interface, the keys), text a Steam Deck can read, and the game's words kept out of the code so that they can be translated.
 - **The Mac and Linux builds** (her question of 27 November) are made for every marked version on GitHub's machines (`docs/RELEASING.md`), and started there with a picture, but not yet played at a real Mac or Linux desktop. The Mac's app is signed by nobody, so macOS asks once before it opens; signing and notarising it take Apple's developer account, $99 a year.
+- **For version 0.3.0, from a laptop's first run of 0.1.0** (her note of 27 November, at the foot). On a laptop with an NVIDIA card, through Vulkan, the game lost its graphics device after eleven minutes of a sandbox and quit. The cause is not known. The game has no limit on its frame rate: frames follow the screen's refresh and are drawn always, paused or not. Wanted:
+  - a frame cap (30, 60, the screen's own) as an argument and as a setting;
+  - fewer frames drawn while the game is paused or its window is not in front;
+  - when the graphics device is lost, the session kept and the loss said plainly (the renderer made again, if the engine allows it);
+  - the ground's shader through DirectX 12: tried on the home machine, it was still compiling after 45 seconds and the land was blank, so DirectX 12 is not yet a way round;
+  - seen in the same log: the start page begins the game as a second process, so the console's prompt comes back while the game runs and the two logs run together.
 
 ## For the managing session
 
@@ -1038,3 +1051,15 @@ Built the same day: the island's settings (its land, its riches and its people a
 > By the way, mathusian wage decline toward subsistence isn't necessarily a failure mode, i mean it might feel that way up to say 2025, but beyond there, that's kinda what the model says can happen in certain configurations with AI, and although we do want to head towards not having that since in history US wages didn't collapse towards 2025, certain regions of the world didn't exactly manage to reach prosperity in the same way, im thinking parts of the post colonial world, so we need to be very careful when saying something is "outside a realistic bound" and spending a ton of time mending might push us into unstable complexity and away from elegance.
 
 Filed above as "Her caution of 27 November: a ruler, not a gate".
+
+**27 November 2026, on the look of the roads while the ground is studied.**
+
+> hey so, if we are doing aground value study, maybe we should pause 4: look of the roads?
+
+Done the same day: the piece was stopped and its work kept. It is taken up after the second stage of "One cost of ground", which changes the courses it would dress.
+
+**27 November 2026, after version 0.1.0 quit on a laptop.**
+
+> this was on my laptop. Not critical to fix this or anything, btw do we have a framerate limit setting
+
+With it came the game's log: version 0.1.0 on a laptop with an NVIDIA card, through Vulkan, lost its graphics device after eleven minutes of a sandbox and quit. The answer given: there is no limit on the frame rate yet. What is wanted for it is under "Towards a release".
