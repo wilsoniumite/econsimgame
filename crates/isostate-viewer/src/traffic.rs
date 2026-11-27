@@ -363,13 +363,13 @@ pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale,
 
 /// The ribbons' entity.
 #[derive(Component)]
-struct Ribbons;
+pub(crate) struct Ribbons;
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, setup).add_systems(Update, lay.after(crate::overlay::paint));
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+pub(crate) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let mat = materials.add(StandardMaterial { base_color: Color::WHITE, unlit: true, ..default() });
     commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(Builder::default()))), MeshMaterial3d(mat), Transform::default(), Visibility::Hidden, bevy::light::NotShadowCaster, Ribbons));
 }
@@ -384,7 +384,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 /// was found with that year's scenery, off the main thread
 /// (`road_course::Courses::find_year`), and is only read here.
 #[allow(clippy::too_many_arguments)]
-fn lay(ov: Res<MapOverlay>, roads: Res<crate::carts::Roads>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, mut last: Local<Option<(usize, usize, [u32; 2], i32)>>) {
+pub(crate) fn lay(ov: Res<MapOverlay>, roads: Res<crate::carts::Roads>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, mut last: Local<Option<(usize, usize, [u32; 2], i32)>>) {
     let _frames = crate::frames::span(crate::frames::Sys::MapView);
     let Ok((mesh, mut vis)) = q.single_mut() else { return };
     let shown = ov.kind == Some(Overlay::Traffic) && data.r.traffic.kept();

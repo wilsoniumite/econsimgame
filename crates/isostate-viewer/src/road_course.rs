@@ -175,6 +175,12 @@ impl Courses {
         todo.len()
     }
 
+    /// How many links' ways are kept (for a test that nothing is found where it should not be).
+    #[cfg(test)]
+    pub fn kept(&self) -> usize {
+        self.ways.lock().map_or(0, |w| w.len())
+    }
+
     /// How the link between `c` and `m` is fixed, going through the record
     /// up to year `k` first; none where it has not been drawn by then.
     pub fn fixed(&self, r: &Replay, g: &Ground, cen: &[(f32, f32)], c: usize, m: usize, k: usize) -> Option<Fixed> {
