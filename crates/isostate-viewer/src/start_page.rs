@@ -892,7 +892,7 @@ struct SaidText;
 struct NewCount;
 /// The word on More's button: More, or Less while it is open.
 #[derive(Component)]
-struct MoreWord;
+struct MoreWord(bool);
 /// The parts of the page whose heights decide how tall the list of saved games may be.
 #[derive(Component, Clone, Copy, PartialEq)]
 enum Fits {
@@ -1171,11 +1171,11 @@ fn new_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>) {
             b.spawn(Node { flex_grow: 1.0, ..default() });
             // the island's settings, folded away until asked for, beside the new island
             b.spawn((ui_button(), BackgroundColor(BTN), BorderColor::all(Color::NONE), Interaction::default(), FocusPolicy::Block, ui::Hoverable, Focusable(Focus::Island), Press::Island)).with_children(|m| {
-                m.spawn(ui::text(f, "Island settings", 14.0, INK));
+                m.spawn((ui::text(f, "Island settings", 14.0, INK), MoreWord(true)));
             });
             // More, folded away under the cards: the land, a season held, the window, the map view
             b.spawn((ui_button(), BackgroundColor(BTN), BorderColor::all(Color::NONE), Interaction::default(), FocusPolicy::Block, ui::Hoverable, Focusable(Focus::More), Press::More)).with_children(|m| {
-                m.spawn((ui::text(f, "More", 14.0, INK), MoreWord));
+                m.spawn((ui::text(f, "More", 14.0, INK), MoreWord(false)));
             });
         });
     });
@@ -1217,7 +1217,7 @@ fn island_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>, map: Handle<Ima
                 b.spawn((ui::text(f, "Reset", 14.0, INK), tip("Reset", RESET_SAYS)));
             });
         });
-        c.spawn(Node { column_gap: Val::Px(16.0), align_items: AlignItems::FlexStart, ..default() }).with_children(|body| {
+        c.spawn(Node { column_gap: Val::Px(12.0), align_items: AlignItems::FlexStart, ..default() }).with_children(|body| {
             body.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(0.0), ..default() }).with_children(|col| {
                 for (part, name) in GROUPS {
                     col.spawn((ui::text(f, name, 15.0, INK), Node { margin: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(5.0), Val::Px(1.0)), ..default() }, GroupHead(part)));
@@ -1262,7 +1262,7 @@ fn setting_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field) {
         FieldRow(field),
     ))
     .with_children(|r| {
-        r.spawn(Node { width: Val::Px(96.0), flex_shrink: 0.0, ..default() }).with_children(|l| {
+        r.spawn(Node { width: Val::Px(88.0), flex_shrink: 0.0, ..default() }).with_children(|l| {
             l.spawn((ui::text(f, field.label(), 14.0, MUTED), setting_tip(i)));
         });
         r.spawn((Node { align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() }, FieldBox(field)));
@@ -1322,7 +1322,7 @@ fn lay_field(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field, c: &C
         // (a setting's value is in the colour of what is chosen while it differs from the usual island's)
         let (width, size, ink) = match field {
             Field::Size => (118.0, 17.0, INK),
-            Field::Isle(i) => (96.0, 15.0, if c.island_said().get(i).is_some() { CHOSEN } else { INK }),
+            Field::Isle(i) => (84.0, 15.0, if c.island_said().get(i).is_some() { CHOSEN } else { INK }),
             _ => (64.0, 17.0, INK),
         };
         p.spawn(Node { min_width: Val::Px(width), justify_content: JustifyContent::Center, ..default() }).with_children(|v| {
@@ -1535,7 +1535,7 @@ fn draw(
     boxes: Query<(Entity, &FieldBox)>,
     mut lines: Query<(&mut Text, &FieldLine), (Without<CommandText>, Without<SaidText>, Without<MoreWord>)>,
     mut command: Query<&mut Text, (With<CommandText>, Without<SaidText>, Without<MoreWord>)>,
-    mut more_word: Query<&mut Text, (With<MoreWord>, Without<SaidText>)>,
+    mut more_word: Query<(&mut Text, &MoreWord), Without<SaidText>>,
     mut said: Query<(&mut Text, &mut Node), (With<SaidText>, Without<CommandText>)>,
     mut more: Query<&mut Node, (With<MoreCard>, Without<SaidText>, Without<FieldRow>)>,
     mut rows: Query<(&mut Node, &FieldRow), (Without<SaidText>, Without<MoreCard>)>,
@@ -1569,8 +1569,17 @@ fn draw(
             n.display = display;
         }
     }
-    for mut t in &mut more_word {
-        t.0 = if page.more { "Less" } else { "More" }.to_string();
+    // (the island's settings' button says Hide settings while they are open, as More says Less)
+    for (mut t, w) in &mut more_word {
+        let word = match (w.0, if w.0 { page.island } else { page.more }) {
+            (true, true) => "Hide settings",
+            (true, false) => "Island settings",
+            (false, true) => "Less",
+            (false, false) => "More",
+        };
+        if t.0 != word {
+            t.0 = word.to_string();
+        }
     }
     for (fo, mut b) in &mut rings {
         *b = BorderColor::all(if fo.0 == page.focus { FOCUS } else { Color::NONE });
