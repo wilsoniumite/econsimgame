@@ -3002,6 +3002,16 @@ mod tests {
         assert_eq!(args("--settlers no").err().unwrap(), "--settlers takes on or off, not no");
         assert_eq!(args("--settlers").err().unwrap(), "--settlers needs a value after it");
         assert!(args("--settlers off --load mine.json").err().unwrap().starts_with("--settlers and --ideas-by-sea begin a new game, and --load goes on with one"));
+        // the island's settings (isostate_core::island) make a new game, are tried on the start
+        // asked for before an island is made, and are refused beside --load
+        let a = args("--island rain=600,coal=2 --island hills=1400").unwrap();
+        assert!(a.new && a.fresh);
+        assert_eq!(a.island.words(), "hills=1400,rain=600,coal=2");
+        assert!(args("--island rain=600 --load mine.json").err().unwrap().starts_with("--island makes a new island, and --load goes on with one"));
+        assert!(args("--island rain=60").err().unwrap().contains("outside its range"));
+        assert!(args("--island towns=3 --landfall").err().unwrap().contains("landfall begins with one town"));
+        assert!(args("--island coal=2 --old-land").err().unwrap().contains("new land only"));
+        assert!(args("--island people=8000 --landfall").is_ok());
         // --new-land does nothing since every new game is on the new land: a command written before still runs
         let a = args("--new-land").unwrap();
         assert!(!a.fresh && !a.old_land && a.load.is_none());

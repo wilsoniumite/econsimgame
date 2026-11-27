@@ -420,6 +420,54 @@ The sketch is a sixth of the whole; the meanders are most of what is left
 of the whole's time (`wander = 0` halves it, and `wander = 2` nearly
 doubles it).
 
+### What two of them do: a measure, not a judgement
+
+**How crowded the island starts.** On 27 November the settled island's
+wage bought 1.87 times the grain in 1800 that it bought in 1760, where
+England's bought about the same, and a probe found land a farm hand not
+falling while the people grew by half: the island short of people rather
+than of land. How crowded it starts is a setting now. Islands 1 to 8, six
+families, today's people of 1750 and twice and four times as many (`sweep
+--seeds 1-8 --rules game --families 6 --set
+island.people=135000,270000,540000`; no run failed). Land a hand on the land
+is the farms' and pastures' area, 400 hectares a cell, over the hands the
+land employs (its share of work times half the people); the means of the
+eight, with the least and most:
+
+| people in 1750 | 135,000 | 270,000 | 540,000 |
+|---|---|---|---|
+| wage in grain, 1800 over 1760 | 1.78 [1.57 .. 2.22] | 1.90 [1.69 .. 2.33] | 2.04 [1.68 .. 2.57] |
+| wage in grain, 1760 and 1800 | 5.77, 10.2 | 4.63, 8.73 | 3.79, 7.66 |
+| land a hand on the land, 1750 and 1800, ha | 38, 36 | 18, 21 | 8.9, 12.8 |
+| years with hunger, 1750 to 1900 | 0 | 0 | 1.1 [0 .. 3] |
+| people 1800 over 1750 | 1.48 | 1.23 | 0.96 |
+| towns in 1900 | 21.6 | 20.5 | 13.8 |
+| people in 1900, thousands | 673 | 1,085 | 1,633 |
+
+A crowded island is poorer in grain from the start (the wage buys a third
+less in 1760 at four times the people), and its people hardly grow to 1800;
+but its wage in grain still rises, and by more, not less: from a lower
+floor, as the land a hand rises again. The towns founded by 1900 fall from
+21.6 to 13.8, since the people fill the six first towns' country before
+they need new ones.
+
+**The rain** at half today's, today's and one and a half times
+(`--example island_sheet -- 1-8 OUT.png`; the picture is the first island's).
+The cells whose main use in 1800 is a farm, the means of islands 1 to 8:
+
+| rain, mm a year | 450 | 900 | 1,350 |
+|---|---|---|---|
+| cells of corn land over 0.5 | 3,008 | 4,214 | 3,901 |
+| cells farmed in 1800 | 3,906 | 3,518 | 3,165 |
+| mean rain where they stand | 407 | 800 | 1,168 |
+| share of them on corn land over 0.5 | 0.73 | 0.98 | 0.96 |
+| their middle, from the west, of the land's width | 0.47 | 0.48 | 0.50 |
+
+On the dry island the good corn land shrinks by nearly a third, and the
+farms of 1800 spread over more ground, a quarter of it poor, up to the foot
+of the hills. On the wet one the windward west is too wet for the best corn
+land, the farms are fewer, and their middle moves east into the lee.
+
 ## What is kept
 
 `World::landform` is `Some(Box<Landform>)` on an island the mechanism made
