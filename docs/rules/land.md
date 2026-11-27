@@ -354,6 +354,13 @@ towns they stand closer than 17 cells, 17 times the square root of six over
 the number (12 cells apart for twelve), so that every island has room for
 them; with six or fewer they stand as they did.
 
+The ranges were tried on 27 November 2026: for each setting `sweep --seeds
+1-8 --rules game --families 6 --set island.NAME=LEAST,MOST`, on the settled
+island and, for the land's, the riches' and the people's, from landfall too:
+21 sweeps, 336 runs to 1900, none failed. Of the riches, scarce coal does
+most: at a quarter of the coal the settled island has 1,520 km of railway in
+1900 against 2,708 at two and a half times, and 15.6 towns against 22.1.
+
 Left out, and why:
 
 - **The map's size.** The core can make and play an island of another
