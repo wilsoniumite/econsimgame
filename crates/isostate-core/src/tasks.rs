@@ -64,7 +64,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
 use crate::facts::Kind;
+use crate::ledger::{Fold, Line};
 use crate::mat::Mat;
+// pace (docs/rules/pace.md): the three orders for plant of the machines for
+// tasks ask the port's quarter a month, and only the works' orders for capacity
+// are paced (ledger.rs says why not yet all four)
+use crate::pace::PORT_SHARE;
 use crate::params::Params;
 use crate::sim::RunResult;
 use crate::state::State;
@@ -1235,16 +1240,11 @@ impl Running {
     }
 }
 
-/// The month's requests for machines' plant: a quarter of each works' order.
-/// A works whose cash will not pay for it is backed (`firms::back_firm`).
-pub struct Orders {
-    pub works: Vec<usize>,
-    pub towns: Vec<usize>,
-    /// (rows, G): goods asked for.
-    pub req: Mat,
-}
-
-pub fn orders(st: &mut State, C: &Content, P: &Params) -> Option<Orders> {
+/// The month's requests for machines' plant: a quarter of each works' order,
+/// the ledger's line of the works' machines for tasks (ledger.rs), a row for
+/// each works with one, summed by town. A works whose cash will not pay for it
+/// is backed (`firms::back_firm`).
+pub fn orders(st: &mut State, C: &Content, P: &Params) -> Option<Line> {
     if !active(st, P) {
         return None;
     }
@@ -1260,7 +1260,7 @@ pub fn orders(st: &mut State, C: &Content, P: &Params) -> Option<Orders> {
         towns.push(t);
         let mut value = 0.0;
         for (j, &g) in pg.iter().enumerate() {
-            req[(r, g)] = 0.25 * st.tasks.f_order[f][j];
+            req[(r, g)] = PORT_SHARE * st.tasks.f_order[f][j];
             value += req[(r, g)] * st.price[(t, g)];
         }
         let short = value - st.f_cash[f].max(0.0);
@@ -1268,21 +1268,21 @@ pub fn orders(st: &mut State, C: &Content, P: &Params) -> Option<Orders> {
             st.f_cash[f] += crate::firms::back_firm(st, C, P, f, short);
         }
     }
-    Some(Orders { works: rows, towns, req })
+    Some(Line::new(towns, rows, Fold::ByTown, req))
 }
 
-/// What the market gave each order (`got`, row by row, as the works' plant
-/// orders are served): the works pay for it, and it goes into their machines
-/// and their book. Returns what each paid.
-pub fn deliver(st: &mut State, C: &Content, o: &Orders, got: &Mat) -> Vec<f64> {
+/// What the market gave each order (the line's got, row by row, as the works'
+/// plant orders are served): the works pay for it, and it goes into their
+/// machines and their book. Returns what each paid.
+pub fn deliver(st: &mut State, C: &Content, o: &Line) -> Vec<f64> {
     let pg = &C.tasks.plant_goods;
-    let mut pay = vec![0.0; o.works.len()];
-    for (r, &f) in o.works.iter().enumerate() {
-        let t = o.towns[r];
+    let mut pay = vec![0.0; o.who.len()];
+    for (r, &f) in o.who.iter().enumerate() {
+        let t = o.town[r];
         let (mut asked, mut paid) = (0.0, 0.0);
         for (j, &g) in pg.iter().enumerate() {
-            let x = got[(r, g)];
-            asked += o.req[(r, g)] * st.price[(t, g)];
+            let x = o.got[(r, g)];
+            asked += o.ask[(r, g)] * st.price[(t, g)];
             paid += x * st.price[(t, g)];
             st.tasks.f_plant[f][j] += x;
             st.tasks.f_order[f][j] = (st.tasks.f_order[f][j] - x).max(0.0);
@@ -1577,24 +1577,26 @@ pub fn land_orders(st: &State, C: &Content, lm: &LandMonth, et: &[usize], sec: &
             }
             for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
                 let need = aim.iter().find(|p| p.0 == g).map_or(0.0, |p| w * p.1);
-                plant[(r, g)] = 0.25 * (need - st.tasks.land_plant[t][s][j]).max(0.0);
+                plant[(r, g)] = PORT_SHARE * (need - st.tasks.land_plant[t][s][j]).max(0.0);
             }
         }
     }
     Some(LandBuy { work, unit_work, run, plant })
 }
 
-/// The land's plant delivered (`got`, by town and sector, of what `buy` asked
-/// for): into the plant in place, and the share of the order filled.
-pub fn land_deliver(st: &mut State, C: &Content, buy: &LandBuy, got: &Mat) {
+/// The land's plant delivered (the ledger's line of it, by town and sector,
+/// what was asked and got): into the plant in place, and the share of the
+/// order filled.
+pub fn land_deliver(st: &mut State, C: &Content, plant: &Line) {
     let NS = C.NS;
+    let got = &plant.got;
     fit_land(st, C);
     for t in 0..st.T_max {
         for s in 0..NS {
             let r = t * NS + s;
             let (mut asked, mut paid) = (0.0, 0.0);
             for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
-                asked += buy.plant[(r, g)] * st.price[(t, g)];
+                asked += plant.ask[(r, g)] * st.price[(t, g)];
                 paid += got[(r, g)] * st.price[(t, g)];
                 st.tasks.land_plant[t][s][j] += got[(r, g)];
             }
@@ -2139,13 +2141,13 @@ pub fn cart_orders(st: &State, C: &Content, P: &Params, budgets: &[f64]) -> Opti
         if let Some(aim) = mix_of(st, C, P, &sh, &st.tasks.cart_auto[t], &|k| cart_parts(st, t, k), &price) {
             for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
                 let need = aim.plant.iter().find(|p| p.0 == g).map_or(0.0, |p| w * p.1);
-                let x = 0.25 * (need - st.tasks.cart_plant[t][j]).max(0.0);
+                let x = PORT_SHARE * (need - st.tasks.cart_plant[t][j]).max(0.0);
                 if x > 0.0 {
                     plant[(t, g)] = x;
                     any = true;
                 }
                 if till {
-                    keep[t] += 4.0 * x * price(g);
+                    keep[t] += x / PORT_SHARE * price(g);
                 }
             }
         }
@@ -2171,38 +2173,21 @@ pub fn cart_orders(st: &State, C: &Content, P: &Params, budgets: &[f64]) -> Opti
     any.then_some(CartBuy { run, plant, keep, put })
 }
 
-/// What the market gave the lorries' orders: the oil at the day's trade's
-/// fill and the plant at the plant orders' (`fill`, `fill_plant`). Gives all
-/// they got, the plant alone, and by town the least fill of their oil.
-pub fn cart_got(b: &CartBuy, fill: &Mat, fill_plant: &Mat) -> (Mat, Mat, Vec<f64>) {
-    let (T, G) = (b.run.rows, b.run.cols);
-    let (mut got, mut plant) = (Mat::zeros(T, G), Mat::zeros(T, G));
-    let mut run_fill = vec![1.0f64; T];
-    for t in 0..T {
-        for g in 0..G {
-            let r = b.run[(t, g)];
-            if r > 0.0 {
-                run_fill[t] = run_fill[t].min(fill[(t, g)]);
-            }
-            plant[(t, g)] = b.plant[(t, g)] * fill_plant[(t, g)];
-            got[(t, g)] = r * fill[(t, g)] + plant[(t, g)];
-        }
-    }
-    (got, plant, run_fill)
-}
-
-/// The lorries' plant goes into place as it arrives, and the share of the
-/// order filled and the fill of their oil are kept for next month.
-pub fn cart_deliver(st: &mut State, C: &Content, b: &CartBuy, plant: &Mat, run_fill: &[f64]) {
+/// The lorries' plant goes into place as it arrives (the ledger's two lines of
+/// the lorries, by town: `run` their oil, at the day's trade's `fill`, and
+/// `plant`), and the share of the order filled and, by town, the least fill of
+/// their oil are kept for next month.
+pub fn cart_deliver(st: &mut State, C: &Content, run: &Line, plant: &Line, fill: &Mat) {
+    let G = C.G;
     for t in 0..st.T_max.min(st.tasks.cart_plant.len()) {
         let (mut asked, mut paid) = (0.0, 0.0);
         for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
-            asked += b.plant[(t, g)] * st.price[(t, g)];
-            paid += plant[(t, g)] * st.price[(t, g)];
-            st.tasks.cart_plant[t][j] += plant[(t, g)];
+            asked += plant.ask[(t, g)] * st.price[(t, g)];
+            paid += plant.got[(t, g)] * st.price[(t, g)];
+            st.tasks.cart_plant[t][j] += plant.got[(t, g)];
         }
         st.tasks.cart_fill[t] = if asked > 1e-12 { (paid / asked).clamp(0.0, 1.0) } else { 1.0 };
-        st.tasks.cart_run_fill[t] = run_fill[t];
+        st.tasks.cart_run_fill[t] = (0..G).filter(|&g| run.ask[(t, g)] > 0.0).map(|g| fill[(t, g)]).fold(1.0f64, f64::min);
     }
 }
 
