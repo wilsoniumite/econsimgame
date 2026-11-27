@@ -127,6 +127,7 @@ with it none was on sixteen islands.
 | `glut_stop_months` | 8 | at this many they take nothing of the works' make |
 | `no_spoil_markup` | true | a good that spoils carries no markup ("Goods that spoil", below); off under the port |
 | `crumb` | 0.01 | a stock under this share of a month of the works' make at full time is no glut ("A crumb is no glut", above); 0 under the port, and no stock is a crumb |
+| `exports_ask` | false | what merchants carry out of a town is asked of its market ("What is carried out is asked", below); off under both sets of rules until carriage is paid in hands |
 
 The least share of capacity merchants go on taking in the worst glut was a
 setting, `glut_floor`, at 0, until stage 5 of the pass over the rules made it
@@ -379,25 +380,87 @@ The two touch different code (this one the price and the wage in `econ.rs`,
 that one entry and growth in `firms.rs`) and should merge without argument.
 What I have not measured is the pair together: see the worries.
 
-## An open question for Stella: the flow term cannot see exports
+## What is carried out is asked
 
-The price rule's flow term compares what a town's own buyers asked for with
-what arrived (made there or brought in). It does not count what the town
-ships out. So a town that makes iron for the island reads every month as a
-glut, and its price is leaned on for as long as it exports. This is in the port, and it is in
-the anchor here, which moves by the port's rule.
+`prices.exports_ask`, added on 27 November 2026 (the century probe). **Off
+under both sets of rules**, and not written out while off, so a run with it
+off is the run without it to the last digit (both golden files unmoved; the
+game's sweeps on both starts against the branch's base show only the three
+seat facts that always read 0/0).
 
-The probe counted shipments as wanted, on top of a markup of 0.5 and a stock
-cap of 4 months. The real wage rose by 11, 21 and 21 per cent in the three
-half-centuries, coal output by 28 to 48 per cent, the farm share of the 1840s
-fell from 0.51 to 0.47, and downturns nearly vanished (0.3 alarms a run). But
-stocks piled up in thin markets (18 months of rails at the worst twentieth of
-town-months), and in the one test with families (4 seeds, in a set that also
-had harvests and a choice of technique) the families' share of all money went
-from 10 per cent to 66. So it is a real distortion, and mending it is a
-rebalancing of the whole game, not a repair. I left it alone, as asked. If it
-is taken up, it wants its own switch, a look at where the extra money comes
-to rest, and the bots.
+**What it does.** The flow term of the price rule sets what a town's own
+buyers asked for against what arrived, made there or brought in
+(`econ::step_month`, just above `imbalance`). It does not count what the
+town's merchants carried out to other towns, though the stock term already
+counts it among the month's sales. So a town that makes more than its own
+people buy reads a glut every month however fast its stock is carried off,
+and its prices sink: a small town beside a city ends at a hundredth of the
+city's prices and a fifth of its wage (years-turn's notes; the "pockets").
+With the switch on, what was carried out is asked too
+(`prices::asked`): a market clears its own buyers and the merchants who buy
+in it to sell elsewhere, against its makers and what is brought in. Summed
+over the towns, what is carried out equals what is brought in, so the old
+term leaned every exporter's price down and the new one does not.
+
+**What the study measured with it** (study-relay, `pockets.md`; islands 1
+to 8, six families, to 2050). On both starts no small poor town in any
+decade, and the largest yearly rise of a town's wage after 1900 1.41
+(settled) and 1.33 (landfall) for 26.98 and 12.85. But alone it leaves 7 of
+the twelve standing facts inside on the settled island: towns in 1900 13.0
+for 21.6, the towns' share and the railway outside, the shares of income
+moved. The towns go because carriage is priced in coins: without the old
+downward lean the money wage rises ten times by 1890, a coin of carting buys a
+fifth of the hands, and the founding test (carting saved over wages) fails.
+With carriage on the wage beside it, 11 of 12. So **it waits for carriage in
+hands**, and is turned on with that rule and not before.
+
+**What it does to the merchants** (`examples/century_probe.rs`, settled
+islands 7, 2 and 5). The one fact still out with both rules on is the work's
+share of income, and it is the merchants': their share of the island's income
+falls from 0.061 to 0.007 in the 1790s and is below nothing from the 1850s
+(-0.017 in the 1940s; main 0.041). Their income is their takings less what
+they paid out, and it splits into terms that sum to it (what is left over
+is under a ten-thousandth of income in every decade): the spread on what the land and works make, the gap
+between what they bring in at the town's price and what they paid for it at
+the sender's, less the carriage, what spoils, the cash put into a growing
+stock, and what prices do under the stock they carry. In the 1790s the switch
+moves the gap on what is brought in by -0.014 of income (the gap on coal alone
+by -0.023, from coal towns no longer sunk), what spoils by -0.029 (services
+by -0.026), the stock by -0.009 and the carriage by -0.005. So the gap closes
+as the study guessed, but the larger term is services rotting on the shelves.
+Services lose half a stock a month and their merchants aim at two months of
+sales, which can never be held; the stock term reads a shortage for ever and
+pushes the price up, and with exports no longer read as a glut nothing pushes
+back but making more than is sold. In the 1790s, in money, 28 per cent of the
+services made rot with
+the switch on, 15 per cent without. At landfall the gap does not close at all
+(the colony had few pockets); the fall is what spoils and the stock.
+
+**The mend it wants, named and not built.** A good that spoils is not
+stocked: its price reads the month's asking against its making, as a good
+that does not keep does (`tree::price_gap`, `stock_months` 0), and what is not
+sold in the month is lost. Tried on the content alone (`--stock-months
+services=0` in the probe; settled islands 7, 2, 5, switch on, to 1950): the
+merchants' share is 0.028, 0.033 and 0.036 in the 1790s, 1850s and 1890s, the
+services that spoil fall from 0.045 of income to 0.015, and the wage in grain
+moves little (10.65, 20.1 and 39.7 for 10.76, 11.8 and 41.1). The other
+candidate, which leaves the shelves as they are, is to charge the keep at the
+gate: the makers of a good are paid its worth less the spread and less what a
+stock held at the target loses (`decay` times two months: grain 6 per cent,
+services all of it), in the money flows where the spread is taken now; the
+merchants' loss ends at once, and the makers of what spoils make less until
+its price has risen by about that keep. The build notes of the probe
+(`.claude/night/reports/go/century-probe/build.md`) have every table.
+
+The history of the question: in the first account of this page, a probe
+counted shipments as wanted, beside a markup of 0.5 and a stock cap of 4
+months. The real wage rose by 11, 21 and 21 per cent in the three
+half-centuries and downturns nearly vanished, but stocks piled up in thin
+markets (18 months of rails at the worst twentieth of town-months), and in
+one test with families the families' share of all money went from 10 per
+cent to 66. That was before the merchants' debt was mended ("Goods that
+spoil", below) and before carriage was measured; the switch now lets the
+question be asked of the island as it is.
 
 ## In company with the machines
 
