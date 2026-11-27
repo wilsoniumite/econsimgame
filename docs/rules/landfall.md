@@ -57,7 +57,7 @@ game's name.
 |---|---|---|
 | `isostate-core run` and `sweep` | `--set immigration.enabled=false` | `--set abroad.ideas=false` |
 | the viewer, a new game | `--settlers off` | `--ideas-by-sea off` |
-| the start page | Settlers: None, under Landfall | Technology: Island only, under Landfall |
+| the start page | Abroad: Settlers unlit, under Landfall | Abroad: Technology unlit, under Landfall |
 | code | `save::Game::begin` with `save::Switches { settlers: Some(false), .. }` | `Switches { ideas_by_sea: Some(false), .. }` |
 
 The viewer's two options take `on` or `off` and go with either start, so

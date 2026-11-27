@@ -224,8 +224,7 @@ impl Default for Choices {
 pub enum Field {
     Kind,
     Start,
-    Settlers,
-    Ideas,
+    Abroad,
     Seed,
     Families,
     To,
@@ -237,16 +236,15 @@ pub enum Field {
 }
 
 impl Field {
-    /// The new island's rows, and More's. Settlers and Ideas show under Landfall alone (`shown`).
-    pub const NEW: [Field; 8] = [Field::Kind, Field::Start, Field::Settlers, Field::Ideas, Field::Seed, Field::Families, Field::To, Field::Advance];
+    /// The new island's rows, and More's. Abroad shows under Landfall alone (`shown`).
+    pub const NEW: [Field; 7] = [Field::Kind, Field::Start, Field::Abroad, Field::Seed, Field::Families, Field::To, Field::Advance];
     pub const MORE: [Field; 4] = [Field::Land, Field::Season, Field::Size, Field::View];
 
     pub fn label(self) -> &'static str {
         match self {
             Field::Kind => "Play",
             Field::Start => "Start",
-            Field::Settlers => "Settlers",
-            Field::Ideas => "Technology",
+            Field::Abroad => "Abroad",
             Field::Seed => "Island",
             Field::Families => "Families",
             Field::To => "Last year",
@@ -264,8 +262,7 @@ impl Field {
         match self {
             Field::Kind => "A sandbox is the island to watch and to change with tools. The family game is one family among the great families. Both are saved as you play.",
             Field::Start => "How the island begins in 1750. The settled island has its towns, farms and great families from the first year. Landfall is one town of 5,000 at a harbour, with settlers coming by ship.",
-            Field::Settlers => "Settlers come by ship to the ports while income per head is above abroad. With none, the colony grows by its own births.",
-            Field::Ideas => "Ports learn technology from abroad, as from a town across the sea. Alone, the colony discovers every technology itself.",
+            Field::Abroad => "Settlers come by ship to the ports while income per head is above abroad. Ports learn technology from abroad, as from a town across the sea. Without either, the colony is alone.",
             Field::Seed => "The number that makes the island, its land and its first towns. The same number makes the same island every time.",
             Field::Families => "The great families hold land and firms across the island. In the family game you play one of them.",
             Field::To => "The game ends after this year. A game saved goes on to the last year it began with.",
@@ -279,14 +276,14 @@ impl Field {
 
     /// Whether its options are laid side by side (else it steps, with - and +).
     pub fn laid_out(self) -> bool {
-        matches!(self, Field::Kind | Field::Start | Field::Settlers | Field::Ideas | Field::Land | Field::Season)
+        matches!(self, Field::Kind | Field::Start | Field::Abroad | Field::Land | Field::Season)
     }
 
     /// Whether its row is on the page with these choices: Landfall's two
     /// switches only when Landfall is chosen (on the settled island both are
     /// off, and the page offers nothing to change there).
     pub fn shown(self, c: &Choices) -> bool {
-        !matches!(self, Field::Settlers | Field::Ideas) || c.landfall()
+        self != Field::Abroad || c.landfall()
     }
 }
 
@@ -312,13 +309,25 @@ impl Choices {
         ADVANCES.iter().copied().filter(|&a| 1751 + a as i64 <= self.to).collect()
     }
 
+    /// Which of a field's chips are lit: the one chosen, or for chips that
+    /// are each on or off (`Field::toggles`), every one that is on.
+    pub fn lit(&self, f: Field) -> Vec<bool> {
+        match f {
+            Field::Abroad => vec![self.settlers, self.ideas],
+            _ => {
+                let (names, at) = self.options(f);
+                (0..names.len()).map(|i| i == at).collect()
+            }
+        }
+    }
+
     /// The names of a laid-out field's options, and which is chosen.
     pub fn options(&self, f: Field) -> (Vec<String>, usize) {
         match f {
             Field::Kind => (vec!["Sandbox".into(), "Family game".into()], (self.kind == Kind::Family) as usize),
             Field::Start => (starts().iter().map(|s| s.name.to_string()).collect(), self.start),
-            Field::Settlers => (vec!["By ship".into(), "None".into()], !self.settlers as usize),
-            Field::Ideas => (vec!["From abroad".into(), "Island only".into()], !self.ideas as usize),
+            // (each chip on or off: `lit`)
+            Field::Abroad => (vec!["Settlers".into(), "Technology".into()], 0),
             Field::Land => (vec!["New land".into(), "Old island".into()], self.old_land as usize),
             Field::Season => (SEASONS.iter().map(|s| s.0.to_string()).collect(), self.season),
             _ => (vec![self.value(f)], 0),
@@ -343,8 +352,9 @@ impl Choices {
         match f {
             Field::Kind => self.kind = if i == 1 { Kind::Family } else { Kind::Sandbox },
             Field::Start => self.start = i.min(starts().len().saturating_sub(1)),
-            Field::Settlers => self.settlers = i == 0,
-            Field::Ideas => self.ideas = i == 0,
+            // a chip turned the other way
+            Field::Abroad if i == 0 => self.settlers = !self.settlers,
+            Field::Abroad => self.ideas = !self.ideas,
             Field::Land => self.old_land = i == 1,
             Field::Season => self.season = i.min(SEASONS.len() - 1),
             _ => {}
@@ -375,6 +385,12 @@ impl Choices {
                 let at = all.iter().position(|(w, _)| *w == self.view).unwrap_or(0);
                 self.view = all[go(at, all.len())].0.clone();
             }
+            // round the four: both on, no settlers, no technology, neither
+            Field::Abroad => {
+                const ROUND: [(bool, bool); 4] = [(true, true), (false, true), (true, false), (false, false)];
+                let at = ROUND.iter().position(|&x| x == (self.settlers, self.ideas)).unwrap_or(0) as i64;
+                (self.settlers, self.ideas) = ROUND[(at + by as i64).rem_euclid(4) as usize];
+            }
             _ => {
                 let (names, at) = self.options(f);
                 let n = names.len().max(1);
@@ -391,8 +407,12 @@ impl Choices {
                 Kind::Family => format!("Play one family among {}.", self.families),
             },
             Field::Start => starts().get(self.start).map_or(String::new(), |s| s.line.to_string()),
-            Field::Settlers => if self.settlers { "Ships bring settlers to the ports.".into() } else { "No ships. People grow by births alone.".into() },
-            Field::Ideas => if self.ideas { "Ports learn technology from abroad.".into() } else { "Every technology is discovered on the island.".into() },
+            Field::Abroad => match (self.settlers, self.ideas) {
+                (true, true) => "Ships bring settlers and technology.".into(),
+                (false, true) => "Ships bring technology. No settlers.".into(),
+                (true, false) => "Ships bring settlers. No technology from abroad.".into(),
+                (false, false) => "No ships. The colony is alone.".into(),
+            },
             Field::Seed => "Each number is another island.".into(),
             Field::Families => "Great families, holding land and firms.".into(),
             Field::To => format!("{} years from 1750.", self.to - 1750 + 1),
@@ -714,8 +734,10 @@ pub const GO_ON_SAYS: &str = "The games saved in this machine's folder of saved 
 
 /// A tooltip behind a name on the page, from its own words, with links to the
 /// glossary's terms where its words name them.
+/// A name that is itself a term of the glossary (Abroad) does not link to itself.
 fn tip(name: &str, says: &str) -> crate::tips::Tip {
-    crate::tips::Tip::new(name, crate::tips::TipBody { term: name.to_string(), says: crate::words::glossary().pieces(says, None), ..default() })
+    let g = crate::words::glossary();
+    crate::tips::Tip::new(name, crate::tips::TipBody { term: name.to_string(), says: g.pieces(says, g.key_of(name)), ..default() })
 }
 
 /// Run the page, and return the program's exit code.
@@ -981,9 +1003,9 @@ fn lay_field(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field, c: &C
         });
     };
     if field.laid_out() {
-        let (names, at) = c.options(field);
+        let (names, lit) = (c.options(field).0, c.lit(field));
         for (i, name) in names.iter().enumerate() {
-            chip(p, name, i == at, Press::Pick(field, i));
+            chip(p, name, lit.get(i).copied().unwrap_or(false), Press::Pick(field, i));
         }
         if field == Field::Start && names.len() == 1 {
             p.spawn(ui::text(f, "more starts to come", 13.0, MUTED));
@@ -1532,12 +1554,12 @@ mod tests {
             ("Map view: Rent", Box::new(|c| c.step(Field::View, 1)), "--sandbox --new --overlay rent", |a| a.overlay.as_deref() == Some("rent")),
             ("Start: Landfall", Box::new(|c| c.set(Field::Start, 1)), "--sandbox --new --landfall", |a| a.landfall && a.sandbox && a.fresh),
             ("Start: Landfall, family", Box::new(|c| { c.set(Field::Kind, 1); c.set(Field::Start, 1); }), "--family --new --landfall", |a| a.landfall && !a.sandbox),
-            ("Landfall, Settlers: None", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Settlers, 1); }), "--sandbox --new --landfall --settlers off", |a| a.landfall && a.switches == isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: None }),
-            ("Landfall, Technology: Island only", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Ideas, 1); }), "--sandbox --new --landfall --ideas-by-sea off", |a| a.landfall && a.switches == isostate_core::save::Switches { settlers: None, ideas_by_sea: Some(false) }),
-            ("Landfall alone, family", Box::new(|c| { c.set(Field::Kind, 1); c.set(Field::Start, 1); c.step(Field::Settlers, 1); c.step(Field::Ideas, 1); }), "--family --new --landfall --settlers off --ideas-by-sea off", |a| a.landfall && !a.sandbox && a.switches == isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: Some(false) }),
-            ("Landfall, both on again", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Settlers, 1); c.set(Field::Settlers, 0); }), "--sandbox --new --landfall", |a| a.landfall && a.switches.plain()),
+            ("Landfall, Abroad: Settlers off", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 0); }), "--sandbox --new --landfall --settlers off", |a| a.landfall && a.switches == isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: None }),
+            ("Landfall, Abroad: Technology off", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 1); }), "--sandbox --new --landfall --ideas-by-sea off", |a| a.landfall && a.switches == isostate_core::save::Switches { settlers: None, ideas_by_sea: Some(false) }),
+            ("Landfall alone, family", Box::new(|c| { c.set(Field::Kind, 1); c.set(Field::Start, 1); c.step(Field::Abroad, -1); }), "--family --new --landfall --settlers off --ideas-by-sea off", |a| a.landfall && !a.sandbox && a.switches == isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: Some(false) }),
+            ("Landfall, Settlers off and on again", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 0); c.set(Field::Abroad, 0); }), "--sandbox --new --landfall", |a| a.landfall && a.switches.plain()),
             // (the settled island has neither: a choice left off under Landfall says nothing there)
-            ("Settled island after Landfall alone", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Settlers, 1); c.set(Field::Ideas, 1); c.set(Field::Start, 0); }), "--sandbox --new", |a| !a.landfall && a.switches.plain()),
+            ("Settled island after Landfall alone", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 0); c.set(Field::Abroad, 1); c.set(Field::Start, 0); }), "--sandbox --new", |a| !a.landfall && a.switches.plain()),
         ];
         for (name, choose, want, check) in rows {
             let mut c = Choices::default();
@@ -1605,9 +1627,9 @@ mod tests {
         c.step(Field::Size, -2);
         c.step(Field::View, 3);
         c.set(Field::Start, 1);
-        c.set(Field::Settlers, 1);
+        c.set(Field::Abroad, 0);
         assert_eq!(Choices::from_text(&c.to_text()), c);
-        c.set(Field::Ideas, 1);
+        c.set(Field::Abroad, 1);
         assert_eq!(Choices::from_text(&c.to_text()), c);
         // a file kept before the two switches were on the page has both on, as landfall has them
         let before = "kind: sandbox\nstart: landfall\nseed: 7\n";
@@ -1632,7 +1654,7 @@ mod tests {
         for (more, start) in [(false, 0), (true, 0), (false, 1), (true, 1)] {
             page.more = more;
             page.choices = Choices { start, ..Choices::default() };
-            assert_eq!(page.order().contains(&Focus::Field(Field::Settlers)), start == 1);
+            assert_eq!(page.order().contains(&Focus::Field(Field::Abroad)), start == 1);
             let order = page.order();
             let mut seen = Vec::new();
             page.focus = order[0];
