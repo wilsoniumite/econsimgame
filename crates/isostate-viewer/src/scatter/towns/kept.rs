@@ -2421,7 +2421,7 @@ mod tests {
     /// runs named in `ISOSTATE_CURVE_RUNS` (paths to `run.bin`, apart by
     /// `;`): in 1850, 1900 and 2050, every house laid out, and how many stand
     /// within 0.02 of a square (40 m) of the middle line of a road drawn,
-    /// straight as before, on the curves alone and over the ground. No house moves either way (the town
+    /// straight as before, on the viewer's curves and on the simulation's courses. No house moves either way (the town
     /// reads no course); what the count says is how many a curve runs over.
     /// Run by hand, with
     /// `cargo test -p isostate-viewer houses_beside_the_curves -- --ignored --nocapture`.
@@ -2439,9 +2439,9 @@ mod tests {
                     continue;
                 }
                 let mut said = Vec::new();
-                for how in ["straight", "curves", "ground"] {
+                for how in ["straight", "curves", "kept"] {
                     crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(how == "straight"));
-                    crate::road_course::CURVES_ALONE_IN_TEST.with(|a| a.set(how == "curves"));
+                    crate::road_course::NO_COURSES_IN_TEST.with(|a| a.set(how != "kept"));
                     let g = world::build_ground(&r);
                     let l = laid(&r, &g, k, &|_, _| false);
                     let mut segs: std::collections::HashMap<(i32, i32), Vec<(Vec2, Vec2)>> = Default::default();
@@ -2463,7 +2463,7 @@ mod tests {
                     }).count();
                     said.push(format!("{how} {near} of {} houses", l.standing.len()));
                     crate::road_course::STRAIGHT_IN_TEST.with(|a| a.set(false));
-                    crate::road_course::CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+                    crate::road_course::NO_COURSES_IN_TEST.with(|a| a.set(false));
                 }
                 println!("{path} {year}: within 0.02 of a road's middle line: {}", said.join(", "));
             }

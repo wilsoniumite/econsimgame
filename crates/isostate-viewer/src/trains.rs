@@ -108,9 +108,9 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
             return false;
         }
         *dry.entry((lo, hi, r.crossed(lo, hi, k))).or_insert_with(|| {
-            let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
             // (a way that bends, on a curve, round a meander or a lake, is looked along wherever it is)
-            (!waters.near(a, b) && network::course(r, g, cen, lo, hi, k).straight()) || {
+            let course = network::course(r, g, cen, lo, hi, k);
+            (course.straight() && !waters.near(course.pts[0], course.pts[1])) || {
                 let way = surface(ways, r, k, g, cen, lo, hi);
                 !waters.drowns(g, way) && !steps(way)
             }
@@ -211,9 +211,9 @@ impl RoadMemo {
 /// link's bridges once found.
 #[allow(clippy::type_complexity)]
 pub fn middle_under_bridge(r: &Replay, k: usize, g: &Ground, cen: &[(f32, f32)], links: &[(usize, usize, u8)], cell: usize, bridges: &mut std::collections::HashMap<(usize, usize, bool, Crossed), Vec<isostate_gen::bridge::RoadBridge>>) -> bool {
-    let middle = |c: usize| bevy::math::Vec2::new(cen[c].0, cen[c].1);
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let p = middle(cell);
+    // (where the roads meet: the simulation's place for the cell, where the run keeps one)
+    let p = network::ways_meet(r, g, cen, k, cell);
     let ribbon = height(p.x, p.y).max(0.0) + network::ROAD_LIFT;
     links.iter().any(|&(c, m, lv)| {
         let crossed = r.crossed(c, m, k);
