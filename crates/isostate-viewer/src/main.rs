@@ -318,8 +318,17 @@ fn version_line() -> String {
     format!("Isolated State {VERSION} (commit {})", note::COMMIT)
 }
 
+/// The command line after the program's name. A Mac's Finder adds an argument
+/// of its own to some starts of an app, the first start of one just downloaded
+/// among them: `-psn_` and the process's number. It is not the player's, and
+/// left in it would keep the start page from opening and be refused as an
+/// option the game does not know, so it is taken out.
+pub fn command_line() -> Vec<String> {
+    std::env::args().skip(1).filter(|a| !(cfg!(target_os = "macos") && a.starts_with("-psn_"))).collect()
+}
+
 fn parse_args() -> Args {
-    let v: Vec<String> = std::env::args().skip(1).collect();
+    let v = command_line();
     // asked for anywhere on the line, as --help is, and nothing else is done
     if v.iter().any(|s| s == "--version" || s == "-V") {
         println!("{}", version_line());

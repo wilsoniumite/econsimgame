@@ -1,0 +1,179 @@
+# The Mac and Linux builds of a marked version (docs/RELEASING.md).
+#
+# The Windows zip is built, tried and published by hand on the workstation (tools/release.py).
+# When its release is published, this builds the same commit for Linux and for both kinds of Mac
+# on GitHub's machines, with the same command (tools/release.py --ci), tries each build there
+# with a picture taken with nobody at the window, and adds the two archives to the release. The
+# pictures stay with the run, to be looked at: gh run download RUN --pattern '*' --dir DIR.
+#
+# Run by hand (Actions, Mac and Linux builds, Run workflow; or gh workflow run mac-linux.yml):
+# given a version's tag it builds that tag and adds the archives to its release; given none it
+# builds the branch it is run on, and keeps what it made with the run only.
+name: Mac and Linux builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "A version's tag (v0.2.0): build it and add the archives to its release. Empty: build this branch and publish nothing."
+        required: false
+        default: ""
+      quick:
+        description: "Build in the work profile: much sooner, to try the workflow. Never added to a release."
+        type: boolean
+        default: false
+  # while the workflow is being made: a quick build of each push to its branch (taken out before it lands)
+  push:
+    branches: [ci/mac-linux]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-linux-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+env:
+  # the workstation's toolchain (rustc --version there): raise it with hers
+  RUST_VERSION: "1.97.1"
+  # the version's tag, if this builds one
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  # what is checked out and built: that tag, or the commit the run was started on
+  SOURCE: ${{ (github.event.release.tag_name || inputs.tag) && format('refs/tags/{0}', github.event.release.tag_name || inputs.tag) || github.sha }}
+  QUICK: ${{ (inputs.quick || github.event_name == 'push') && '--quick' || '' }}
+  PROFILE: ${{ (inputs.quick || github.event_name == 'push') && 'work' || 'dist' }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    name: Linux (x64)
+    # the oldest Ubuntu GitHub offers, so that the program asks for glibc 2.35 and no later
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Rust ${{ env.RUST_VERSION }}
+        run: rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update && rustup default "$RUST_VERSION"
+      - name: Wayland's library to link against, and Vulkan drawn in software for the trial
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libwayland-dev mesa-vulkan-drivers libvulkan1
+      # a release builds from nothing, as the Windows version does; a cache made under a tag is never found again
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'release'
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: linux-x64-${{ env.RUST_VERSION }}-${{ env.PROFILE }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: linux-x64-${{ env.RUST_VERSION }}-${{ env.PROFILE }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Build, pack and try
+        run: python tools/release.py --ci linux-x64 $QUICK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-x64
+          path: |
+            dist/isolated-state-*-linux-x64.tar.gz
+            dist/isolated-state-*-linux-x64-trial.png
+          if-no-files-found: error
+          compression-level: 0
+
+  mac-program:
+    name: Mac program (${{ matrix.target }})
+    # Apple silicon; the Intel program is built on it too, side by side
+    runs-on: macos-15
+    timeout-minutes: 240
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Rust ${{ env.RUST_VERSION }}
+        run: rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --target ${{ matrix.target }} && rustup default "$RUST_VERSION"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'release'
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: ${{ matrix.target }}-${{ env.RUST_VERSION }}-${{ env.PROFILE }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: ${{ matrix.target }}-${{ env.RUST_VERSION }}-${{ env.PROFILE }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Build
+        run: python tools/release.py --ci macos --build-only ${{ matrix.target }} $QUICK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: dist/slices/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  mac:
+    name: Mac app (both programs in one)
+    needs: mac-program
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Rust ${{ env.RUST_VERSION }} (for cargo's account of the crates in the program)
+        run: rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update && rustup default "$RUST_VERSION"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "*-apple-darwin"
+          path: dist/slices
+      - name: Join, pack and try
+        run: python tools/release.py --ci macos --slices dist/slices $QUICK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: |
+            dist/isolated-state-*-macos.zip
+            dist/isolated-state-*-macos*-trial.png
+          if-no-files-found: error
+          compression-level: 0
+
+  attach:
+    name: Add the archives to the release
+    needs: [linux, mac]
+    if: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) && !inputs.quick }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-x64
+          path: made
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos
+          path: made
+      - name: Upload to ${{ env.TAG }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # the archives are named by the version in Cargo.toml: one that is not the tag's is refused here
+        run: |
+          ls -l made
+          v="${TAG#v}"
+          gh release upload "$TAG" "made/isolated-state-$v-linux-x64.tar.gz" "made/isolated-state-$v-macos.zip" --clobber --repo "$GITHUB_REPOSITORY"
