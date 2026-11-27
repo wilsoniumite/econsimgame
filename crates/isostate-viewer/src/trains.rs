@@ -162,6 +162,19 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
     out
 }
 
+/// The carters' rounds of year `k` (`road_routes`), found with the year's
+/// scenery off the main thread (`year::build_scenery`, after the year's
+/// roads, so that every course they follow is found and kept already), and
+/// handed over with it to the carts (`carts::Roads`). What is the same in
+/// every year is kept with the ground's courses (`road_course::Courses`).
+pub fn year_rounds(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
+    world::timed("year carts", || {
+        let mut memo = g.courses.carts.lock().unwrap_or_else(|e| e.into_inner());
+        let memo = memo.get_or_insert_with(|| RoadMemo::new(r, g));
+        road_routes(r, g, cen, k, memo)
+    })
+}
+
 /// Whether a road's line from `network::driven` has a step in it taller than
 /// the ribbon's lift: the foot of a bridge's ramp standing that far above the
 /// road it comes down to (where the river's level is well above the bank's
@@ -173,7 +186,7 @@ fn steps(pts: &[Vec3]) -> bool {
 
 /// What the carters' rounds need to know of the roads that is the same in
 /// every year, kept from one year to the next so that a year's rounds are
-/// quick to find on the main thread (the ground and the rivers never change,
+/// quick to find (the ground and the rivers never change,
 /// so neither does the way a road between two cells is drawn): the water on
 /// the map, each main-road link's surface, whether it keeps out of the water,
 /// and each link's bridges.

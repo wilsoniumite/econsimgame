@@ -93,7 +93,10 @@ pub struct Courses {
     /// each link's way, and whether it was found over the ground
     ways: std::sync::Mutex<HashMap<(u32, u32), (Way, bool)>>,
     /// the ground as a road's search reads it, read as it is asked for
-    lie: std::sync::Mutex<Option<crate::newland::passing::Lie>>,
+    lie: std::sync::RwLock<Option<crate::newland::passing::Lie>>,
+    /// what the carters' rounds keep from one year to the next (`trains::year_rounds`), which
+    /// is read from these courses and so forgotten with them
+    pub(crate) carts: std::sync::Mutex<Option<crate::trains::RoadMemo>>,
 }
 
 /// Whether the roads are drawn on curves: unless `ISOSTATE_CURVES=off`
@@ -128,8 +131,54 @@ impl Courses {
                 if let Ok(mut ways) = self.ways.lock() {
                     ways.clear();
                 }
+                if let Ok(mut carts) = self.carts.lock() {
+                    *carts = None;
+                }
             }
         }
+    }
+
+    /// Find the ways of every link drawn in year `k` that has none kept yet,
+    /// side by side on all the processor's threads, and keep them. A year's
+    /// scenery asks for this first, off the main thread (`year::build_scenery`),
+    /// so that whatever reads a course after (the roads, the towns' streets,
+    /// the carters' rounds, the Traffic view's ribbons) finds it kept. Each
+    /// way is the one `way_found` would find alone: the ends are fixed first,
+    /// in the years' order, and each search reads only the ground of its own
+    /// link's cells and those round them. Returns how many were found.
+    pub fn find_year(&self, r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> usize {
+        use rayon::prelude::*;
+        if !on() || r.filled == 0 {
+            return 0;
+        }
+        // (the ends of every link up to year k, fixed in order, as one walk through the years)
+        self.fixed(r, g, cen, 0, 0, k);
+        let todo: Vec<(usize, usize)> = {
+            let known = self.known.lock().unwrap();
+            let ways = self.ways.lock().unwrap();
+            let seeks = over_ground() && g.laid.is_some();
+            network::drawn_links(r, &g.worn, k)
+                .into_iter()
+                .map(|(c, m, _)| (c.min(m), c.max(m)))
+                .filter(|&(c, m)| !ways.contains_key(&key(c, m)) && known.ends.get(&key(c, m)).is_some_and(|f| f.bend.is_some() || (seeks && !f.held)))
+                .collect()
+        };
+        // the ground of the cells the searches will read, read first, side by side
+        if over_ground() && g.laid.is_some() && !todo.is_empty() {
+            let mut lie = self.lie.write().unwrap();
+            let lie = lie.get_or_insert_with(|| crate::newland::passing::Lie::new(g));
+            lie.know_all(g, &todo.iter().flat_map(|&(c, m)| [c, m]).collect::<Vec<usize>>());
+        }
+        todo.par_iter().for_each(|&(c, m)| {
+            self.way_found(r, g, cen, c, m, k);
+        });
+        todo.len()
+    }
+
+    /// How many links' ways are kept (for a test that nothing is found where it should not be).
+    #[cfg(test)]
+    pub fn kept(&self) -> usize {
+        self.ways.lock().map_or(0, |w| w.len())
     }
 
     /// How the link between `c` and `m` is fixed, going through the record
@@ -158,10 +207,11 @@ impl Courses {
                 let kept = self.ways.lock().ok().and_then(|w| w.get(&key(lo, hi)).cloned());
                 kept.unwrap_or_else(|| {
                     let found = self.find(r, g, a, b, lo, hi, fixed.unwrap(), seeks);
-                    if let Ok(mut w) = self.ways.lock() {
-                        w.insert(key(lo, hi), found.clone());
+                    // (the first found is the one kept; found twice at once, the two are the same)
+                    match self.ways.lock() {
+                        Ok(mut w) => w.entry(key(lo, hi)).or_insert(found).clone(),
+                        Err(_) => found,
                     }
-                    found
                 })
             }
         };
@@ -183,12 +233,23 @@ impl Courses {
             return (plain, false);
         }
         let (da, db) = f.bend.unwrap_or((own, own));
-        let mut lie = self.lie.lock().unwrap();
-        let lie = lie.get_or_insert_with(|| crate::newland::passing::Lie::new(g));
+        // the ground of the link's two cells and round them read first, if it has not been, and
+        // then only read: so the links of a year seek their ways side by side (`find_year`), and
+        // each reads the ground as it would alone. (The lock to write is asked for only where
+        // the ground is not read yet: one waiting for it holds back every search that would read)
+        let known = self.lie.read().unwrap().as_ref().is_some_and(|lie| lie.knows(lo) && lie.knows(hi));
+        if !known {
+            let mut lie = self.lie.write().unwrap();
+            let lie = lie.get_or_insert_with(|| crate::newland::passing::Lie::new(g));
+            for c in [lo, hi] {
+                lie.know(g, c);
+            }
+        }
+        let lie = self.lie.read().unwrap();
+        let lie = lie.as_ref().unwrap();
         let town = |cell: usize| town(r, f.year, cell);
         let asked = crate::road_ground::Asked { kind: crate::road_ground::prices(f.kind), cells: [lo, hi], town: &town };
         let sought = network::bent_route(g, a, b, da, db, r.round(), &mut |p, dp, q, dq| crate::road_ground::seek(lie, g, &asked, p, dp, q, dq));
-        let lie = &*lie;
         let differs = sought.pts.len() != plain.pts.len() || sought.pts.iter().zip(&plain.pts).any(|(p, q)| p != q);
         if differs && crate::road_ground::cost(lie, g, &asked, &sought.pts) < crate::road_ground::cost(lie, g, &asked, &plain.pts) {
             (sought, true)
@@ -696,6 +757,42 @@ mod tests {
             }
             println!("{how}: every way of {years} years found in {:.0} ms, {found} link-years over the ground; the year of most new links, {} ({} new), {:.0} ms", t0.elapsed().as_secs_f64() * 1000.0, r.y0 + most.0 as i32, most.1, most.2);
             CURVES_ALONE_IN_TEST.with(|a| a.set(false));
+        }
+    }
+
+    /// What a year's ways cost found side by side (`Courses::find_year`)
+    /// against one after another, and that they are the same ways: for the
+    /// first run named in `ISOSTATE_CURVE_RUNS`, the year `ISOSTATE_CURVE_YEAR`
+    /// (its last if not named), every link's way found on a fresh ground each
+    /// way, by the clock on the wall. Run by hand, with
+    /// `cargo test -p isostate-viewer time_a_year_found_side_by_side -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn time_a_year_found_side_by_side() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        let path = paths.split(';').next().unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let r = crate::replay::parse(path, &bytes).unwrap();
+        let cen = network::centres(&r);
+        let last = r.filled.min(r.ny) - 1;
+        let k = std::env::var("ISOSTATE_CURVE_YEAR").ok().and_then(|v| v.parse::<i32>().ok()).map_or(last, |y| ((y - r.y0) as usize).min(last));
+        for _ in 0..2 {
+            let g = crate::world::build_ground(&r);
+            g.courses.fixed(&r, &g, &cen, 0, 0, k);
+            let links = network::drawn_links(&r, &g.worn, k);
+            let t1 = std::time::Instant::now();
+            let n = g.courses.find_year(&r, &g, &cen, k);
+            let side = t1.elapsed().as_secs_f64() * 1000.0;
+            let g1 = crate::world::build_ground(&r);
+            g1.courses.fixed(&r, &g1, &cen, 0, 0, k);
+            let t2 = std::time::Instant::now();
+            for &(c, m, _) in &links {
+                g1.courses.way_found(&r, &g1, &cen, c, m, k);
+            }
+            let alone = t2.elapsed().as_secs_f64() * 1000.0;
+            let same = links.iter().all(|&(c, m, _)| g.courses.way(&r, &g, &cen, c, m, k).pts == g1.courses.way(&r, &g1, &cen, c, m, k).pts);
+            println!("{}: {} links drawn, {n} ways found side by side, the ground read first, in {side:.0} ms; one after another, the ground read as asked, in {alone:.0} ms; the same ways: {same}", r.y0 + k as i32, links.len());
+            assert!(same);
         }
     }
 

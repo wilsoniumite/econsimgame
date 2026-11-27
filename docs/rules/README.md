@@ -287,7 +287,7 @@ where they were, in `tests/golden_game.txt`. A rule that acts on both starts
 moves both files, and the one command above takes both again: it writes each
 file whose hashes moved, with the reason as its newest `# Taken:` line, and
 leaves a file whose seven did not move as it was. A rule that is part of the
-landfall start alone (`frontier`, `immigration`, `hands.short_rise`) moves only
+landfall start alone (`frontier`, `immigration`, `mines.glut`) moves only
 `golden_landfall.txt`, and the settled island's file must not move. One start
 alone:
 
@@ -954,6 +954,12 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   people do, so that a town that took a district does not open January with
   the shelves of the town it was. [shelves.md](shelves.md),
   `people.shelves_go`.
+- **the hands that come with a district**: in the first month after the
+  year's turn, a town that took a district counts at least the hands its
+  land and works carry in as hands for hire. Off on both starts: the
+  newcomers' hands already count, and the rises it was built for come from
+  small towns priced far below the city beside them. [people.md](people.md),
+  "The hands that come with a district", `people.carry_hands`.
 - **towns**: town ground that is kept. A town keeps the cells it builds on and
   grows outward from them along its roads, taking in the works beside it, so
   the island's town ground is some five times as wide in 1900 as in 1750 and
@@ -1208,9 +1214,6 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
   abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money, and
   no ship brings them to a port that went hungry that year or the four before.
   [immigration.md](immigration.md), `immigration.enabled`, `immigration.shun_hungry`.
-- **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
-  wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
-  "The trap", `hands.short_rise`.
 - **pits at the size of their market**: the merchants take a quarry's, clay pit's, iron mine's or
   colliery's make only as far as the town asks for the good and their shelves have room, the working
   hires for what they take, and no town sinks a working into a glut. Off on the settled island for now:

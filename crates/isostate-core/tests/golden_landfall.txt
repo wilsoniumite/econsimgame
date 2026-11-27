@@ -1,8 +1,8 @@
 # The game's golden hashes at landfall (tests/golden_game.rs): seed 7 under
 # game_params() and game_content(), six families, from the landfall start
 # (--start landfall: one town of 5,000 at a harbour in a corner, with births
-# that answer to free land, hamlets, settlers by ship and the guard on a short
-# town's wage; docs/rules/landfall.md), in two eras, hashed exactly as the
+# that answer to free land, hamlets, settlers by ship and the other rules that
+# come with the start; docs/rules/landfall.md), in two eras, hashed exactly as the
 # settled island's in golden_game.txt, whose head says what each line is.
 #
 # These move whenever the game's rules are changed on purpose, as the settled
@@ -38,10 +38,15 @@
 # (works-in-blocks on main ca99c49, landfall-b in it): the works of a street
 # let floor in the blocks of houses (works.in_blocks, works.md part J) with
 # the ground by method (part I) under them; nothing acts before 1901
-1750-1900 economy  0x534ad2f7fd8080a0
-1750-1900 books    0xe79caea8871aea13
-1750-1900 news     0xc9b3fafbfebf779e
-1901-2050 economy  0x1f59321a2084b88f
-1901-2050 books    0x8067aecad08f0b18
-1901-2050 news     0x7db8abbb83cc76a5
-1901-2050 run.bin  0x54695a969e0c85f8
+# Taken: the guard on a short town's wage (hands.short_rise 1.06) taken off
+# the landfall start, which now keeps the game's 2 as the settled island does:
+# the colony's histories move from the first years (a short town's wage may
+# double in a month again), so all seven move; the settled island's seven do
+# not
+1750-1900 economy  0xef46c76a7eeafd23
+1750-1900 books    0x6d85927f7cc7b723
+1750-1900 news     0x30baf694ae81b223
+1901-2050 economy  0x853e55c74e22e33a
+1901-2050 books    0x1fe6f071e62750d4
+1901-2050 news     0xfb257c2f0a0c7dac
+1901-2050 run.bin  0x10aa4b28579bb728

@@ -85,6 +85,15 @@ pub struct PeopleParams {
     /// nothing and their measure of sales go with it to whichever town takes it,
     /// as its people do. Off, they go only to a town founded that year.
     pub shelves_go: bool,
+
+    // ---- the year's turn (docs/rules/people.md, "The hands that come with a district")
+    /// In the first month after a town takes in a district, the hands its land
+    /// and its works carry into the month count as hands for hire: its supply is
+    /// at least those hands, so that it is not short of hands it has. Off, its
+    /// supply is counted from its people, as in every other month. Not written
+    /// out while off, so that the game's parameters read as they did.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub carry_hands: bool,
 }
 
 impl Default for PeopleParams {
@@ -109,6 +118,7 @@ impl Default for PeopleParams {
             donor_max: 0.2,
             donor_rest: 8,
             shelves_go: false,
+            carry_hands: false,
         }
     }
 }
@@ -755,8 +765,45 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
             let left = pop[t] * pairwise_sum(share.row(t));
             st.pp_moved[t] = if pop[t] > 0.0 { came[t].max(left) / pop[t] } else { bool_f(came[t] > 0.0) };
         }
+        // the year's turn (docs/rules/people.md, "The hands that come with a district"):
+        // the towns that took people in count their carried hands in January
+        if P.people.carry_hands {
+            st.pp_took = came.iter().map(|&n| n > 0.0).collect();
+        }
     }
     st.town_new.iter_mut().for_each(|v| *v = false);
+}
+
+/// The hands that come with a district (`people.carry_hands`; docs/rules/people.md):
+/// in the first month after the year's turn, a town that took in a district
+/// counts as hands for hire at least the hands its land and its works carry
+/// into the month. The cells it took came with their hands at work and with
+/// their people; counted from its people, by its own share in work and less
+/// its own carters, the newcomers can come to fewer hands than they were, and
+/// the town is then short of hands it has. `supply` is the month's hands for
+/// hire, after the carters and the other takers. Called by `econ::step_month`;
+/// nothing happens while the rule is off or no town took a district, and the
+/// towns are forgotten once read.
+pub fn carry_hands(st: &mut State, P: &Params, supply: &mut [f64]) {
+    if !P.people.carry_hands || st.pp_took.is_empty() {
+        return;
+    }
+    let T = supply.len();
+    let mut carried = vec![0.0; T];
+    for u in 0..st.ex_town.len().min(st.ex_Lprev.len()) {
+        carried[st.ex_town[u]] += st.ex_Lprev[u];
+    }
+    for f in 0..st.F_count {
+        if st.f_alive[f] && st.f_town[f] < T {
+            carried[st.f_town[f]] += st.f_labor[f];
+        }
+    }
+    for t in 0..T.min(st.pp_took.len()) {
+        if st.pp_took[t] && st.town_active[t] {
+            supply[t] = supply[t].max(carried[t]);
+        }
+    }
+    st.pp_took.clear();
 }
 
 /// The going price goes with the trade. A market's price for coal was made by

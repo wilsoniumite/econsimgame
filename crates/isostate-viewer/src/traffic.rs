@@ -15,7 +15,8 @@
 //! link carried on the view's scale (`overlay::Scale`, so the three ranges of
 //! the other views widen and narrow them as they tint those), in the ink of
 //! the way it went. They are made again only when the year, the view or its
-//! scale changes, and only while the view is shown.
+//! scale changes, and only while the view is shown, off the main thread
+//! (`lay`), along the roads' ways the year's scenery found.
 
 use bevy::prelude::*;
 use isostate_core::traffic::{self as tf, Pair};
@@ -24,7 +25,7 @@ use crate::meshkit::{self, Builder};
 use crate::overlay::{MapOverlay, Overlay, Scale};
 use crate::replay::Replay;
 use crate::world::{self, Ground};
-use crate::{Data, Timeline};
+use crate::Data;
 
 /// The traffic a run keeps, `[year][cell][slot]` and `[year][cell]`; all empty
 /// where the run kept none.
@@ -363,42 +364,79 @@ pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale,
 
 /// The ribbons' entity.
 #[derive(Component)]
-struct Ribbons;
+pub(crate) struct Ribbons;
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, setup).add_systems(Update, lay.after(crate::overlay::paint));
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+pub(crate) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let mat = materials.add(StandardMaterial { base_color: Color::WHITE, unlit: true, ..default() });
     commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(Builder::default()))), MeshMaterial3d(mat), Transform::default(), Visibility::Hidden, bevy::light::NotShadowCaster, Ribbons));
 }
 
 /// Lay the ribbons again when the view, the year or the scale changes; hide
-/// them when another view or the plain map is shown.
+/// them when another view or the plain map is shown. Nothing is worked out
+/// while the view is not shown.
+///
+/// The ribbons are of the year whose roads are on screen (`carts::Roads::year`),
+/// which is the clock's but for the second or two a new year's scenery takes
+/// to be built: so they lie on the roads drawn, and every course they follow
+/// was found with that year's scenery, off the main thread
+/// (`road_course::Courses::find_year`), and is only read here. They are laid
+/// off the main thread too (20 ms or more for a year, which the frame the
+/// view opened or the year turned in once waited for), and put on screen
+/// when laid; until then the ribbons laid last stay, if they are of the same
+/// year, and none are shown if not.
 #[allow(clippy::too_many_arguments)]
-fn lay(ov: Res<MapOverlay>, tl: Res<Timeline>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, mut last: Local<Option<(usize, usize, [u32; 2], i32)>>) {
+pub(crate) fn lay(ov: Res<MapOverlay>, roads: Res<crate::carts::Roads>, data: Res<Data>, orbit: Res<crate::Orbit>, mut meshes: ResMut<Assets<Mesh>>, mut q: Query<(&Mesh3d, &mut Visibility), With<Ribbons>>, hand: Option<Res<crate::handover::HandOver>>, mut laying: Local<Laying>) {
     let _frames = crate::frames::span(crate::frames::Sys::MapView);
     let Ok((mesh, mut vis)) = q.single_mut() else { return };
     let shown = ov.kind == Some(Overlay::Traffic) && data.r.traffic.kept();
-    let Some(sc) = ov.scale.filter(|_| shown) else {
+    let (Some(sc), Some(k)) = (ov.scale.filter(|_| shown), roads.year()) else {
         vis.set_if_neq(Visibility::Hidden);
-        *last = None;
+        (laying.asked, laying.task) = (None, None);
         return;
     };
     let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
+    let k = k.min(r.ny - 1);
     let (step, near) = nearer(orbit.dist);
     let key = (k, r.filled, [sc.lo.to_bits(), sc.hi.to_bits()], step);
-    vis.set_if_neq(Visibility::Inherited);
-    if *last == Some(key) {
-        return;
+    if laying.asked != Some(key) {
+        laying.asked = Some(key);
+        let (r, g, cen) = (data.r.clone(), data.g.clone(), data.cen.clone());
+        let laid = async move { meshkit::into_mesh(world::timed("year traffic", || ribbons(&r, &g, &cen, k, &sc, near))) };
+        if hand.is_some_and(|h| !h.in_pieces()) {
+            // (pictures, which take a year whole and must not be taken before the ribbons are
+            // laid, lay them here, as before)
+            if let Some(mut old) = meshes.get_mut(&mesh.0) {
+                *old = bevy::tasks::block_on(laid);
+            }
+            (laying.task, laying.drawn) = (None, Some(key));
+        } else {
+            laying.task = Some((key, bevy::tasks::AsyncComputeTaskPool::get().spawn(laid)));
+        }
     }
-    *last = Some(key);
-    let b = world::timed("year traffic", || ribbons(r, &data.g, &data.cen, k, &sc, near));
-    if let Some(mut m) = meshes.get_mut(&mesh.0) {
-        *m = if b.is_empty() { meshkit::into_mesh(Builder::default()) } else { meshkit::into_mesh(b) };
+    let asked = laying.asked;
+    let ready = laying.task.as_mut().filter(|(at, _)| Some(*at) == asked).and_then(|(at, t)| bevy::tasks::futures::check_ready(t).map(|m| (*at, m)));
+    if let Some((at, m)) = ready {
+        laying.task = None;
+        if let Some(mut old) = meshes.get_mut(&mesh.0) {
+            *old = m;
+        }
+        laying.drawn = Some(at);
     }
+    vis.set_if_neq(if laying.drawn.is_some_and(|d| d.0 == k) { Visibility::Inherited } else { Visibility::Hidden });
+}
+
+/// What `lay` keeps from frame to frame: the ribbons asked for (their year,
+/// the run's years, the scale and the camera's step), those being laid, and
+/// those on screen.
+#[derive(Default)]
+pub(crate) struct Laying {
+    asked: Option<(usize, usize, [u32; 2], i32)>,
+    task: Option<((usize, usize, [u32; 2], i32), bevy::tasks::Task<Mesh>)>,
+    drawn: Option<(usize, usize, [u32; 2], i32)>,
 }
 
 #[cfg(test)]

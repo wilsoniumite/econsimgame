@@ -224,6 +224,19 @@ also = ["technologies"]
 see = ["method"]
 wiki = ["Technology"]
 
+[term.settler]
+name = "Settler"
+says = "A person who comes to the island by ship to live. Ships bring settlers to a port while its income per head is above abroad."
+also = ["settlers"]
+see = ["abroad"]
+wiki = ["Settler", "Immigration"]
+
+[term.abroad]
+name = "Abroad"
+says = "The countries over the sea, ahead of the island in technology. A port learns technology from abroad as from a town across the water."
+see = ["settler", "technology"]
+wiki = ["Technology transfer"]
+
 [term.method]
 name = "Method"
 says = "One way to make one good, with its own materials and equipment."

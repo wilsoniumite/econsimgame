@@ -303,6 +303,44 @@ pub struct Game {
     /// What became of the orders carried out at the last year's end, until
     /// `turn` hands it over.
     outcomes: Vec<Outcome>,
+    /// The start's two switches, where the game was begun with either set
+    /// otherwise than its start sets it (`Game::begin`); kept in its save.
+    pub begun: Switches,
+}
+
+/// The start's own two switches (docs/rules/landfall.md, "The start's
+/// switches"): settlers by ship (`immigration.enabled`) and ideas by sea
+/// (`abroad.ideas`), each on at landfall and off on the settled island. A game
+/// may be begun with either the other way; None is the start's own. A switch
+/// thrown in the middle of a game is an edit like any other (`Edit::Rule`),
+/// kept in the game's log: these say only how the game began.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Switches {
+    pub settlers: Option<bool>,
+    pub ideas_by_sea: Option<bool>,
+}
+
+impl Switches {
+    /// Both as the start has them.
+    pub fn plain(&self) -> bool {
+        self.settlers.is_none() && self.ideas_by_sea.is_none()
+    }
+
+    /// `P`, a start already made, with these switches set, and the switches
+    /// as they then differ from the start's own: one asked for as the start
+    /// already has it is the start's own, None. Only the switch is thrown, as
+    /// the Rules tab throws it; the rule's numbers are the start's.
+    pub fn set(self, P: &mut Params) -> Switches {
+        let settlers = self.settlers.filter(|&on| on != P.immigration.enabled);
+        if let Some(on) = settlers {
+            P.immigration.enabled = on;
+        }
+        let ideas_by_sea = self.ideas_by_sea.filter(|&on| on != P.abroad.ideas);
+        if let Some(on) = ideas_by_sea {
+            P.abroad.ideas = on;
+        }
+        Switches { settlers, ideas_by_sea }
+    }
 }
 
 impl Game {
@@ -313,7 +351,7 @@ impl Game {
 
     /// A new game under these rules.
     pub fn under(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
-        Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+        Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() }
     }
 
     /// A new game under these rules on the second island generator's land
@@ -326,7 +364,7 @@ impl Game {
     pub fn on_new_land(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
         let mut P = params(rules, seed, families);
         P.land = crate::landform::LandParams::game();
-        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() }
     }
 
     /// A new game under these rules on the port's island, whatever the rules
@@ -337,7 +375,7 @@ impl Game {
     pub fn on_old_land(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
         let mut P = params(rules, seed, families);
         P.land = crate::landform::LandParams::default();
-        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() }
     }
 
     /// A new game under these rules, played to the year `to` (1900 to 2050;
@@ -345,14 +383,14 @@ impl Game {
     /// Its save keeps the year (`Save::to`), and loading plays it to the same.
     pub fn under_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
         let P = params_to(rules, seed, families, to)?;
-        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() })
     }
 
     /// `on_new_land`, played to the year `to` (as `under_to`).
     pub fn on_new_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
         let mut P = params_to(rules, seed, families, to)?;
         P.land = crate::landform::LandParams::game();
-        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() })
     }
 
     /// A new game begun at landfall, one town in a corner with the rules that
@@ -362,7 +400,24 @@ impl Game {
         let mut P = params_to(rules, seed, families, to)?;
         P.land = if land { crate::landform::LandParams::game() } else { crate::landform::LandParams::default() };
         crate::landfall::landfall(&mut P);
-        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() })
+    }
+
+    /// A new game played to the year `to`, on the new land or the old
+    /// (`land`), from landfall or the settled island (`landfall`), with the
+    /// start's two switches as `switches` asks (`Switches::set`). With both
+    /// the start's own it is `on_new_land_to`, `on_old_land_to` or
+    /// `landfall_to`, to the bit; it is how a save is played again, and the
+    /// viewer begins every new game with it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin(rules: Rules, seed: u64, families: usize, started: u64, to: i64, land: bool, landfall: bool, switches: Switches) -> Result<Game, String> {
+        let mut P = params_to(rules, seed, families, to)?;
+        P.land = if land { crate::landform::LandParams::game() } else { crate::landform::LandParams::default() };
+        if landfall {
+            crate::landfall::landfall(&mut P);
+        }
+        let begun = switches.set(&mut P);
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun })
     }
 
     /// Whether the game began at landfall (docs/rules/landfall.md).
@@ -374,7 +429,7 @@ impl Game {
     pub fn on_old_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
         let mut P = params_to(rules, seed, families, to)?;
         P.land = crate::landform::LandParams::default();
-        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun: Switches::default() })
     }
 
     /// The last year the game is played to: the content's (1900) unless it was
@@ -557,6 +612,8 @@ impl Game {
             check: check(&self.sim),
             land: self.on_land(),
             landfall: self.sim.params.start.landfall,
+            settlers: self.begun.settlers,
+            ideas_by_sea: self.begun.ideas_by_sea,
             to: (self.to() != content_last_year(self.rules)).then_some(self.to()),
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
@@ -609,6 +666,16 @@ pub struct Save {
     /// it is written as it always was.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub landfall: bool,
+    /// Settlers by ship (`immigration.enabled`) as the game began, where it
+    /// began otherwise than its start has them (`Switches`): `false` for a
+    /// colony begun with no ships. Left out of the file otherwise, so every
+    /// save made before it, and every save of a start as it comes, is written
+    /// and played as it always was. A switch thrown later is in the orders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlers: Option<bool>,
+    /// Ideas by sea (`abroad.ideas`) as the game began, as `settlers` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ideas_by_sea: Option<bool>,
     /// The last year the game is played to, when it is not the content's
     /// (`Game::under_to`; docs/rules/longrun.md, "A game past 1900"). Left
     /// out of the file otherwise, so a game to 1900 is written as it always
@@ -747,13 +814,9 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     // line was made on the port's island before the game's rules took the new land), and
     // played to the year it was begun to (a save that does not say is a game to 1900)
     let to = save.last_year_of_game();
-    let mut game = if save.landfall {
-        Game::landfall_to(save.played_under(), save.seed, save.families, save.started, to, save.land)?
-    } else if save.land {
-        Game::on_new_land_to(save.played_under(), save.seed, save.families, save.started, to)?
-    } else {
-        Game::on_old_land_to(save.played_under(), save.seed, save.families, save.started, to)?
-    };
+    // and from the start it says, with the start's switches as it began
+    let switches = Switches { settlers: save.settlers, ideas_by_sea: save.ideas_by_sea };
+    let mut game = Game::begin(save.played_under(), save.seed, save.families, save.started, to, save.land, save.landfall, switches)?;
     let mut refused = Vec::new();
     let mut next = 0;
     // where the save had got to: a year's turn, or some months into the year after it

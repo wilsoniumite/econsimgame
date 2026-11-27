@@ -595,7 +595,7 @@ state_parts! {
     chron: "chronicle", works_added: "works", works_lease: "works", works_hands: "works", works_floor: "works", cell_floor: "cells", rw: "railways",
     cart_bill: "carting", carters: "carting", cart_months: "carting", cart_years: "carting",
     pp_growth: "people", pp_income_term: "people", pp_emigrants: "people", pp_foundings: "people", pp_gave: "people", pp_dcatch_was: "people",
-    pp_moved: "people", pp_found_next: "people",
+    pp_moved: "people", pp_took: "people", pp_found_next: "people",
     town_built: "towns_kept", town_room: "towns_kept", town_ground: "towns_kept", town_peak: "towns_kept", town_low_years: "towns_kept",
     town_ground_rent: "towns_kept", town_hands_acc: "towns_kept",
     mine_sectors: "mines", mine_opened: "mines", mine_left: "mines", mine_idle: "mines", mine_head: "mines", mine_heap: "mines",

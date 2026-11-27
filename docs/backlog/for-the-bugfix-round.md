@@ -588,7 +588,6 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - [start-page] The seeded build cache's hard links to proc-macro DLLs failed to link (LNK1104) until removed so the build made its own copies (from night/g-batch-start-a, 2026-11-27)
 - [carriage] The merchants owe up to 6.7 times the island's money before 1800 at landfall with carriage alone (island 7; 5 of 8 islands over 1 for 11 to 23 Decembers); the pits' mend takes it under 0.6. (from night/g-batch-landfall-b, 2026-11-27)
 - [carriage] The settled island's merchants owe 1.38 of the money in 2000 and 2.19 in 2050 (0.37 in 1950), islands 1 to 8. (from night/g-batch-landfall-b, 2026-11-27)
-- [carriage] At hands.short_rise 2 the colony's largest yearly rise of a town's wage to 1900 is over 2 on 3 of 8 islands (island 7: 3.64); after 1900 every arm, the settled island too, has rises of 3 to 21 in a year (the year's turn). (from night/g-batch-landfall-b, 2026-11-27)
 - [carriage] With carriage on prices the colony founds no towns from about 1870 to 1950, and the settled island under the setting none after 1823: the founding test reads carting saved over wages, which a price-indexed freight shrinks. (from night/g-batch-landfall-b, 2026-11-27)
 - [carriage] The colony's price level falls 120-fold from 1750 to 1950 (0.008): money is issued on the money, not on the people. (from night/g-batch-landfall-b, 2026-11-27)
 - [carriage] On the settled island carters over hands jump from about 0.08 to 0.13 in 1901 and ease back. (from night/g-batch-landfall-b, 2026-11-27)

@@ -7,7 +7,10 @@ on with the landfall start ([landfall.md](landfall.md)); the code is
 settlers' place in the ages' reckoning (`ages::came`, `ages::year`). The
 designer asked for it on 26 November 2026 as a setting to turn on and off,
 "just so we can test other growth rates and population pyramid changes
-beyond births".
+beyond births": a game is begun without it by the viewer's `--settlers off`
+(Abroad: Settlers unlit on the start page), its save remembers that, and it is
+thrown in a running game from the Rules tab (landfall.md, "The start's
+switches").
 
 ## What it does
 

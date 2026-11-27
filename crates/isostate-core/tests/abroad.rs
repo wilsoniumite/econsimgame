@@ -113,7 +113,7 @@ fn a_sea_of_no_weight_spreads_ideas_as_the_island_alone() {
 #[test]
 fn at_landfall_ideas_come_by_sea_to_the_port() {
     // played under --start landfall (frontier.enabled, frontier.hamlets,
-    // immigration.enabled, hands.short_rise) with ideas by sea (abroad.ideas) on
+    // immigration.enabled) with ideas by sea (abroad.ideas) on
     // and off, island 7 to 1790, six families: with the sea, ideas abroad knew
     // come to a port, never before abroad knew them, and are news
     let mut P = game_params();
