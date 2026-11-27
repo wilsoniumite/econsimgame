@@ -24,9 +24,6 @@ on:
         description: "Build in the work profile: much sooner, to try the workflow. Never added to a release."
         type: boolean
         default: false
-  # while the workflow is being made: a build of each push to its branch (taken out before it lands)
-  push:
-    branches: [ci/mac-linux]
 
 permissions:
   contents: read

@@ -31,7 +31,7 @@ A release published on GitHub starts `.github/workflows/mac-linux.yml` ("Mac and
 - The workflow builds with the Rust the workstation has (`RUST_VERSION` at its head, 1.97.1): raise it there when the workstation's Rust is raised.
 - The builds are free: GitHub's machines cost nothing for a public repository.
 
-What has not been done: neither build has been played at a real Mac or a real Linux desktop by us, only started on GitHub's machines. The Mac's app is not notarised (Apple's check of a developer-signed app, which needs a developer account at $99 a year), so macOS asks the player once, as below. The island's numbers may part slightly from Windows' on the other two: the simulation's exponentials, logarithms and powers come from each system's own mathematics library, which may round a last digit differently, and three centuries carry such differences on.
+What has not been done: neither build has been played at a real Mac or a real Linux desktop by us, only started on GitHub's machines. The Mac's app is not notarised (Apple's check of a developer-signed app, which needs a developer account at $99 a year), so macOS asks the player once, as below. An island is not quite the same on every machine: the simulation's exponentials, logarithms and powers come from each system's own mathematics library, which may round a last digit differently, and the years carry such differences on. Island 7's sandbox five years in had 137,329 people from the Mac's app on Apple silicon and 137,333 from its Intel program under Rosetta (27 November 2026). A save carried from one machine to another is played again there, and its opening card says if the island now stands differently.
 
 ## What a player needs
 
