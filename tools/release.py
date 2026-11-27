@@ -73,7 +73,8 @@ LICENCES = [
     ("LICENSE-APACHE", "licences/LICENSE-APACHE.txt"),
     ("crates/isostate-viewer/assets/fonts/OFL-Fredoka.txt", "licences/OFL-Fredoka.txt"),
 ]
-TRIAL_SECONDS = 900
+# a picture drawn in software (Linux on GitHub's machines, which have no graphics card) took 7 minutes
+TRIAL_SECONDS = 1800
 
 
 def trial_args(picture):

@@ -24,7 +24,7 @@ on:
         description: "Build in the work profile: much sooner, to try the workflow. Never added to a release."
         type: boolean
         default: false
-  # while the workflow is being made: a quick build of each push to its branch (taken out before it lands)
+  # while the workflow is being made: a build of each push to its branch (taken out before it lands)
   push:
     branches: [ci/mac-linux]
 
@@ -41,8 +41,8 @@ env:
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
   # what is checked out and built: that tag, or the commit the run was started on
   SOURCE: ${{ (github.event.release.tag_name || inputs.tag) && format('refs/tags/{0}', github.event.release.tag_name || inputs.tag) || github.sha }}
-  QUICK: ${{ (inputs.quick || github.event_name == 'push') && '--quick' || '' }}
-  PROFILE: ${{ (inputs.quick || github.event_name == 'push') && 'work' || 'dist' }}
+  QUICK: ${{ inputs.quick && '--quick' || '' }}
+  PROFILE: ${{ inputs.quick && 'work' || 'dist' }}
   CARGO_TERM_COLOR: never
 
 jobs:
