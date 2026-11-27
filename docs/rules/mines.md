@@ -132,6 +132,30 @@ shares afterwards, so a cell's shares sum to what the works have left of it
 exactly as before, and everything that reads the shares (the areas in the
 sweep, the map's mix, the tests) goes on reading the truth.
 
+**G. At the size of the market** (`mines.glut`; on at landfall, off on the
+settled start for now). Without it a working has one size, what its deposit
+raises at the hands that suit the year's prices, and the merchants buy all of
+it, whether or not anybody asks for it. With it the merchants take a working's
+make as they take a works' (`prices.md`, "Merchants stop buying into a
+glut"), and the working hires the hands for what they take. Each month, for
+each town and good, they will take what the town's buyers ask for in a month,
+less as their shelves pass `prices.glut_months` (4) of that and nothing at
+`prices.glut_stop_months` (8), and on top whatever fills their shelves to four
+months. What is asked is the larger of last month's asking, got or not, and
+the smoothed sales and shipments, so a good nobody could buy for want of a pit
+is still asked for, and a town that ships its coal counts what it ships. The
+town's workings of that good share it in proportion to what each would make
+at full time at last month's wage. A working given the share s of its make
+wants s^(1/(1 - alpha)) of its hands, so that what it raises is s of its make
+(the land's hands still move only part of the way each month). And no town
+sinks a working, its first of the year included, while its shelves hold more
+than four months of what is asked: "one may always open" holds only where
+the market is short. So a first pit still opens into a small market, and
+works small. The code is `mines::merchants_take` and `mines::glutted`, read
+in `econ::step_month` and `review`. It is a marked difference between the two
+starts, waiting for the stage that lays the first century anew; see "At the
+size of the market", below, for why and what it does.
+
 ## What I tried first, and why not
 
 Three designs went before this one. They are worth a paragraph because each
@@ -1298,6 +1322,95 @@ machine for tasks), and 0.114 against 0.136 in 1980.
   prices of stone and clay are far outside the spread. The standard of
   living is 8/0 in 1750 everywhere and in most later years under the game's
   rules with families.
+
+## At the size of the market
+
+Built on 26 November 2026 for the landfall start (`docs/rules/landfall.md`),
+from its study's trace of island 7. What G above mends: on a colony of 5,000
+a new iron-ore pit raised 90,190 units in 1751 against 571 asked, and a new
+colliery 176,444 of coal in 1753 against 35,916 (the switch off, carriage on
+prices from 1750, `examples/pits.rs`). The first working of a year always
+opened, at the one size its deposit gave, and the merchants bought all of it
+at the town's price. They paid for it with money they did not have (a purse
+may go below nothing, and nobody lends), owed 6.8 times the island's money by
+December 1753, and the money they paid out as wages, carting and royalty
+trebled the colony's prices. On the settled island the same two rules run and
+do little harm, since six towns of 135,000 can take a pit's make.
+
+The study's own mend, a first working only where the market can take its
+whole make, forbade a first pit: a pit of 90,000 ore can never open into a
+market that asks for 571, and two islands of four then raised no coal or
+iron for 150 years and stalled at 30,000 people. A pit that works at the size
+of its market is the other way round: it opens, and hires for what sells.
+
+**What it did on island 7**, month by month, 1750 to 1760 (`cargo run
+--profile work -p isostate-core --example pits -- 7 OUT.csv --start landfall`,
+and the same with `--set mines.glut=false` for before):
+
+| | before | with G |
+|---|---|---|
+| iron ore raised in 1751 / asked | 90,190 / 571 | 995 / 849 |
+| coal raised in 1753 / asked | 176,444 / 35,916 | 50,862 / 37,406 |
+| iron ore on the shelves, December 1760 | 84,942 | 279 |
+| the merchants owe over the money, worst December | 6.81 (1753) | 0.48 (1750, what the warm-up left) |
+| price index, highest month (January 1750 = 1) | 3.70 | 1.00 |
+| people, December 1760 | 9,064 | 9,387 |
+
+The ore pit is sunk in 1753, into a market short of ore, and works with
+about forty hands; the colliery's make stays within a fifth of what is asked
+every year.
+
+**On islands 1 to 8**, from landfall to 2050 with settlers (`examples/landfall.rs`,
+the game's rules with six families; before is `--set mines.glut=false`):
+the merchants owe at most 0.56 of the money in any December to 1800 (before
+up to 6.73, and over the whole money for 11 to 23 Decembers on five islands);
+no three years raise the price level by more than 1.12 (before 1.14 to 2.86);
+coal made a head is 8.8 in 1800, 11.8 in 1850 and 17.1 in 1900 on the mean
+(before 8.9, 11.2, 16.1), at least 0.83 of before's on every island in 1800;
+people in 1900 are 0.79 to 1.22 of before's (555,000 on the mean against
+558,000); the wage in grain is 13.8 in 1800 and 33.9 in 1900 (14.3 and 32.3);
+the first railway comes in 1858 on the mean as before; years with hunger to
+1900 fall from 1.0 a run to 0.25. Without settlers the same holds. No run failed.
+The landfall page has the tables.
+
+What it leaves: the colony's prices still fall fast in its first decade,
+by more than three tenths in three years on every island (lowest 0.54); the
+same fall followed the bubble before. Its grain shelves hold two to three and
+a half months of asking, a little over the merchants' aim of two, while the
+farms spread over free land, and every price's anchor walks down with that
+gap; more money (`money.growth` 0.04) does not slow it. It is the price rule
+on a fast-growing colony, not the pits.
+
+**Why the take is an amount and not the works' share.** The works' brake
+(`prices.md`) gives each works a share of its capacity, read from the stock:
+all of it while the shelves hold under four months of sales. A works is
+sized to its town; a pit is sized to its deposit. On island 7 the ore pit
+would have made thirteen months of asking in its first month before the
+brake saw any stock, and then stood shut for a decade while that sold. So
+the merchants here say how much they will take, and the workings share that.
+
+**Why what is asked, and not what is sold.** A town with no pit of a good
+sells none of it, and a brake that read sales would never let the first pit
+work. What its buyers ask for, got or not, is the market a first pit opens
+into. The same reading does the work of the works' crumb: a market whose
+shelves ran dry never looks like one where nothing sells.
+
+**A marked difference between the starts.** The switch is on at landfall and
+off on the settled start, which therefore still buys all a pit raises. That
+is a difference in a rule between the two starts, which the house does not
+want; it stays until the stage that lays the first century anew takes the
+settled island's first century up again. With the switch on the settled
+island moves, a little, and nothing here is tuned to it. Islands 1 to 8,
+the game's rules with six families, `sweep --seeds 1-8 --rules game
+--families 6 --set mines.glut=true --standing` against the same without:
+11 of the twelve standing facts inside, and one outside, the work's share of
+income in 1900 (0.663 against 0.649, band 0.614 to 0.661; five islands over
+it). People in 1900 664,245 against 672,930; towns 22.2 against 21.6; works
+1,232 against 1,216; workings 443 against 437; railway 2,708 km against
+2,692; the chained real wage 6.22 times 1750's against 5.96; coal a head the
+same within 5 per cent in 1800, 1850 and 1900, stone 18 per cent less in
+1900. Of 1,239 facts 1,021 differ, one starred (the owners' dividends over the
+landlords' in 1750, 0.679 against 0.644, which the warm-up sets).
 
 ## Checking it
 

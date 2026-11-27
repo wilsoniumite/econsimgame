@@ -27,7 +27,13 @@
 //! town's people, where the game's founding rule asks 3,000 and a fifth
 //! (`peopling::found_towns`); every other test of a founding stands.
 //!
-//! Both are off under the game's rules, so the settled island is as it was:
+//! With `claimed`, land once taken stays taken: a cell's hands for its free
+//! share are the most it has had at any year's reckoning, so a farm the
+//! machines empty of hands after 1950 does not count as frontier again. Only
+//! land gone back to the wild is slowly forgotten, its remembered hands
+//! halving every `left_half_life` years.
+//!
+//! All three are off under the game's rules, so the settled island is as it was:
 //! they come with the landfall start (`landfall::landfall`). Off, nothing here
 //! runs, and `State::frontier` stays empty.
 
@@ -72,19 +78,41 @@ pub struct FrontierParams {
     pub hamlet_people: f64,
     /// The most of any one town's people a hamlet's district may take.
     pub hamlet_donor: f64,
+    /// Land once taken stays taken: a cell's free share reads the most hands
+    /// its land has had (`FrontierState::claimed`), not this year's, so a farm
+    /// the machines empty of hands is not frontier again.
+    pub claimed: bool,
+    /// While a cell's land has gone back to the wild (the map's use is
+    /// `land::USE_WILD`: no farm, pasture, wood, pit, works or street on it),
+    /// the hands it is remembered to have had halve every so many years: 30,
+    /// a generation. Land left wild for two or three generations has gone
+    /// back to scrub and its owners' heirs are gone, and it is frontier
+    /// again. A farm worked by machines, a street or a works is never left.
+    pub left_half_life: f64,
 }
 
 impl Default for FrontierParams {
     /// Off: what the port and the settled island run with.
     fn default() -> FrontierParams {
-        FrontierParams { enabled: false, births: 0.018, reach: 20.0, full: 10.0, farmers: 0.5, hamlets: false, hamlet_people: 500.0, hamlet_donor: 0.5 }
+        FrontierParams {
+            enabled: false,
+            births: 0.018,
+            reach: 20.0,
+            full: 10.0,
+            farmers: 0.5,
+            hamlets: false,
+            hamlet_people: 500.0,
+            hamlet_donor: 0.5,
+            claimed: false,
+            left_half_life: 30.0,
+        }
     }
 }
 
 impl FrontierParams {
-    /// What the landfall start plays with: both on.
+    /// What the landfall start plays with: all three on.
     pub fn game() -> FrontierParams {
-        FrontierParams { enabled: true, hamlets: true, ..FrontierParams::default() }
+        FrontierParams { enabled: true, hamlets: true, claimed: true, ..FrontierParams::default() }
     }
 }
 
@@ -95,11 +123,46 @@ pub struct FrontierState {
     pub free: Vec<f64>,
     /// And that share weighed by how far the town lives off its land: what lifts its births.
     pub lifted: Vec<f64>,
+    /// The hands each cell's land is remembered to have had (`claimed`): the
+    /// most it has had at any year's reckoning, falling only while it is
+    /// left. Empty while `claimed` is off.
+    pub claimed: Vec<f64>,
 }
 
 /// How free a cell's land is: 1 with no hands on it, 0 at `full` and above.
 fn free_cell(P: &Params, hands: f64) -> f64 {
     (1.0 - hands / P.frontier.full.max(1e-9)).clamp(0.0, 1.0)
+}
+
+/// The hands a cell's land counts as having for its free share: this year's,
+/// or with `claimed` the most it is remembered to have had.
+fn taken(st: &State, P: &Params, c: usize) -> f64 {
+    let h = st.cell_labor.get(c).copied().unwrap_or(0.0);
+    if P.frontier.claimed { h.max(st.frontier.claimed.get(c).copied().unwrap_or(0.0)) } else { h }
+}
+
+/// The year's reckoning of land taken (`claimed`): each cell remembers the
+/// most hands it has had; while its land has gone back to the wild the memory
+/// halves every `left_half_life` years, never below what it has now.
+pub fn claim(st: &mut State, P: &Params) {
+    let fp = &P.frontier;
+    if !fp.claimed {
+        return;
+    }
+    if st.frontier.claimed.len() != st.N {
+        st.frontier.claimed = vec![0.0; st.N];
+    }
+    let keep = 0.5f64.powf(1.0 / fp.left_half_life.max(1e-9));
+    for c in 0..st.N {
+        let h = st.cell_labor.get(c).copied().unwrap_or(0.0);
+        let wild = st.land_use.get(c) == Some(&crate::land::USE_WILD);
+        let k = &mut st.frontier.claimed[c];
+        if h >= *k {
+            *k = h;
+        } else if wild {
+            *k = (*k * keep).max(h);
+        }
+    }
 }
 
 /// Whether a cell's land counts: land, below the mountains, with some fertility.
@@ -125,7 +188,7 @@ pub fn free_shares(st: &State, P: &Params) -> Vec<f64> {
         }
         let f = st.world.fertility[c];
         all[t] += f;
-        free[t] += f * free_cell(P, st.cell_labor.get(c).copied().unwrap_or(0.0));
+        free[t] += f * free_cell(P, taken(st, P, c));
     }
     (0..T).map(|t| if all[t] > 0.0 { free[t] / all[t] } else { 0.0 }).collect()
 }
@@ -134,11 +197,12 @@ pub fn free_shares(st: &State, P: &Params) -> Vec<f64> {
 /// before the rates are set), each weighed by how far the town lives off its
 /// land: its hands on the land over all its hands at work (land and works,
 /// `st.ag_labor` and `st.ind_labor`, last year's), over `farmers`, at most 1.
-/// None while the rule is off.
+/// The land taken is reckoned first (`claim`). None while the rule is off.
 pub fn year(st: &mut State, P: &Params) -> Option<Vec<f64>> {
     if !P.frontier.enabled {
         return None;
     }
+    claim(st, P);
     let f = free_shares(st, P);
     st.frontier.free = f.clone();
     let w: Vec<f64> = (0..f.len())
@@ -167,7 +231,7 @@ pub fn district_free(st: &State, P: &Params, cells: impl Iterator<Item = usize>)
         if counts(st, c) {
             let f = st.world.fertility[c];
             all += f;
-            free += f * free_cell(P, st.cell_labor.get(c).copied().unwrap_or(0.0));
+            free += f * free_cell(P, taken(st, P, c));
         }
     }
     if all > 0.0 { free / all } else { 0.0 }

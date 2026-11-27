@@ -28,6 +28,18 @@ births and deaths are set:
   whatever the colony's size) plus `rate` (0.015) of its own people (those
   who come because kin wrote home), and never more than `max_share` (0.05)
   of its people (what it can house).
+- **None to a hungry port** (`shun_hungry`, on with landfall). A port went
+  hungry in a year when its worst month's food fell under the famine line,
+  0.82 of what its households need (`facts::FAMINE_LINE`): the line the
+  news's "Hunger in ..." and the people's rule's famine use. Partly short,
+  between 0.82 and 1, is not hungry: such a port still loses lives to the
+  dearth but makes no news abroad. The ships stay away that year and the
+  four after (`shun_years`, 5, the hungry year counted): word of a hungry
+  colony went home by the next ships and was believed for some years, and
+  the letters of kin that drew most settlers said where not to go (from
+  memory). Only the port's own hunger counts; a hungry town inland is the
+  island's own trouble. `State::immigration` keeps the last year each town
+  went hungry and how many ports were passed by each year.
 - **Their ages** are mostly young adults (`immigration::AGES`): two in three
   between 15 and 34, a fifth children who came with them, few past fifty.
   They enter the reckoning of ages at those ages as the year begins, after
@@ -56,6 +68,7 @@ All from memory, not from the repository:
 | `ships` | 400 a year | a ship or two a year of some two hundred souls, as a young colony had |
 | `rate` | 0.015 of a port's people a year | the United States' immigration in its heaviest decades, the 1850s and the 1900s, about one in seventy-five a year |
 | `max_share` | 0.05 of a port's people a year | what a town can house; it binds only in a colony's first years |
+| `shun_years` | 5 years, the hungry year counted | how long word of a hungry port keeps the ships away: a guess, from the time letters took and the memory of a bad year |
 | `AGES` | 0.63 between 15 and 34, 0.20 under 15 | the shape of those who landed in America in the nineteenth century |
 
 ## What the sweep showed
@@ -66,6 +79,14 @@ on there with `--set immigration.enabled=true`, its settlers are the pull of
 a living that stands at about 1.5 baskets a head in 1750, so they come only
 as its towns grow richer than abroad, and stop as abroad grows richer after
 1820. Not measured on the settled island on this branch.
+
+**None to a hungry port**, 26 November 2026: landed with land that stays
+taken and measured with it, so the two are told together in
+[frontier.md](frontier.md), "What the runs showed". On islands 1 to 8 from
+landfall with carriage on prices from 1750, settlers to 2050 fall from
+730,000 to 624,000 on the mean, and years with hunger after 1900 from 1.0 to
+0.6 an island. With settlers off altogether the colony has 168,000 people
+in 1900 against 493,000, and 3.0 years of hunger after 1900.
 
 ## What worries me
 

@@ -24,6 +24,7 @@
 #![allow(non_snake_case)]
 
 pub mod ablate;
+pub mod abroad;
 pub mod accounts;
 pub mod ages;
 pub mod atlas;

@@ -105,6 +105,71 @@ fn a_landfall_run_settles_its_people_and_its_settlers_by_age() {
 }
 
 #[test]
+fn landfall_carts_at_prices_from_1750() {
+    // the setting comes with the start, and only with it; the sweep's word puts it back
+    let mut P = landfall_params(7, 1770);
+    assert_eq!((P.longrun.freight_from, game_params().longrun.freight_from), (1750, 1900));
+    assert_eq!(sweep::set_field(&P, "longrun.freight_from", &sweep::parse_value("1900")).unwrap().longrun.freight_from, 1900);
+    // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
+    // hands.short_rise 1.06, longrun.enabled), once with the freight on prices from 1750 and
+    // once from 1900: the colony's prices fall as its people outgrow its money, and so does
+    // its carriage, with fewer of its hands on the road (to 1770: the merchants' debt of the
+    // first years lifts the colony's prices to about 1760 before they fall)
+    assert!(P.longrun.enabled && P.frontier.enabled && P.immigration.enabled && P.hands.short_rise < 2.0);
+    let mut seen = Vec::new();
+    for from in [1750, 1900] {
+        P.longrun.freight_from = from;
+        let mut sim = sim::start(&P, game_content());
+        while sim.year <= sim.end_year {
+            sim::run_year(&mut sim).expect("the money check holds");
+        }
+        let st = &sim.st;
+        let works: f64 = (0..st.F_count).filter(|&k| st.f_alive[k]).map(|k| st.f_labor[k]).sum();
+        let (land, carts): (f64, f64) = (st.ex_labor.iter().sum(), st.carters.iter().sum());
+        seen.push((longrun::freight(st, &P) / P.freight, carts / (works + land + carts)));
+    }
+    let ((rate_1750, carts_1750), (rate_1900, carts_1900)) = (seen[0], seen[1]);
+    assert_eq!(rate_1900, 1.0, "before 1900 the freight is the constant");
+    assert!(rate_1750 < 0.7, "the colony's freight in 1770 is {rate_1750} of 1750's");
+    assert!(carts_1750 < carts_1900, "carters over all hands: {carts_1750} on prices, {carts_1900} in coins");
+}
+
+#[test]
+fn landfall_pits_work_at_the_size_of_their_market() {
+    // the switch comes with the start, and only with it; the sweep's word puts it back
+    let mut P = landfall_params(7, 1754);
+    assert!(P.mines.glut && !game_params().mines.glut && !default_params().mines.glut);
+    assert!(!sweep::set_field(&P, "mines.glut", &sweep::parse_value("false")).unwrap().mines.glut);
+    // played under --start landfall (frontier.enabled, frontier.hamlets, immigration.enabled,
+    // hands.short_rise 1.06, longrun.freight_from 1750, mines.enabled, prices.enabled), once
+    // with the pits at the size of their market and once without. Without, island 7's
+    // new iron-ore pit of 1751 and colliery of 1753 raise far more than the colony asks,
+    // the merchants buy it all, and in some December they owe more than twice the money;
+    // with it they owe at most what the warm-up left them owing, and the colony still digs
+    assert!(P.mines.enabled && P.prices.enabled && P.frontier.enabled && P.immigration.enabled);
+    let coal = game_content().gi("coal");
+    let mut seen = Vec::new();
+    for glut in [true, false] {
+        P.mines.glut = glut;
+        let mut sim = sim::start(&P, game_content());
+        let (mut owe_max, mut coal_1754) = (0.0f64, 0.0);
+        while sim.year <= sim.end_year {
+            sim::run_year(&mut sim).expect("the money check holds");
+            let st = &sim.st;
+            let owe: f64 = st.merch_cash.iter().map(|&c| (-c).max(0.0)).sum();
+            owe_max = owe_max.max(owe / st.money_now);
+            let r = st.mine_sectors.iter().position(|&s| sim.content.sector_good[s] == coal).unwrap();
+            coal_1754 = st.mine_out.row(r).iter().sum();
+        }
+        seen.push((owe_max, coal_1754));
+    }
+    let ((owe_on, coal_on), (owe_off, _)) = (seen[0], seen[1]);
+    assert!(owe_off > 2.0, "without the rule the merchants owe at most {owe_off} of the money in a December");
+    assert!(owe_on < 0.6, "with it they owe {owe_on} of the money in a December");
+    assert!(coal_on > 10_000.0, "the colony raised {coal_on} of coal in 1754");
+}
+
+#[test]
 fn with_immigration_off_nobody_comes() {
     // landfall with immigration.enabled off: the same start, nobody arrives
     let mut P = landfall_params(7, 1754);
@@ -113,6 +178,80 @@ fn with_immigration_off_nobody_comes() {
     assert_eq!(r.state.immigration.total, 0.0);
     assert!(r.state.immigration.years.is_empty());
     assert!(!r.events.iter().any(|e| e.kind == "settlers"));
+}
+
+#[test]
+fn land_once_taken_stays_taken_until_it_goes_wild() {
+    // the landfall start's frontier with land taken kept (frontier.enabled, frontier.claimed),
+    // on the island as it stands in 1750: the first town's land is given hands by hand
+    let P = landfall_params(7, 1750);
+    assert!(P.frontier.enabled && P.frontier.claimed);
+    let mut sim = sim::start(&P, game_content());
+    let st = &mut sim.st;
+    let t0 = (0..st.T_max).find(|&t| st.town_active[t]).unwrap();
+    let land: Vec<usize> = (0..st.N).filter(|&c| st.catch[c] == t0 as i64).collect();
+    let free_of = |st: &mut State, P: &Params| {
+        frontier::year(st, P).unwrap();
+        st.frontier.free[t0]
+    };
+    // every cell of its market area farmed by ten hands: none of its land is free
+    for &c in &land {
+        st.cell_labor[c] = P.frontier.full;
+        st.land_use[c] = land::USE_SECTOR0;
+    }
+    assert_eq!(free_of(st, &P), 0.0);
+    // the machines take the hands away: the land stays taken, where without the switch it is free again
+    for &c in &land {
+        st.cell_labor[c] = 0.0;
+    }
+    assert_eq!(free_of(st, &P), 0.0);
+    let mut off = P.clone();
+    off.frontier.claimed = false;
+    assert_eq!(frontier::free_shares(st, &off)[t0], 1.0);
+    // and the same land counts as taken for a hamlet's district
+    assert_eq!(frontier::district_free(st, &P, land.iter().copied()), 0.0);
+    // only land gone back to the wild is forgotten, its hands halving in a generation
+    for &c in &land {
+        st.land_use[c] = land::USE_WILD;
+    }
+    for _ in 0..P.frontier.left_half_life as usize {
+        free_of(st, &P);
+    }
+    let half = frontier::free_shares(st, &P)[t0];
+    assert!((half - 0.5).abs() < 1e-9, "after {} years wild the land is half free: {half}", P.frontier.left_half_life);
+}
+
+#[test]
+fn no_settlers_to_a_hungry_port() {
+    // the landfall start's settlers (immigration.enabled, immigration.shun_hungry) to its one
+    // port, given a living twice abroad's, in years set by hand
+    let P = landfall_params(7, 1750);
+    assert!(P.immigration.enabled && P.immigration.shun_hungry);
+    let mut sim = sim::start(&P, game_content());
+    let st = &mut sim.st;
+    let T = st.T_max;
+    let port = (0..T).find(|&t| st.town_active[t]).unwrap();
+    let y = vec![2.0 * immigration::abroad(&P, 1760); T];
+    let came = |st: &mut State, P: &Params, year: i64, food: f64| {
+        st.food_min_acc[port] = food;
+        let mut g = vec![0.0; T];
+        immigration::year(st, P, &y, year, &mut g, &mut Vec::new());
+        st.immigration.came[port]
+    };
+    // fed, settlers come; hungry (under the famine line), nobody, that year and the four after
+    assert!(came(st, &P, 1760, 1.0) > 0.0);
+    assert_eq!(came(st, &P, 1761, 0.5), 0.0);
+    for year in 1762..=1765 {
+        assert_eq!(came(st, &P, year, 1.0), 0.0, "{year}");
+    }
+    assert!(came(st, &P, 1766, 1.0) > 0.0);
+    assert_eq!(st.immigration.shunned, vec![(1760, 0), (1761, 1), (1762, 1), (1763, 1), (1764, 1), (1765, 1), (1766, 0)]);
+    // short of food but above the famine line is not hungry
+    assert!(came(st, &P, 1767, 0.9) > 0.0);
+    // with the switch off a hungry port still draws them
+    let mut off = P.clone();
+    off.immigration.shun_hungry = false;
+    assert!(came(st, &off, 1768, 0.5) > 0.0);
 }
 
 #[test]

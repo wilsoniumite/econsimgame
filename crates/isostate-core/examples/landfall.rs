@@ -9,8 +9,10 @@
 //! the island's people, towns, the share of land with five hands or more a
 //! cell, how far the hands reach from the first town, the wage in grain, the
 //! settlers and each town's free land, the ages' three broad groups, the
-//! largest rise of a town's wage in the year, and the money check; every 25th
-//! year adds the maps.
+//! largest rise of a town's wage in the year, and the money check; what the
+//! merchants owe in December over the island's money, carters over all hands,
+//! money a head, the price level and the linked wage; every 25th year adds the
+//! maps.
 #![allow(non_snake_case)]
 use isostate_core::*;
 use std::io::Write;
@@ -63,6 +65,7 @@ fn main() {
     let mut failed: Option<String> = None;
     let mut wage_was: Vec<f64> = vec![0.0; T];
     let mut first_rail: Option<i64> = None;
+    let mut know25 = vec![-1i64; sim.content.NT];
     while sim.year <= sim.end_year {
         let year = sim.year;
         let ev0 = sim.events.len();
@@ -156,18 +159,76 @@ fn main() {
             }
             if b > 0.0 { a / b } else { 0.0 }
         };
+        // carriage and money (docs/rules/landfall.md, "Carriage that follows prices"): what the
+        // merchants owe in December over the island's money; carters over all hands (the works',
+        // the land's and the carters'); money a head, in coins and in grain; the price level
+        let owe: f64 = st.merch_cash.iter().map(|&c| (-c).max(0.0)).sum();
+        let (works_h, land_h, cart_h) = (
+            (0..st.F_count).filter(|&k| st.f_alive[k]).map(|k| st.f_labor[k]).sum::<f64>(),
+            st.ex_labor.iter().sum::<f64>(),
+            st.carters.iter().sum::<f64>(),
+        );
+        let grain_p = observer::national_prices(st)[sim.content.gi("grain")].max(1e-12);
+        // the farm's multiplier of its techniques (econ::sector_tfp), weighted by each town's farm hands
+        let farm_mult = {
+            let farm = sim.content.sector_name.iter().position(|n| n == "farm").unwrap();
+            let mut by_town = vec![0.0; T];
+            for u in 0..st.ex_cell.len().min(st.ex_labor.len()).min(st.ex_town.len()).min(st.ex_sector.len()) {
+                if st.ex_sector[u] == farm && st.ex_town[u] < T {
+                    by_town[st.ex_town[u]] += st.ex_labor[u];
+                }
+            }
+            let (mut a, mut b) = (0.0, 0.0);
+            if st.pbar.rows > 0 && st.fill.rows > 0 {
+                for &t in &act {
+                    a += econ::sector_tfp(st, &sim.content, &sim.params, farm, t, &st.pbar, &st.fill).0 * by_town[t];
+                    b += by_town[t];
+                }
+            }
+            if b > 0.0 { a / b } else { -1.0 }
+        };
         let mut row = serde_json::json!({
             "year": year, "pop": pop, "towns": act.len(),
             "far_town_cells": far_t, "real_wage": s("real_wage"), "wage": s("wage"), "cpi": s("cpi"),
-            "gdp_pc": s("gdp_pc"), "urban_share": s("urban_share"),
+            "gdp_pc": s("gdp_pc"), "urban_share": s("urban_share"), "linked": s("real_wage_linked"),
             "works": works, "rail_km": rail, "road_km": s("road_km"), "hunger_items": hunger, "sailing_items": sailed,
             "wage_in_grain": s("wage") / observer::national_prices(st)[sim.content.gi("grain")].max(1e-12),
             "hands5": h5 as f64 / n_land as f64, "far_hands5_cells": far_h5, "r90_cells": r90, "hands_on_cells": tot,
             "settlers": settlers, "free_first": free0, "free_mean": free_mean, "y_mean": y_mean, "growth_mean": g_mean,
             "under15": ages.0, "working": ages.1, "over64": ages.2, "births_k": ages.3, "deaths_k": ages.4, "life": ages.5,
             "wage_rise_max": worst.0, "wage_rise_town": worst.1, "first_rail": first_rail,
-            "emigrants": st.pp_emigrants, "settlers_total": st.immigration.total,
+            "emigrants": st.pp_emigrants, "settlers_total": st.immigration.total, "farm_mult": farm_mult,
         });
+        for (k, v) in [
+            ("owe_over_money", owe / st.money_now.max(1e-9)),
+            ("money", st.money_now),
+            ("money_pc", st.money_now / pop.max(1.0)),
+            ("money_pc_grain", st.money_now / pop.max(1.0) / grain_p),
+            ("carters", cart_h),
+            ("carters_share", cart_h / (works_h + land_h + cart_h).max(1e-9)),
+            ("price_level", st.longrun.chain),
+            ("real_wage_linked", s("real_wage_linked")),
+            ("grain_price", grain_p),
+            // pits (docs/rules/mines.md, "G"): coal, iron ore and iron made in the year, a head
+            ("coal_pc", 12.0 * s("out_coal") / pop.max(1.0)),
+            ("iron_ore_pc", 12.0 * s("out_iron_ore") / pop.max(1.0)),
+            ("iron_pc", 12.0 * s("out_iron") / pop.max(1.0)),
+        ] {
+            row[k] = serde_json::json!(v);
+        }
+        // the first year a town knows each idea as well as its finder did (a quarter)
+        for t in 0..sim.content.NT {
+            if know25[t] < 0 && act.iter().any(|&i| st.know[(i, t)] >= 0.25) {
+                know25[t] = year;
+            }
+        }
+        // the ideas: the year each was found (or came by sea), and each use of the tasks rule, at the end
+        if year == sim.end_year {
+            row["know25"] = serde_json::json!((0..sim.content.NT).filter(|&t| !sim.content.tech_known[t]).map(|t| (sim.content.tech_name[t].clone(), know25[t])).collect::<std::collections::BTreeMap<_, _>>());
+            let C = &sim.content;
+            row["tech_year"] = serde_json::json!((0..C.NT).filter(|&t| !C.tech_known[t]).map(|t| (C.tech_name[t].clone(), st.tech_year[t])).collect::<std::collections::BTreeMap<_, _>>());
+            row["use_found"] = serde_json::json!((0..C.tasks.uses.len()).map(|u| (C.tasks.uses[u].name.clone(), st.tasks.found.get(u).copied().unwrap_or(-1))).collect::<std::collections::BTreeMap<_, _>>());
+        }
         if year % 25 == 0 {
             let towns: Vec<_> = act
                 .iter()
