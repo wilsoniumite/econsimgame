@@ -663,6 +663,7 @@ mod tests {
         assert!(g.laid.is_some(), "the game is played on the new land");
         let (slots, cen) = (crate::scatter::make_slots(&r, &g), network::centres(&r));
         let (r, g, cen) = (Arc::new(r), Arc::new(g), Arc::new(cen));
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
         let mut w = World::new();
         w.insert_resource(crate::Data { r: r.clone(), g: g.clone(), slots: Arc::new(slots), cen: cen.clone(), live: false, arriving: None });
         w.insert_resource(crate::Timeline { t: (last - 10) as f32, built: None, playing: false, speed: 1.0 });
@@ -709,7 +710,17 @@ mod tests {
         // the view opened: its ribbons are of the year whose roads are on screen, along the ways found
         w.resource_mut::<MapOverlay>().kind = Some(Overlay::Traffic);
         w.resource_mut::<MapOverlay>().scale = Some(Scale { lo: 1.0, hi: 1000.0, log: true });
-        let opened = run(&mut w);
+        // (laid off the main thread, and shown when laid: a frame each, a little apart, until they are)
+        let shown = |w: &mut World| w.query_filtered::<&Visibility, With<crate::traffic::Ribbons>>().iter(w).all(|v| *v == Visibility::Inherited);
+        let mut opened = 0.0f64;
+        for _ in 0..200 {
+            opened = opened.max(run(&mut w));
+            if shown(&mut w) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(shown(&mut w), "the ribbons were never laid");
         // and the clock turned on to a year not built: the carts and the ribbons stay on the roads drawn
         w.resource_mut::<crate::Timeline>().t = last as f32;
         let mut calm = 0.0f64;
@@ -718,8 +729,9 @@ mod tests {
         }
         assert_eq!(g.courses.kept(), found, "a road's way was found on the main thread");
         assert_eq!(w.resource::<Roads>().year(), Some(k));
-        eprintln!("the carts' and the Traffic view's systems on the main thread: {longest:.3} ms at most a frame with the view shut and at the turns, {handed:.1} ms the frame a year's {} carts go out, {opened:.1} ms laying the ribbons, {calm:.3} ms a frame after; {found} ways found off it", carts(&mut w));
+        eprintln!("the carts' and the Traffic view's systems on the main thread: {longest:.3} ms at most a frame with the view shut and at the turns, {handed:.1} ms the frame a year's {} carts go out, {opened:.3} ms at most a frame while the ribbons were laid off it, {calm:.3} ms a frame after; {found} ways found off it", carts(&mut w));
         assert!(longest < 2.0, "a frame of the carts and the shut Traffic view took {longest} ms");
+        assert!(opened < 2.0, "a frame of the carts and the Traffic view, opened, took {opened} ms");
         assert!(calm < 2.0, "a frame of the carts and the open Traffic view, laid, took {calm} ms");
     }
 
