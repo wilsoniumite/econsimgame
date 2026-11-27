@@ -697,7 +697,7 @@ pub const WRITTEN: [Written; 43] = {
         wr("the linked wage grows, per cent a year, 1900-1970", Read::Growth("real_wage_linked_1900_vs_1750", "real_wage_linked_1970_vs_1750", 70.0), Kind::Ratio, Some(1.0), None, "design", "the growth after 1900 the design asks (--growth)", Both, Band),
         wr("the linked wage, 2050 over 1970", Read::Over("real_wage_linked_2050_vs_1750", "real_wage_linked_1970_vs_1750"), Kind::Ratio, Some(1.0), None, "design", "the same", Both, Band),
         wr("share of hands on the land, 2050 less 1900", Read::Change("farm_share_1900", "farm_share_2050"), Kind::Share, None, Some(0.0), "design", "the same: fewer hands on the land in 2050", Both, Band),
-        // ---- known wrong today: printed with the band, not counted
+        // ---- unlike England's: printed with the band, not counted
         wr("the linked wage over 1750, 1850", Read::Fact("real_wage_linked_1850_vs_1750"), Kind::Ratio, Some(1.15), Some(1.7), "read", "Allen 2009, Table 1 (1.39); Feinstein, Clark", Both, Wrong),
         wr("the linked wage over 1750, 1900", Read::Fact("real_wage_linked_1900_vs_1750"), Kind::Ratio, Some(2.3), Some(3.2), "read", "Allen 2009, Table 1 (2.87 from 1760)", Both, Wrong),
         wr("wage in grain over 1760's, decade round 1800", Read::Fact("wage_in_grain_decade_1800_vs_1760"), Kind::Ratio, Some(0.6), Some(1.2), "memory, medium", "a labourer's week in wheat: about 0.21 quarters in the 1750s, 0.14 about 1800", Both, Wrong),
@@ -784,7 +784,7 @@ pub fn written(arm: &Then, reference: Option<(&Then, &str)>, colony_met: Option<
     let mut table: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
     for (class, heading) in [
         (Class::Band, "facts with a band, counted"),
-        (Class::Wrong, "known wrong today: printed with their band, not counted against a landing"),
+        (Class::Wrong, "unlike England's: printed with their band, not counted against a landing"),
         (Class::Open, "printed, no band yet"),
     ] {
         table.push((Some(heading), Vec::new()));
@@ -1169,7 +1169,7 @@ mod tests {
         assert!(line("towns in 1900").contains("MISSED") && line("towns in 1900").contains("21  met"), "{}", line("towns in 1900"));
         // known wrong: its band and a word that is not counted
         assert!(line("the linked wage over 1750, 1900").contains("2.30 to 3.20") && line("the linked wage over 1750, 1900").contains(" missed "));
-        assert!(text.contains("known wrong today") && text.contains("printed, no band yet"));
+        assert!(text.contains("unlike England's") && text.contains("printed, no band yet"));
         // the colony's count, for a landfall arm
         let colony = arm("colony", "landfall", &[("pop_1900", [300_000.0, 400_000.0])]);
         let (text, _) = written(&colony, None, Some(14));

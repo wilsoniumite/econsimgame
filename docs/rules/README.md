@@ -617,7 +617,7 @@ changes no run. `src/standing.rs`.
 **The written check** (27 November 2026) is printed first, above the twelve:
 facts held to bands written from history, each with its source and how sure
 it is, the same for both starts where history allows, in three kinds of line
-(with a band and counted; known wrong today, printed with their band; no band
+(with a band and counted; unlike England's, printed with their band; no band
 yet). Its bands do not move with the island, as the twelve's do, so it says
 whether a change moved the island towards the world or away from it. It needs
 no reference, and it fails nothing yet. Beneath it the twelve are printed as
