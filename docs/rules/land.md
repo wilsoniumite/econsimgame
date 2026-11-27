@@ -293,6 +293,133 @@ the code beside what they do. They were tuned at `fine = 4`: at 6 or 8 the
 same numbers give more mountain cells (842 and 1,028 on seed 7 against 635),
 because a finer grid finds more relief inside a cell.
 
+## The island's settings
+
+Added on 27 November 2026, when the designer wrote that a start page where
+she could "mess with lots of island generation settings would be very fun".
+Until then an island was its number: the numbers above could be reached
+from the core's command line by those who knew their names, the game had no
+argument for them, and a save did not remember them. The code is
+`island.rs`.
+
+### What there was before
+
+From the core's command line, every field of `LandParams` with `--set
+land.NAME=VALUE` in a sweep or `land = { NAME = VALUE }` in a run's
+parameters file, and `pop0` (people of 1750, 135,000), `n_towns` (first
+towns, 6), `W` and `H` (the map, 120 by 84 cells) and `start.people`
+(landfall's 5,000) the same way. Constants in the code: the shape of the
+plan (one mountain belt, four coalfields, seven ore bodies, one or two
+tablelands and basins, `landform::draw_design`), the westerly wind, the rock
+hardnesses, the terrain thresholds (380 m and 90 m), the resource fields'
+formulas (`landcells::make_world`), and the 17 cells between first towns
+(`landcells::SITES_APART`, which the port's island keeps too). The ends of
+the land's numbers were tried when the land was made ("How it was checked":
+`fine` 1 to 100, `relief` 0 and 3,000, `rain` 0 and 5,000, no lakes or 30,
+and so on): an island is still made and still whole at every one, and only
+`land_fraction = 0` leaves too little land for six towns. Whether a run
+then finishes was not asked, and the game had no way to ask for any of them.
+
+### The list
+
+Eleven settings, each a field of the parameters and nothing else, so that
+`Island::set` writes them and `Island::read` reads them back with no second
+copy. At its default each gives today's island to the bit (the golden files
+do not move), and each range is one every island 1 to 8 finished a run to
+1900 at both ends of (below). The term is the glossary's (`data/words.toml`,
+which gained hills, rain, meander, lake, coal, ore, stone and clay for
+these); the start page should use it. `people` has no term of its own yet.
+
+| setting | what it sets | default | range | term |
+|---|---|---|---|---|
+| `hills` | `land.relief`, the height the belt is lifted towards, metres | 1,000 | 500 to 1,600 | hills |
+| `rain` | `land.rain`, mm a year on the windward coast | 900 | 450 to 1,800 | rain |
+| `wander` | `land.wander`, times the meander steps (`meander_steps`) | 1 | 0 to 2 | meander |
+| `lakes` | `land.lakes`, times the upland lakes looked for and the lowland lake's chance (at most 1) | 1 | 0 to 3 | lake |
+| `coal` | `land.riches.coal`, times the coal, before the thinnest seam worth counting (0.18) is cut off | 1 | 0.25 to 2.5 | coal |
+| `ore` | `land.riches.ore`, the same for ore (0.15) | 1 | 0.25 to 2.5 | ore |
+| `stone` | `land.riches.stone`, times the stone | 1 | 0.25 to 2.5 | stone |
+| `clay` | `land.riches.clay`, times the clay | 1 | 0.25 to 2.5 | clay |
+| `woods` | `land.riches.woods`, times the woodland the ground would carry | 1 | 0.25 to 2 | woodland |
+| `people` | `pop0` on the settled island, `start.people` at landfall | 135,000; 5,000 | 30,000 to 540,000; 2,000 to 20,000 | (none yet) |
+| `towns` | `n_towns`, the first towns of the settled island | 6 | 1 to 12 | market town |
+
+The start itself, settled or landfall, is the twelfth choice and keeps the
+words it had (`--start landfall`, the viewer's `--landfall`, a save's
+`"landfall": true`). The land's and the riches' settings act on the new
+land only, and are refused on the old island in a sentence; `towns` is
+refused at landfall, which has one. Every field still lies in 0 to 1: a
+factor raises a field to full and no further. With more than six first
+towns they stand closer than 17 cells, 17 times the square root of six over
+the number (12 cells apart for twelve), so that every island has room for
+them; with six or fewer they stand as they did.
+
+Left out, and why:
+
+- **The map's size.** The core can make and play an island of another
+  size: seed 7 at 84 by 60 cells and at 160 by 112 ran to 1800 under the
+  game's rules with no failure (`sweep --set W=84 --set H=60`). But the
+  economy's distances are counted in cells (17 between first towns, twelve
+  round a town for its people, twelve from a corner for landfall's harbour,
+  the founding rule's district of forty cells), the time to make the land
+  grows with the area, and the viewer's cameras, standard pictures and
+  scenery have only ever been seen at 120 by 84. It is a setting for a piece
+  that tries it in the viewer.
+- **The share of land** (`land_fraction`): at 0.2 an island has room for
+  two first towns, and it changes what every other setting means.
+- **The wind, the plan's shape and the fineness:** constants or tuned to
+  `fine = 4`, and nothing a player would know to want.
+
+### Said one way everywhere
+
+`NAME=VALUE`, several with commas between them:
+
+- `isostate-core run --rules game --island hills=1400,rain=600 --out DIR`;
+- `isostate-core sweep --island ...` for every run, and `--set
+  island.rain=450,900,1350` to sweep one, with the start's own defaults
+  (`--start landfall --set island.people=2000,20000`);
+- `isostate-viewer --island ...` for a new game (refused beside `--load`:
+  a save says its island itself);
+- the record's header, `meta.island`, and a save's `"island"`, each an
+  object of the settings that are not as the island comes:
+  `"island": {"rain":600.0,"coal":2.0}`. Neither is written when there is
+  none, so a run or a save at the defaults is the file it was, and every save
+  made before reads as the island as it comes. The settings are fixed at the
+  start (no edit may set the land, the people of 1750 or the first towns), so
+  a save reads them from the game's parameters (`Game::island`) and plays
+  them again (`Game::begin_with`). The layout of a save stays 3.
+
+### The land alone, and its sketch
+
+For the start page, two functions that make the land and nothing else, no
+first towns and none of the economy's first state, reading only their
+arguments so that they can be called on any thread:
+
+- `landcells::land_alone(seed, W, H, &LandParams)`: the island to the bit
+  (`generate_land` with no towns chosen and the woods not thinned round any).
+- `landcells::sketch_land(seed, W, H, &LandParams)`: the same plan and the
+  same first 110 erosion steps on the grid of half the fineness (1 km
+  nodes), none on the fine grid, and the rivers where the erosion left them.
+  On island 7 it calls 99.0 per cent of cells land or sea as the whole does
+  at the defaults and at every end of the land's settings, and keeps 73 to
+  92 per cent of the whole's river cells (73 at the driest).
+
+How long they take on island 7 (`cargo run --profile work -p isostate-core
+--example island_land -- 7`, processor seconds of the one thread, on a
+machine busy with other builds; the land's page measured 2.2 s quiet):
+
+| | alone | sketch |
+|---|---|---|
+| as it comes | 4.5 | 0.67 |
+| hills 500, 1,600 | 4.8, 3.8 | 0.83, 0.81 |
+| rain 450, 1,800 | 3.0, 4.6 | 0.67, 0.88 |
+| wander 0, 2 | 2.2, 7.4 | 0.72, 0.78 |
+| lakes 0, 3 | 4.3, 4.3 | 0.78, 0.78 |
+
+The sketch is a sixth of the whole; the meanders are most of what is left
+of the whole's time (`wander = 0` halves it, and `wander = 2` nearly
+doubles it).
+
 ## What is kept
 
 `World::landform` is `Some(Box<Landform>)` on an island the mechanism made

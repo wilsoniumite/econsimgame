@@ -910,6 +910,12 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     if let Some(u) = crate::university::header(st, P) {
         header["university"] = u;
     }
+    // the island's settings (island.rs): those that are not as the island comes,
+    // written only where there is one, so that a run at the defaults is the file it was
+    let island = crate::island::Island::read(P);
+    if !island.plain() {
+        header["meta"]["island"] = serde_json::to_value(island).unwrap();
+    }
     // land: the lakes, the sea outlets and the fine grid's size
     if let Some(lf) = &world.landform {
         header["land"] = crate::landcells::static_header(lf);

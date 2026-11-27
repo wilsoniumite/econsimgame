@@ -530,6 +530,9 @@ pub struct Opening {
     /// otherwise than its start has them (`--settlers`, `--ideas-by-sea`;
     /// docs/rules/landfall.md, "The start's switches"). Its save says them
     pub switches: isostate_core::save::Switches,
+    /// the island's settings for a new game (`--island`; isostate_core::island,
+    /// docs/rules/land.md, "The island's settings"). Its save says them
+    pub island: isostate_core::island::Island,
     /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
     /// family in, changed by hand. It never goes on with the island's autosave
     /// nor writes it: it has a session of its own (`saves::session`), which a
@@ -566,7 +569,7 @@ impl Opening {
     /// the switches that ask for a game of a certain shape or kept in a certain
     /// place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.old_land && !self.landfall && self.switches.plain() && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.old_land && !self.landfall && self.switches.plain() && self.island.plain() && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -1165,13 +1168,14 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             let rules = iso::params::Rules::Game;
             let to = o.to.unwrap_or_else(|| iso::save::content_last_year(rules));
             let switches: String = saves::switch_words(o.switches).iter().map(|w| format!(", {w}")).collect();
-            eprintln!("making island {} with {}{}{}{switches}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.old_land { ", on the old island" } else { "" }, if o.landfall { ", from landfall" } else { "" });
+            let island = if o.island.plain() { String::new() } else { format!(", {}", o.island.words()) };
+            eprintln!("making island {} with {}{}{}{switches}{island}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.old_land { ", on the old island" } else { "" }, if o.landfall { ", from landfall" } else { "" });
             // the game's rules take the new land (docs/rules/land.md, "The switch"); `--old-land`
             // starts a game on the port's island all the same; landfall (docs/rules/landfall.md) is
             // one town in a corner, on whichever land was asked for; and the start's two switches
             // are as asked (`Game::begin`, which with both the start's own is the game the old
-            // three ways began, to the bit)
-            let mut game = Game::begin(rules, o.seed, o.families, saves::now(), to, !o.old_land, o.landfall, o.switches)?;
+            // three ways began, to the bit); the island's settings are as asked (`--island`)
+            let mut game = Game::begin_with(rules, o.seed, o.families, saves::now(), to, !o.old_land, o.landfall, o.switches, &o.island)?;
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.
