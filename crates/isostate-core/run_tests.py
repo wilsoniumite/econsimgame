@@ -198,6 +198,10 @@ QUICK_SKIPS = [
     'the_land_machines_table_has_its_old_rows_at_stage_one',
     'the_land_waits_for_its_machines',
 
+    # ledger: island 7 to 2040 from each start
+    'the_ledger_adds_up_on_the_settled_island',
+    'the_ledger_adds_up_at_landfall',
+
     # longrun
     'a_short_run_is_conserved_with_the_stand_in',
     'the_chain_is_the_observers_and_the_anchor_its_mean_of_five_years',

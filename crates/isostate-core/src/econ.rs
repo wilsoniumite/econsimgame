@@ -4,11 +4,46 @@
 //! Every payment is a transfer between two accounts (households, landlords,
 //! merchants, firms, the land fund, rail projects), so total money only changes
 //! through explicit issuance. `money_total` checks that invariant.
+//!
+//! The month (`step_month`, which is `month_ledger`) goes in these phases, in
+//! this order:
+//!
+//! 1. The books open; the month's issue of money and the freight are reckoned.
+//! 2. What households and landlords want to buy: each a line of the month's
+//!    ledger of buyers (ledger.rs).
+//! 3. The land's units and the works reckon what a unit of their work earns at
+//!    last month's prices (the land's machines and machines for tasks among it).
+//! 4. The labour market: the hands for hire, less those the carters, sinkers,
+//!    navvies, menders, teachers and the university take; one wage a town that
+//!    clears it; a town short of hands rationed. The land's output follows.
+//! 5. Every other buyer's asks, a line each: the works' inputs and fuel; the
+//!    land's machinery and rails, its chemicals and its machines for tasks; the
+//!    lorries; (the harvest felt); the works' orders for capacity and for their
+//!    machines' plant; railways and canals; the university's rooms.
+//! 6. The market: all that was asked of each town, the share its stock can give
+//!    (the day's trade first under "plant waits"), and each line's got.
+//! 7. The works make what their scarcest input allows; what they used is their
+//!    line's got, and all that every line got is what the market sold.
+//! 8. Money: the works, the land, the households and landlords, the lorries and
+//!    the rents pay; plant, capacity, the ways' materials and the rooms are
+//!    handed over and paid for.
+//! 9. The stocks: sales out, decay, the month's making in; the forests felled;
+//!    the trade between towns.
+//! 10. The books take the month; prices respond.
+//! 11. Dividends, the common fund, the new money, the state's purse and the
+//!     hauliers' till; the purses credited.
+//! 12. The year's sums and the observers' figures; the machines standing and
+//!     the machines for tasks moved at the month's end.
+//!
+//! Before the ledger (27 November 2026) `step_month` was 1,403 lines, and each
+//! kind of buyer was written out by hand at each of steps 6 to 10; with it
+//! `month_ledger` is 1,272 lines, and what the buyers share is in ledger.rs.
 
 use crate::content::Content;
 use crate::engel;
 use crate::families;
 use crate::harvest;
+use crate::ledger::{Buyer, Fold, Ledger, Line, Trade};
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
 use crate::prices;
@@ -387,6 +422,13 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
 /// draw made here, or moved within the year, would change every draw after it
 /// on that stream.
 pub fn step_month(st: &mut State, C: &Content, P: &Params) {
+    month_ledger(st, C, P);
+}
+
+/// `step_month`, giving back the month's ledger of buyers (ledger.rs): what
+/// each line asked and got, and what each market was asked and sold. For a
+/// test that the ledger agrees with the books (`tests/ledger.rs`).
+pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
     let T = st.T_max;
     let G = C.G;
     let gm = C.gi("machinery");
@@ -446,6 +488,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             *v *= st.pop[t];
         }
     }
+    // the ledger (ledger.rs): every buyer's asks of the month, a line each
+    let mut ledger = Ledger::new(T, G);
+    let towns: Vec<usize> = (0..T).collect();
+    ledger.ask((Buyer::Households, Trade::Day), Line::new(towns.clone(), towns.clone(), Fold::EachRow, d_hh));
 
     let lord_pop: Vec<f64> = st.pop.iter().map(|&p| P.lord_share * p).collect();
     // families (if any) spend their luxury budgets through their home town's landlords
@@ -469,6 +515,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             *v *= lord_pop[t];
         }
     }
+    ledger.ask((Buyer::Landlords, Trade::Day), Line::new(towns.clone(), towns.clone(), Fold::EachRow, d_lord));
 
     // ---------------- land-based production: cell enterprises hire at the town wage
     let ex = st.ex_cell.clone();
@@ -859,13 +906,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         })
         .collect();
 
-    // ---------------- requests to each town market
-    let mut R = Mat::zeros(T, G);
-    for t in 0..T {
-        for g in 0..G {
-            R[(t, g)] = d_hh[(t, g)] + d_lord[(t, g)];
-        }
-    }
+    // ---------------- the asks of every buyer, line by line (ledger.rs)
     let mut req_f = Mat::zeros(NFI, G);
     for i in 0..NFI {
         for g in 0..G {
@@ -876,15 +917,20 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             req_f[(i, g)] += heat_need * hshare[(i, k)] / heat_f[k];
         }
     }
-    add_by_town(&mut R, &ft, &req_f);
-    let mine_mach: Vec<f64> = (0..NE).map(|u| Y[u] * mach_unit[u]).collect();
-    let mine_rail: Vec<f64> = (0..NE).map(|u| Y[u] * rail_unit[u]).collect();
-    add_column(&mut R, gm, &bincount(&et, &mine_mach, T));
-    add_column(&mut R, gr, &bincount(&et, &mine_rail, T));
+    // the works use what they get as their scarcest input allows (below, "execute")
+    ledger.ask((Buyer::Works, Trade::Day), Line::new(ft.clone(), fi.clone(), Fold::ByTown, req_f).by_rule());
+    // the land's machinery and rails, a column each, unit by unit
+    let mut mine = Mat::zeros(NE, 2);
+    for u in 0..NE {
+        mine[(u, 0)] = Y[u] * mach_unit[u];
+        mine[(u, 1)] = Y[u] * rail_unit[u];
+    }
+    ledger.ask((Buyer::LandMachinery, Trade::Day), Line::of_goods(vec![gm, gr], et.clone(), (0..NE).collect(), Fold::ByTown, mine));
     // machines: the land's other goods (the chemicals of nitrogen and breeding),
     // asked for with the machinery, by town and sector; and each unit's output
     // they were asked on, for what it pays
-    let more_req: Option<(Mat, Vec<f64>)> = more_unit.iter().any(|m| !m.is_empty()).then(|| {
+    let mut y_asked = None;
+    if more_unit.iter().any(|m| !m.is_empty()) {
         let mut q = Mat::zeros(T * NS, G);
         for u in 0..NE {
             let r = et[u] * NS + sec[u];
@@ -892,36 +938,25 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                 q[(r, g)] += Y[u] * x;
             }
         }
-        (q, Y.clone())
-    });
-    if let Some((q, _)) = &more_req {
-        for t in 0..T {
-            for s in 0..NS {
-                for g in 0..G {
-                    R[(t, g)] += q[(t * NS + s, g)];
-                }
-            }
-        }
+        ledger.ask((Buyer::LandChemicals, Trade::Day), Line::new((0..T * NS).map(|r| r / NS).collect(), (0..T * NS).collect(), Fold::EachRow, q));
+        y_asked = Some(Y.clone());
     }
     // tasks: the land's machines ask for their run goods with the day's trade,
-    // and for their plant (below) beside the works' orders
-    let lbuy = lt.as_ref().and_then(|l| crate::tasks::land_orders(st, C, l, &et, &sec, &Lex));
-    if let Some(b) = &lbuy {
-        for t in 0..T {
-            for s in 0..NS {
-                for g in 0..G {
-                    R[(t, g)] += b.run[(t * NS + s, g)];
-                }
-            }
-        }
+    // and for their plant beside the works' orders, by town and sector
+    let mut lbuy = lt.as_ref().and_then(|l| crate::tasks::land_orders(st, C, l, &et, &sec, &Lex));
+    if let Some(b) = &mut lbuy {
+        let rows = || ((0..T * NS).map(|r| r / NS).collect::<Vec<_>>(), (0..T * NS).collect::<Vec<_>>());
+        let (town, who) = rows();
+        ledger.ask((Buyer::LandTasks, Trade::Day), Line::new(town, who, Fold::EachRow, std::mem::take(&mut b.run)));
+        let (town, who) = rows();
+        ledger.ask((Buyer::LandTasks, Trade::Plant), Line::new(town, who, Fold::EachRow, std::mem::take(&mut b.plant)));
     }
     // the lorry (docs/rules/lorry.md): the carters' lorries ask for their oil with
-    // the day's trade, and for their plant (below) beside the works' orders
-    let cbuy = crate::tasks::cart_orders(st, C, P, &budgets);
-    if let Some(b) = &cbuy {
-        for k in 0..T * G {
-            R.data[k] += b.run.data[k];
-        }
+    // the day's trade, and for their plant beside the works' orders, by town
+    let mut cbuy = crate::tasks::cart_orders(st, C, P, &budgets);
+    if let Some(b) = &mut cbuy {
+        ledger.ask((Buyer::Lorries, Trade::Day), Line::new(towns.clone(), towns.clone(), Fold::EachRow, std::mem::take(&mut b.run)));
+        ledger.ask((Buyer::Lorries, Trade::Plant), Line::new(towns.clone(), towns.clone(), Fold::EachRow, std::mem::take(&mut b.plant)));
     }
     // harvest: the year's weather is felt here, after the hands are hired and the
     // machines asked for on an average year's yield. From here on Y is the crop
@@ -937,62 +972,49 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             req_inv[(r, g)] = st.f_order[(i, g)] * ask;
         }
     }
-    // tree (docs/rules/tree.md, "Plant waits"): what households and the works
-    // at work ask for, before the orders for new plant and for railways and
-    // canals are added. Only with the tree laid: without it nothing that plant
-    // is built of is a works' daily input, and the rule measured as no gain
-    let R_now = (P.tree.plant_waits && C.stage > 0).then(|| R.clone());
-    add_by_town(&mut R, &ot, &req_inv);
+    ledger.ask((Buyer::WorksOrders, Trade::Plant), Line::new(ot.clone(), oi.clone(), Fold::ByTown, req_inv));
     // tasks: the works' orders for their machines' plant, a quarter of each a
     // month, beside the orders for capacity (and like them, waiting under the tree)
-    let mach_orders = crate::tasks::orders(st, C, P);
-    if let Some(mo) = &mach_orders {
-        add_by_town(&mut R, &mo.towns, &mo.req);
+    if let Some(line) = crate::tasks::orders(st, C, P) {
+        ledger.ask((Buyer::WorksTasks, Trade::Plant), line);
     }
-    if let Some(b) = &lbuy {
-        for t in 0..T {
-            for s in 0..NS {
-                for g in 0..G {
-                    R[(t, g)] += b.plant[(t * NS + s, g)];
-                }
-            }
-        }
-    }
-    if let Some(b) = &cbuy {
-        for k in 0..T * G {
-            R.data[k] += b.plant.data[k];
-        }
-    }
-    let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
-    for pr in &st.projects {
+    let mut proj_req = Mat::zeros(st.projects.len(), G);
+    for (k, pr) in st.projects.iter().enumerate() {
         // railways (docs/rules/railways.md): the game's lines say how long they take,
         // and order no more than the cash in hand will pay for
         let months = if pr.months > 0.0 { pr.months } else { 10.0 };
-        let mut rq: Vec<f64> = (0..G).map(|g| pr.order[g].min(pr.need[g] / months)).collect();
-        crate::ways::within_means(pr, &mut rq, st.price.row(pr.town));
+        let rq = proj_req.row_mut(k);
         for g in 0..G {
-            R[(pr.town, g)] += rq[g];
+            rq[g] = pr.order[g].min(pr.need[g] / months);
         }
-        proj_req.push(rq);
+        crate::ways::within_means(pr, rq, st.price.row(pr.town));
     }
+    let proj_town: Vec<usize> = st.projects.iter().map(|pr| pr.town).collect();
+    ledger.ask((Buyer::Ways, Trade::Plant), Line::new(proj_town, (0..st.projects.len()).collect(), Fold::EachRow, proj_req));
     // state (docs/rules/state.md, "The university"): the university's rooms,
     // ordered of its town's builders as a railway orders its materials
-    let uni_rooms = crate::university::rooms_order(st, C, P);
-    for &(t, g, n) in &uni_rooms {
-        R[(t, g)] += n;
+    if let Some(line) = crate::university::rooms_order(st, C, P) {
+        ledger.ask((Buyer::University, Trade::Plant), line);
     }
 
+    // ---------------- what each market was asked, and the share it could give
+    // tree (docs/rules/tree.md, "Plant waits"): what the day's trade asked
+    // (households, the works at work, the land), apart from the orders for
+    // plant and for railways and canals. Only with the tree laid: without it
+    // nothing that plant is built of is a works' daily input, and the rule
+    // measured as no gain
+    let R_now = ledger.add_asks(P.tree.plant_waits && C.stage > 0);
     // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
     // goes with them when the district changes market
     // and the mines read it under `mines.glut` (docs/rules/mines.md, "G")
     if families::active(st) || P.people.enabled || P.mines.glut {
         // what each town's buyers asked for, for the families' site sums
-        st.requests = R.clone();
+        st.requests = ledger.asked.clone();
     }
     let mut fill = Mat::zeros(T, G);
     for t in 0..T {
         for g in 0..G {
-            let r = R[(t, g)];
+            let r = ledger.asked[(t, g)];
             fill[(t, g)] = if r > 1e-12 { (st.inv[(t, g)] / r.max(1e-12)).min(1.0) } else { 1.0 };
         }
     }
@@ -1004,25 +1026,14 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // trade's and `fill_plant` the orders'; without the rule both are the
     // port's one number.
     let fill_plant = match &R_now {
-        Some(now) => crate::tree::plant_waits(&st.inv, now, &R, &mut fill),
+        Some(now) => crate::tree::plant_waits(&st.inv, now, &ledger.asked, &mut fill),
         None => fill.clone(),
     };
-    // tasks: what the land's machines got, run goods and plant by town and
-    // sector; and where their run goods were short, the machines stood idle
-    // for that part of their work, and the crop is the smaller for it
-    let land_got = lbuy.as_ref().map(|b| {
-        let (mut got, mut plant) = (Mat::zeros(T * NS, G), Mat::zeros(T * NS, G));
-        for t in 0..T {
-            for s in 0..NS {
-                let r = t * NS + s;
-                for g in 0..G {
-                    plant[(r, g)] = b.plant[(r, g)] * fill_plant[(t, g)];
-                    got[(r, g)] = b.run[(r, g)] * fill[(t, g)] + plant[(r, g)];
-                }
-            }
-        }
-        (got, plant)
-    });
+    // every line's got, at its trade's fill
+    ledger.fill(fill, fill_plant);
+    let fill = &ledger.fill;
+    // tasks: where the land's machines' run goods were short, the machines stood
+    // idle for that part of their work, and the crop is the smaller for it
     // (docs/rules/tasks.md, "A machine short of its run good"): the hands do the
     // idle machines' part at the labour it took before them, so the work done is
     // all that was hired where the fill is no worse than the one the hands were
@@ -1110,89 +1121,16 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.f_fill[fid] = 0.7 * phi_prev[i] + 0.3 * phi;
         st.f_u[fid] = 0.9 * st.f_u[fid] + 0.1 * ufirm[i] * phi;
     }
-
-    let mut hh_got = Mat::zeros(T, G);
-    let mut lord_got = Mat::zeros(T, G);
-    let mut sold = Mat::zeros(T, G);
-    for t in 0..T {
-        for g in 0..G {
-            hh_got[(t, g)] = d_hh[(t, g)] * fill[(t, g)];
-            lord_got[(t, g)] = d_lord[(t, g)] * fill[(t, g)];
-            sold[(t, g)] = hh_got[(t, g)] + lord_got[(t, g)];
-        }
-    }
-    let mach_got: Vec<f64> = (0..NE).map(|u| mine_mach[u] * fill[(et[u], gm)]).collect();
-    let rail_got: Vec<f64> = (0..NE).map(|u| mine_rail[u] * fill[(et[u], gr)]).collect();
-    let mut inv_got = Mat::zeros(oi.len(), G);
-    for r in 0..oi.len() {
-        for g in 0..G {
-            inv_got[(r, g)] = req_inv[(r, g)] * fill_plant[(ot[r], g)]; // tree: plant waits
-        }
-    }
-    // per good: sold += bincount(ft, use_f[:, g]); sold += bincount(ot, inv_got[:, g])
-    let by_firm = sum_by_town(T, &ft, &use_f);
-    let by_order = sum_by_town(T, &ot, &inv_got);
-    for k in 0..T * G {
-        sold.data[k] += by_firm.data[k];
-        sold.data[k] += by_order.data[k];
-    }
-    // tasks: the machine orders are served as the plant orders are
-    let mo_got = mach_orders.as_ref().map(|mo| {
-        let mut got = Mat::zeros(mo.works.len(), G);
-        for (r, &t) in mo.towns.iter().enumerate() {
-            for g in 0..G {
-                got[(r, g)] = mo.req[(r, g)] * fill_plant[(t, g)];
-            }
-        }
-        let by = sum_by_town(T, &mo.towns, &got);
-        for k in 0..T * G {
-            sold.data[k] += by.data[k];
-        }
-        got
-    });
-    add_column(&mut sold, gm, &bincount(&et, &mach_got, T));
-    add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
-    // machines: the land's other goods got, at the day's trade's fill
-    let more_got: Option<Mat> = more_req.as_ref().map(|(q, _)| {
-        let mut got = Mat::zeros(T * NS, G);
-        for t in 0..T {
-            for s in 0..NS {
-                for g in 0..G {
-                    got[(t * NS + s, g)] = q[(t * NS + s, g)] * fill[(t, g)];
-                    sold[(t, g)] += got[(t * NS + s, g)];
-                }
-            }
-        }
-        got
-    });
-    if let Some((got, _)) = &land_got {
-        for t in 0..T {
-            for s in 0..NS {
-                for g in 0..G {
-                    sold[(t, g)] += got[(t * NS + s, g)];
-                }
-            }
-        }
-    }
-    // the lorry: the oil at the day's trade's fill, the lorries at the plant orders'
-    let cart_got = cbuy.as_ref().map(|b| crate::tasks::cart_got(b, &fill, &fill_plant));
-    if let Some((got, _, _)) = &cart_got {
-        for k in 0..T * G {
-            sold.data[k] += got.data[k];
-        }
-    }
-    let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
-    for (pr, rq) in st.projects.iter().zip(&proj_req) {
-        let got: Vec<f64> = (0..G).map(|g| rq[g] * fill_plant[(pr.town, g)]).collect(); // tree: plant waits
-        for g in 0..G {
-            sold[(pr.town, g)] += got[g];
-        }
-        proj_got.push(got);
-    }
-    let uni_got: Vec<(usize, usize, f64)> = uni_rooms.iter().map(|&(t, g, n)| (t, g, n * fill_plant[(t, g)])).collect(); // tree: plant waits
-    for &(t, g, n) in &uni_got {
-        sold[(t, g)] += n;
-    }
+    // the works' got is what they used; then every line's got into what each market sold
+    ledger.set_got((Buyer::Works, Trade::Day), use_f);
+    ledger.sell();
+    let fill = &ledger.fill;
+    let use_f = ledger.got((Buyer::Works, Trade::Day)).unwrap();
+    let hh_got = ledger.got((Buyer::Households, Trade::Day)).unwrap();
+    let mach_got = ledger.got((Buyer::LandMachinery, Trade::Day)).unwrap();
+    // the two buyers of two lines each, whose gots are added into one
+    const LAND_TASKS: [(Buyer, Trade); 2] = [(Buyer::LandTasks, Trade::Day), (Buyer::LandTasks, Trade::Plant)];
+    const LORRIES: [(Buyer, Trade); 2] = [(Buyer::Lorries, Trade::Day), (Buyer::Lorries, Trade::Plant)];
 
     // ---------------- money flows
     let mut merch = vec![0.0; T];
@@ -1243,9 +1181,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // land-based enterprises
     let p = &st.price;
     let value: Vec<f64> = (0..NE).map(|u| p[(et[u], g_s[u])] * Y[u]).collect();
-    let mut in_paid: Vec<f64> = (0..NE).map(|u| mach_got[u] * p[(et[u], gm)] + rail_got[u] * p[(et[u], gr)]).collect();
+    let mut in_paid: Vec<f64> = (0..NE).map(|u| mach_got[(u, 0)] * p[(et[u], gm)] + mach_got[(u, 1)] * p[(et[u], gr)]).collect();
     // machines: each unit pays for the other goods it asked for, as it got them
-    if let Some((_, y_asked)) = &more_req {
+    if let Some(y_asked) = &y_asked {
         for u in 0..NE {
             let t = et[u];
             for &(g, x) in &more_unit[t * NS + sec[u]] {
@@ -1255,8 +1193,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     // tasks: each unit pays for its sector's machines' goods by its part of the
     // work; the return on their plant stays in the rent
-    if let (Some(b), Some((got, _))) = (&lbuy, &land_got) {
-        let paid: Vec<f64> = (0..T * NS).map(|r| C.sum_goods(|g| got[(r, g)] * p[(r / NS, g)])).collect();
+    if let Some(b) = &lbuy {
+        let paid = ledger.paid(C, p, &LAND_TASKS);
         for u in 0..NE {
             let r = et[u] * NS + sec[u];
             if b.work[r] > 0.0 && paid[r] != 0.0 {
@@ -1286,13 +1224,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // engel: what households spent on each need, noted for the observer before prices move
     if P.engel.enabled {
-        engel::note_month(st, C, &pc, &subcost, &q_hh, &share, &fill);
+        engel::note_month(st, C, &pc, &subcost, &q_hh, &share, fill);
     }
 
     // households and landlords buy goods; households pay urban rent
     let p = &st.price;
-    let hh_spend: Vec<f64> = (0..T).map(|t| C.sum_goods(|g| hh_got[(t, g)] * p[(t, g)])).collect();
-    let lord_spend: Vec<f64> = (0..T).map(|t| C.sum_goods(|g| lord_got[(t, g)] * p[(t, g)])).collect();
+    let hh_spend = ledger.paid(C, p, &[(Buyer::Households, Trade::Day)]);
+    let lord_spend = ledger.paid(C, p, &[(Buyer::Landlords, Trade::Day)]);
     for t in 0..T {
         st.hh_cash[t] -= hh_spend[t] + urban_pay[t];
         st.lord_cash[t] -= lord_spend[t];
@@ -1302,17 +1240,14 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // the lorry (docs/rules/lorry.md): the hauliers own their lorries and pay for
     // their oil and plant: under the hauliers' till out of the till their carting
     // is paid into (`lorry.till`), and without it out of the households' purse
-    let cart_pay: Vec<f64> = match &cart_got {
-        Some((got, _, _)) => (0..T).map(|t| C.sum_goods(|g| got[(t, g)] * p[(t, g)])).collect(),
-        None => Vec::new(),
-    };
+    let cart_pay = ledger.paid(C, p, &LORRIES);
     for (t, &v) in cart_pay.iter().enumerate() {
         merch[t] += v;
         sales_value[t] += v;
     }
-    if let (Some(b), Some((got, plant, _))) = (&cbuy, &cart_got) {
+    if let (Some(b), Some((_, got))) = (&cbuy, ledger.together(&LORRIES)) {
         crate::tasks::cart_pay(st, P, b, &cart_pay);
-        crate::tasks::note_cart_paid(st, got, plant);
+        crate::tasks::note_cart_paid(st, &got, ledger.got(LORRIES[1]).unwrap());
     }
     if families::active(st) {
         families::pay_spending(st, &fam_budget, &lord_budget, &lord_spend);
@@ -1325,7 +1260,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // investment deliveries: firms pay for capital goods, capacity arrives pro rata
     if !oi.is_empty() {
         let p = &st.price;
-        let inv_pay: Vec<f64> = (0..oi.len()).map(|r| C.sum_goods(|g| inv_got[(r, g)] * p[(ot[r], g)])).collect();
+        let inv_pay = ledger.paid(C, p, &[(Buyer::WorksOrders, Trade::Plant)]);
+        let inv_got = ledger.got((Buyer::WorksOrders, Trade::Plant)).unwrap();
         let remaining_value: Vec<f64> =
             oi.iter().zip(&ot).map(|(&i, &t)| C.sum_goods(|g| st.f_order[(i, g)] * p[(t, g)])).collect();
         for (r, &i) in oi.iter().enumerate() {
@@ -1351,25 +1287,27 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.m_invest = 0.0;
     }
     // tasks: the works pay for the plant of their machines as it arrives
-    if let (Some(mo), Some(got)) = (&mach_orders, &mo_got) {
-        let pay = crate::tasks::deliver(st, C, mo, got);
-        let by_town = bincount(&mo.towns, &pay, T);
+    if let Some(mo) = ledger.line((Buyer::WorksTasks, Trade::Plant)) {
+        let pay = crate::tasks::deliver(st, C, mo);
+        let by_town = bincount(&mo.town, &pay, T);
         add_to(&mut merch, &by_town);
         add_to(&mut sales_value, &by_town);
         st.m_invest += pairwise_sum(&pay);
     }
     // tasks: the land's plant goes into place as it arrives (paid above, in the rent)
-    if let (Some(b), Some((_, plant))) = (&lbuy, &land_got) {
-        crate::tasks::land_deliver(st, C, b, plant);
+    if let Some(plant) = ledger.line(LAND_TASKS[1]) {
+        crate::tasks::land_deliver(st, C, plant);
     }
     // the lorry: its plant goes into place as it arrives (paid above, by the households)
-    if let (Some(b), Some((_, plant, run_fill))) = (&cbuy, &cart_got) {
-        crate::tasks::cart_deliver(st, C, b, plant, run_fill);
+    if let (Some(run), Some(plant)) = (ledger.line(LORRIES[0]), ledger.line(LORRIES[1])) {
+        crate::tasks::cart_deliver(st, C, run, plant, fill);
     }
 
+    let proj_pay = ledger.paid(C, &st.price, &[(Buyer::Ways, Trade::Plant)]);
+    let proj_got = ledger.got((Buyer::Ways, Trade::Plant)).unwrap();
     let mut proj_spend = 0.0;
-    for (pr, got) in st.projects.iter_mut().zip(&proj_got) {
-        let pay = C.sum_goods(|g| got[g] * st.price[(pr.town, g)]);
+    for (k, pr) in st.projects.iter_mut().enumerate() {
+        let (pay, got) = (proj_pay[k], proj_got.row(k));
         // canals (docs/rules/canals.md): a way says what its navvies are paid on each
         // shilling of materials; the port's and the railways' three tenths otherwise
         let wages = crate::ways::navvy_share(pr) * pay;
@@ -1385,9 +1323,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     st.m_invest += proj_spend;
     // state: the university's rooms paid for out of the treasury
-    if !uni_got.is_empty() {
-        let got: Vec<f64> = uni_got.iter().map(|x| x.2).collect();
-        crate::university::rooms_got(st, P, &uni_rooms, &got, &mut merch, &mut sales_value);
+    if let Some(rooms) = ledger.line((Buyer::University, Trade::Plant)) {
+        crate::university::rooms_got(st, P, rooms, &mut merch, &mut sales_value);
     }
 
     // ---------------- inventories: sales out, production in
@@ -1409,7 +1346,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for t in 0..T {
         for g in 0..G {
             let v = &mut st.inv[(t, g)];
-            *v -= sold[(t, g)];
+            *v -= ledger.sold[(t, g)];
             *v *= 1.0 - loss[g];
             *v += prod_TG[(t, g)];
             *v = v.max(0.0);
@@ -1526,57 +1463,30 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
 
     // accounts: the month's goods and payments go into the books before prices
-    // move. Everything handed over is a local of this function; nothing comes back.
+    // move. Everything handed over is a local of this function, and what was
+    // bought, got and sold they read from the ledger; nothing comes back.
     if st.acct.on {
-        // tasks: the machines' plant is building, as a works' capacity is
-        let joined = match (&mach_orders, &mo_got) {
-            (Some(mo), Some(got)) => {
-                let (n0, n1) = (oi.len(), mo.works.len());
-                let mut all = Mat::zeros(n0 + n1, G);
-                all.data[..n0 * G].copy_from_slice(&inv_got.data);
-                all.data[n0 * G..].copy_from_slice(&got.data);
-                Some(([&oi[..], &mo.works[..]].concat(), [&ot[..], &mo.towns[..]].concat(), all))
-            }
-            _ => None,
-        };
-        let inv_rows = match &joined {
-            Some((a, b, c)) => (&a[..], &b[..], c),
-            None => (&oi[..], &ot[..], &inv_got),
-        };
-        // machines: the books count the land's other goods (nitrogen's and
-        // breeding's chemicals) as they count what its machines for tasks got,
-        // bought out of its revenue
-        let land_books: Option<Mat> = more_got.as_ref().map(|m| {
-            let mut a = m.clone();
-            if let Some((g, _)) = &land_got {
-                for (x, y) in a.data.iter_mut().zip(&g.data) {
-                    *x += *y;
-                }
-            }
-            a
-        });
         #[rustfmt::skip]
         crate::accounts::note_month(st, C, P, &crate::accounts::Month {
-            et: &et, sec: &sec, Y: &Y, Lex: &Lex, cart_ex: &cart_ex, mach_got: &mach_got, rail_got: &rail_got,
+            et: &et, sec: &sec, Y: &Y, Lex: &Lex, cart_ex: &cart_ex,
             land_rents: match &royalties {
                 Some((towns, cells, parts)) => (&towns[..], &cells[..], &parts[..]),
                 None => (&et[..], &ex[..], &rent_ex[..]),
             },
             fi: &fi, ft: &ft, fm: &fm, fc: &fc, out: &out, K: &K, q: &q, labor_f: &labor_f, wages_f: &wages_f,
             rent_f: &rent_f, pay_in: &pay_in, cart_in: &cart_in, cart_out: &cart_out, rev: &rev, cut: hired.as_deref(),
-            a: &a, use_f: &use_f, pin: &pin,
-            hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
+            a: &a, pin: &pin,
+            fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
-            cart_tasks: cart_got.as_ref().map(|c| &c.0),
-            q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
-            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got, uni_got: &uni_got,
-            land_tasks: land_books.as_ref().or(land_got.as_ref().map(|g| &g.0)),
-            R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
+            q_hh: &q_hh, q_l: &q_l, share: &share, lord_pop: &lord_pop,
+            ledger: &ledger,
+            prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });
     }
 
     // ---------------- prices respond to inventories (level) and to this month's
     // imbalance between wanted and arriving goods (flow), which damps cycles
+    let (sold, R) = (&ledger.sold, &ledger.asked);
     for t in 0..T {
         for g in 0..G {
             let outflow = sold[(t, g)] + exports[(t, g)];
@@ -1608,8 +1518,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // prices: a probe may ask for the month's requests and sales to be kept
     if st.watch_markets {
-        st.month_requests = R;
-        st.month_sold = sold;
+        st.month_requests = R.clone();
+        st.month_sold = sold.clone();
     }
 
     // ---------------- dividends, common fund, issuance
@@ -1712,7 +1622,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             st.town_prod[(t, g)] += prod_TG[(t, g)];
         }
     }
-    st.fill = fill;
+    st.fill = fill.clone();
     st.wage = w;
     st.subcost = subcost;
     let mut prod_g = vec![0.0; G];
@@ -1771,8 +1681,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.month_stats = MonthStats {
         prod: prod_g,
         method_out: mo,
-        hh_got,
-        lord_got,
+        hh_got: hh_got.clone(),
+        lord_got: ledger.got((Buyer::Landlords, Trade::Day)).unwrap().clone(),
         share,
         hh_spend: pairwise_sum(&hh_spend),
         lord_spend: pairwise_sum(&lord_spend),
@@ -1788,37 +1698,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // tasks (docs/rules/tasks.md): each town's target at the month's wage and
     // prices, and each works' machines moved toward it and worn
     crate::tasks::end_month(st, C, P);
-}
-
-/// For each good, `np.bincount(town, weights=rows[:, g], minlength=T)`, in one pass
-/// (each (town, good) total still sums the rows in order).
-fn sum_by_town(T: usize, town: &[usize], rows: &Mat) -> Mat {
-    let G = rows.cols;
-    let mut acc = Mat::zeros(T, G);
-    for (r, &t) in town.iter().enumerate() {
-        for g in 0..G {
-            acc[(t, g)] += rows[(r, g)];
-        }
-    }
-    acc
+    ledger
 }
 
 fn add_to(a: &mut [f64], b: &[f64]) {
     for (x, y) in a.iter_mut().zip(b) {
-        *x += y;
-    }
-}
-
-fn add_column(m: &mut Mat, g: usize, v: &[f64]) {
-    for (t, x) in v.iter().enumerate() {
-        m[(t, g)] += x;
-    }
-}
-
-/// `for g: R[:, g] += np.bincount(town, weights=rows[:, g], minlength=T)`.
-fn add_by_town(R: &mut Mat, town: &[usize], rows: &Mat) {
-    let acc = sum_by_town(R.rows, town, rows);
-    for (x, y) in R.data.iter_mut().zip(&acc.data) {
         *x += y;
     }
 }
