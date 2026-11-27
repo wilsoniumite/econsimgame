@@ -370,6 +370,10 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month, and what they got.
     pub month_requests: Mat,
     pub month_sold: Mat,
+    /// A probe sets this to have each town's merchants' month kept in
+    /// `month_merchants`, (T, `econ::MERCHANT_TERMS`): their income split into its terms.
+    pub watch_merchants: bool,
+    pub month_merchants: Mat,
     /// A test sets this to find each town's wage by the Python's plain bisection,
     /// every midpoint evaluated, with no Newton steps to say where the root is.
     pub plain_bisection: bool,

@@ -69,12 +69,32 @@ pub struct PriceParams {
     /// time is a crumb, and no glut ([`take_from`]; docs/rules/prices.md, "A
     /// crumb is no glut"). 0: no stock is a crumb, as before it.
     pub crumb: f64,
+    /// What merchants carried out of a town this month is counted among what is
+    /// asked of its market, in the flow term of the price rule ([`asked`];
+    /// docs/rules/prices.md, "What is carried out is asked"). Off: the port's
+    /// rule, whose flow term hears only the town's own buyers. Off under the
+    /// game's rules too, until carriage is paid in hands; not written out while
+    /// off, so that the game's parameters read as they did.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub exports_ask: bool,
 }
 
 impl Default for PriceParams {
     /// Off: what the port runs with.
     fn default() -> PriceParams {
-        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false, crumb: 0.0 }
+        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false, crumb: 0.0, exports_ask: false }
+    }
+}
+
+/// What the flow term of a town's price rule sets against what was made and
+/// brought in: what its own buyers asked, `own`, and under `exports_ask` what
+/// merchants carried out of it as well, `carried_out`. The stock term already
+/// counts what was carried out among the month's sales.
+pub fn asked(P: &PriceParams, own: f64, carried_out: f64) -> f64 {
+    if P.exports_ask {
+        own + carried_out
+    } else {
+        own
     }
 }
 
@@ -102,12 +122,13 @@ pub struct PriceSettings {
     glut_stop_months: f64,
     no_spoil_markup: bool,
     crumb: f64,
+    exports_ask: bool,
 }
 
 impl Default for PriceSettings {
     fn default() -> PriceSettings {
-        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb } = PriceParams::default();
-        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb }
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask }
     }
 }
 
@@ -118,7 +139,7 @@ impl TryFrom<PriceSettings> for PriceParams {
     /// sentence that names it. Whether the switch is on does not matter: a
     /// file that says a nonsense number has a mistake in it either way.
     fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
-        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb } = s;
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask } = s;
         for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("crumb", crumb)] {
             if !x.is_finite() {
                 return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
@@ -136,7 +157,7 @@ impl TryFrom<PriceSettings> for PriceParams {
         if !(0.0..1.0).contains(&crumb) {
             return Err(format!("prices.crumb is {crumb}, and it has to be a share of a month of a works' make, from 0 (no stock is a crumb) up to but not reaching 1"));
         }
-        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb })
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask })
     }
 }
 
