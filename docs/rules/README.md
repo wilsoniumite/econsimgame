@@ -1200,6 +1200,12 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   out afresh; nothing in the economy, the books or the news moves with it. The record and a live game
   carry them as a log of what each year's end changed, the same in both. [squares.md](squares.md),
   `squares.enabled`.
+- **courses** (read by no rule): the simulation keeps which links between cells the carts wore, by the
+  viewer's own rule and numbers; each cell's place, where its ways pass, chosen once by the ground the
+  year the first way reaches it (a town's cell keeps its market); and each link's course over the ground
+  between its two places, found once the year it is first drawn and kept for ever. The squares face the
+  kept courses and take the frontage first, and the record and a live game carry a log of them.
+  [courses.md](courses.md), `courses.enabled`.
 
 **Off under the game's rules, on with the landfall start.** The start itself is a choice, not a rule:
 the settled island under both sets of rules, and landfall, one town of 5,000 at a harbour in a corner,

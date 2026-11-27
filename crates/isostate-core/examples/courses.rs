@@ -13,7 +13,9 @@
 //!   (125 m) of a drawn course, with the courses on and off.
 //! - Every year: the two runs' people and money are the same (the courses are
 //!   read by no rule), every place is where it was the year it was chosen and
-//!   every course has the points it was found with.
+//!   every course has the points it was found with; and played as a live game
+//!   is (`live_year`), the live year's ways, squares and holdings are the
+//!   record's bytes, and a reader of the ways' log holds the book's ways.
 //! - `--time`: a third run with the courses and the squares off, the year's
 //!   `courses::close_year` and `squares::close_year` called beside it and timed
 //!   alone (both read the books and write nothing else).
@@ -240,6 +242,9 @@ fn run(seed: u64, to: i64, families: usize, landfall: bool, time: bool, pictures
     });
     let mut places: BTreeMap<usize, [u16; 2]> = BTreeMap::new();
     let mut found: BTreeMap<u32, Vec<[u16; 2]>> = BTreeMap::new();
+    let mut cursor = LiveCursor::new(&a.content);
+    #[allow(clippy::type_complexity)]
+    let mut reader: (BTreeMap<u32, [u16; 2]>, BTreeMap<u32, courses::Course>, std::collections::BTreeSet<u32>) = Default::default();
     let years: Vec<i64> = vec![1750, 1800, 1850, 1900, 1950, 2000, 2050];
     let shots_years = [1800i64, 1850, 1900, 2050];
     while a.year <= a.end_year {
@@ -257,6 +262,31 @@ fn run(seed: u64, to: i64, families: usize, landfall: bool, time: bool, pictures
         }
         out.log_bytes += a.st.wc.log.len();
         out.hold_bytes += a.st.sq.holds.len();
+        // replay and live: the live year carries the record's bytes, and a reader of
+        // them holds the book's places, courses and drawn links
+        let y = live_year(&mut cursor, &a.st, &a.content, &a.params, &a.events);
+        let k = y.index;
+        let (r, w, sq) = (&a.rec, y.ways.as_ref().unwrap(), y.squares.as_ref().unwrap());
+        if w.whole || r.way_log[r.way_first[k] as usize..r.way_first[k + 1] as usize] != w.log[..] {
+            out.faults.push(format!("{year}: the live year's ways are not the record's"));
+        }
+        if r.sq_hold[r.sq_hold_first[k] as usize..r.sq_hold_first[k + 1] as usize] != sq.holds[..] || r.squares[r.squares_first[k] as usize..r.squares_first[k + 1] as usize] != sq.changes[..] {
+            out.faults.push(format!("{year}: the live year's squares or holdings are not the record's"));
+        }
+        for (c, p, _) in courses::decode_year(&w.log).expect("the ways' log reads").places {
+            reader.0.insert(c, p);
+        }
+        for (l, d, course) in courses::decode_year(&w.log).unwrap().links {
+            if let Some(cs) = course {
+                reader.1.insert(l, cs);
+            }
+            if d { reader.2.insert(l); } else { reader.2.remove(&l); }
+        }
+        let book_places: BTreeMap<u32, [u16; 2]> = (0..a.st.N).filter(|&c| a.st.wc.placed[c] != 0).map(|c| (c as u32, a.st.wc.place[c])).collect();
+        let book_drawn: std::collections::BTreeSet<u32> = (0..a.st.wc.drawn.len()).filter(|&l| a.st.wc.drawn[l]).map(|l| l as u32).collect();
+        if reader.0 != book_places || reader.1 != a.st.wc.courses || reader.2 != book_drawn {
+            out.faults.push(format!("{year}: a reader of the ways' log does not hold the book's ways"));
+        }
         // the courses are read by no rule
         if a.st.pop != b.st.pop || a.st.money_now.to_bits() != b.st.money_now.to_bits() {
             out.faults.push(format!("{year}: the people or the money differ with the courses on and off"));

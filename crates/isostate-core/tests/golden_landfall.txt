@@ -43,10 +43,14 @@
 # the colony's histories move from the first years (a short town's wage may
 # double in a month again), so all seven move; the settled island's seven do
 # not
+# Taken: 1901-2050 run.bin on both starts: the courses (docs/rules/courses.md)
+# put the ways' log and the holdings' log into the record, and the squares
+# face the kept courses, which moves the squares' log; the economy, the books
+# and the news hold
 1750-1900 economy  0xef46c76a7eeafd23
 1750-1900 books    0x6d85927f7cc7b723
 1750-1900 news     0x30baf694ae81b223
 1901-2050 economy  0x853e55c74e22e33a
 1901-2050 books    0x1fe6f071e62750d4
 1901-2050 news     0xfb257c2f0a0c7dac
-1901-2050 run.bin  0x10aa4b28579bb728
+1901-2050 run.bin  0xee9c9fdaebb99c0b
