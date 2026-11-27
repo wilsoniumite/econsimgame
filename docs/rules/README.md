@@ -1240,3 +1240,7 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
   of cost 105, which knows each idea from the year `data/abroad.toml` gives (history's year where the
   content has one, else the settled island's); the tasks' uses come five years after abroad. Off, the
   island is alone: the isolated state. [abroad.md](abroad.md), `abroad.ideas`.
+- **carriage in hands** (off under both sets of rules for now): a load takes hands over the path's cost,
+  the same number on both starts, and they are paid the carting town's wage or the island's; beside it
+  a good that spoils is not stocked. [carriage.md](carriage.md), `carriage.in_hands`, `carriage.wage`,
+  `prices.spoils_unkept`.
