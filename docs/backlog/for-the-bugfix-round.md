@@ -661,3 +661,5 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - [managing] Five seconds pass from the start page to a game's first frame (the churchyards 1.9 s, the works' lay-out 1.0 s). (from night/g-batch-century-a, 2026-11-27)
 - [managing] The graphics card's cost of the new ground is not measured. (from night/g-batch-century-a, 2026-11-27)
 - [managing] Why the colony's wage in grain sags from 1800 to 1850 (14.0 to 11.4) is not known. (from night/g-batch-century-a, 2026-11-27)
+- [managing] `courses.enabled` is in the core's rulebook but not among the game's Rules tab switches, and the viewer has no argument for it: a player cannot go back to the roads as they were drawn before 27 November. (from night/g-notes-ground, 2026-11-27)
+- [managing] The viewer's test `the_carts_and_the_traffic_view_find_no_way_on_the_main_thread` holds a frame to a time by the clock (4.1 ms was measured against its bar) and failed a landing of docs alone on 27 November while a builder was using the machine: hold it by what is counted (no way found on the main thread), or by the least of several takes. (from night/g-notes-ground, 2026-11-27)
