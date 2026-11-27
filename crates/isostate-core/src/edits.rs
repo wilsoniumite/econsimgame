@@ -92,8 +92,8 @@ pub const FIXED_AT_START: &[&str] = &[
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where
-/// the rule has one, and the one switch of the three rules that have none
-/// (`commons.carry_debt`, `hands.ration`, `money.true_total`). A `Rule` edit
+/// the rule has one, and the one switch of the four rules that have none
+/// (`abroad.ideas`, `commons.carry_debt`, `hands.ration`, `money.true_total`). A `Rule` edit
 /// may throw one of these only if it is also on [`SWITCHABLE`]. The rules'
 /// lesser switches (`works.keep_order`, `prices.no_spoil_markup` and the like)
 /// are set as any of their numbers is.
@@ -123,6 +123,7 @@ pub const SWITCHES: &[&str] = &[
     "pace.enabled",
     "frontier.enabled",
     "immigration.enabled",
+    "abroad.ideas",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -153,7 +154,12 @@ pub const SWITCHES: &[&str] = &[
 /// when it was switched on: it too acts only from 1901, and thrown either way
 /// after it only changes the share of the plant still to come that the works
 /// ask for from the next month, which `tests/pace.rs` plays with the money
-/// checked every month.
+/// checked every month. Ideas by sea (`abroad.ideas`, docs/rules/abroad.md)
+/// joined both on night/g-start-switches, so that a colony's ships may stop
+/// bringing ideas in the middle of a game as they may stop bringing settlers:
+/// it keeps nothing of its own (abroad's know is worked out from the year), and
+/// it came through as the rest did, here on the settled island and in
+/// `tests/start_switches.rs` thrown off and on again in a colony.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -178,6 +184,7 @@ pub const SWITCHABLE: &[&str] = &[
     "pace.enabled",
     "frontier.enabled",
     "immigration.enabled",
+    "abroad.ideas",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",

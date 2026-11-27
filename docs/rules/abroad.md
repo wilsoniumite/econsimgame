@@ -5,6 +5,9 @@ sea. Not in the Python. The code is `abroad.rs`, with a few lines in
 `tech::diffusion_with` and the tasks rule's year's turn (`tasks.rs`); the
 table of years is `data/abroad.toml`. The switch is `abroad.ideas`: off under
 both sets of rules, on with the landfall start ([landfall.md](landfall.md)).
+A game may be begun without it (the viewer's `--ideas-by-sea off`, Technology:
+Island only on the start page), and it is thrown in a running game from the
+Rules tab (landfall.md, "The start's switches").
 Built on 26 November 2026 from the study of the landfall start.
 
 **Off is the isolated state.** The settled island is von Thünen's isolated

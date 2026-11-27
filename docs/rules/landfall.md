@@ -43,6 +43,41 @@ under today's rules of people. A saved game says its start
 again from it. The start is fixed when the island is made, so the Rules tab
 offers it as nothing to change (`edits::FIXED_AT_START`).
 
+### The start's switches
+
+Two of the rules that come with landfall can be chosen when a game is begun,
+since the designer asked on 26 November 2026 for "a setting to turn
+immigration on or off, just so we can test other growth rates and population
+pyramid changes beyond births": **settlers by ship** (`immigration.enabled`)
+and **ideas by sea** (`abroad.ideas`). Each is on at landfall and off on the
+settled island. With both off the colony is alone, the isolated state of the
+game's name.
+
+| where | settlers off | ideas by sea off |
+|---|---|---|
+| `isostate-core run` and `sweep` | `--set immigration.enabled=false` | `--set abroad.ideas=false` |
+| the viewer, a new game | `--settlers off` | `--ideas-by-sea off` |
+| the start page | Settlers: None, under Landfall | Technology: Island only, under Landfall |
+| code | `save::Game::begin` with `save::Switches { settlers: Some(false), .. }` | `Switches { ideas_by_sea: Some(false), .. }` |
+
+The viewer's two options take `on` or `off` and go with either start, so
+`--settlers on` puts ships to the settled island (untried there beyond a
+check that it plays); the page offers them under Landfall only. Only the
+switch is thrown, as the Rules tab throws it: the rule's numbers are the
+start's.
+
+A saved game remembers how it began (`Save::settlers`, `Save::ideas_by_sea`),
+each written only where it differs from the start's own, so that every save
+made before, and every save of a start as it comes, is written and played as
+it always was. In the middle of a game both are switches of the Rules tab
+like any other (`edits::SWITCHES` and `SWITCHABLE`): ships may stop coming,
+and come again, each change an edit kept in the game's log and played again
+from its save. Nothing ties either to the start: settlers stop arriving from
+the next year's reckoning and ideas by sea from the next year's spreading,
+and neither keeps anything of its own that a throw would leave half made
+(`tests/start_switches.rs` throws each off and on again in a colony, at a
+turn and five months into a year).
+
 ### Where the town stands
 
 `landfall::site`: the land's least box has four corners; the islands are
