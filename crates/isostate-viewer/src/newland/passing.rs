@@ -158,6 +158,32 @@ impl Lie {
         }
     }
 
+    /// The cell `c` and the cells round it, as `know` reads them.
+    fn round(&self, c: usize) -> impl Iterator<Item = usize> + '_ {
+        let (cx, cy) = ((c % self.w) as isize, (c / self.w) as isize);
+        (-1..=1).flat_map(move |dy| (-1..=1).map(move |dx| (cx + dx, cy + dy))).filter(|&(x, y)| x >= 0 && y >= 0 && (x as usize) < self.w && (y as usize) < self.h).map(|(x, y)| y as usize * self.w + x as usize)
+    }
+
+    /// Whether the ground of a cell and of the cells round it has been read (`know`).
+    pub(crate) fn knows(&self, c: usize) -> bool {
+        self.round(c).all(|m| self.patches[m].is_some())
+    }
+
+    /// Read the ground of each of `cells` and of the cells round them, as
+    /// `know` does, the cells side by side on all the processor's threads (a
+    /// year's new roads ask for some hundreds at once: `road_course::Courses::find_year`).
+    pub(crate) fn know_all(&mut self, g: &Ground, cells: &[usize]) {
+        use rayon::prelude::*;
+        let mut todo: Vec<usize> = cells.iter().flat_map(|&c| self.round(c)).filter(|&m| self.patches[m].is_none()).collect();
+        todo.sort_unstable();
+        todo.dedup();
+        let w = self.w;
+        let read: Vec<(usize, Patch)> = todo.into_par_iter().map(|m| (m, patch(g, m % w, m / w))).collect();
+        for (m, p) in read {
+            self.patches[m] = Some(Box::new(p));
+        }
+    }
+
     /// The ground a way would lie on at a square of the whole map, and what
     /// lying there costs besides for each cell of length.
     pub(crate) fn at(&self, g: &Ground, sx: usize, sy: usize) -> (f32, f32) {
