@@ -447,6 +447,11 @@ pub struct Params {
     /// landfall start; see docs/rules/abroad.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub abroad: crate::abroad::AbroadParams,
+    /// Courses: which ways the carts wore, where each passes through its
+    /// cells and the course it runs, kept by the simulation for the squares
+    /// and the record. Read by no rule (not in the Python; see docs/rules/courses.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub courses: crate::courses::CourseParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -681,6 +686,7 @@ pub fn default_params() -> Params {
         immigration: crate::immigration::ImmigrationParams::default(),
         care: crate::care::CareParams::default(),
         squares: crate::squares::SquaresParams::default(),
+        courses: crate::courses::CourseParams::default(),
         abroad: crate::abroad::AbroadParams::default(),
     }
 }
@@ -780,6 +786,9 @@ pub fn game_params() -> Params {
     // squares (docs/rules/squares.md): the place of everything built, kept in
     // squares of 125 m from 1750; a shadow that no rule reads
     P.squares = crate::squares::SquaresParams::game();
+    // courses (docs/rules/courses.md): the ways the carts wore, each cell's place
+    // and each way's course, kept from 1750; the squares face them
+    P.courses = crate::courses::CourseParams::game();
     P
 }
 
