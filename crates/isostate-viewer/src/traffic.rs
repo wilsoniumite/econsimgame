@@ -15,7 +15,8 @@
 //! link carried on the view's scale (`overlay::Scale`, so the three ranges of
 //! the other views widen and narrow them as they tint those), in the ink of
 //! the way it went. They are made again only when the year, the view or its
-//! scale changes, and only while the view is shown.
+//! scale changes, and only while the view is shown, off the main thread
+//! (`lay`), along the roads' ways the year's scenery found.
 
 use bevy::prelude::*;
 use isostate_core::traffic::{self as tf, Pair};
