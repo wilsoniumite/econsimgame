@@ -328,7 +328,9 @@ copy. At its default each gives today's island to the bit (the golden files
 do not move), and each range is one every island 1 to 8 finished a run to
 1900 at both ends of (below). The term is the glossary's (`data/words.toml`,
 which gained hills, rain, meander, lake, coal, ore, stone and clay for
-these); the start page should use it. `people` has no term of its own yet.
+these); the start page uses it (crates/isostate-viewer/README.md, "The start
+page", Island settings), and `people` is shown there as the term Population,
+added for it.
 
 | setting | what it sets | default | range | term |
 |---|---|---|---|---|
@@ -341,7 +343,7 @@ these); the start page should use it. `people` has no term of its own yet.
 | `stone` | `land.riches.stone`, times the stone | 1 | 0.25 to 2.5 | stone |
 | `clay` | `land.riches.clay`, times the clay | 1 | 0.25 to 2.5 | clay |
 | `woods` | `land.riches.woods`, times the woodland the ground would carry | 1 | 0.25 to 2 | woodland |
-| `people` | `pop0` on the settled island, `start.people` at landfall | 135,000; 5,000 | 30,000 to 540,000; 2,000 to 20,000 | (none yet) |
+| `people` | `pop0` on the settled island, `start.people` at landfall | 135,000; 5,000 | 30,000 to 540,000; 2,000 to 20,000 | population |
 | `towns` | `n_towns`, the first towns of the settled island | 6 | 1 to 12 | market town |
 
 The start itself, settled or landfall, is the twelfth choice and keeps the
@@ -410,6 +412,14 @@ arguments so that they can be called on any thread:
   On island 7 it calls 99.0 per cent of cells land or sea as the whole does
   at the defaults and at every end of the land's settings, and keeps 73 to
   92 per cent of the whole's river cells (73 at the driest).
+- `landcells::sketch_land_towns(seed, W, H, n_towns, &LandParams)`: the
+  sketch with its first towns chosen on it by the rule the whole island's
+  are (`sketch_land` is it with none). On islands 1 to 8, 35 of the 48
+  first towns stand within two cells of the whole island's, and the rest 12
+  to 28 cells off, since each is chosen away from those before it. The
+  start page's small map draws the sketch first, then the whole island
+  (`generate_land`, with the towns a game begins with), once the settings
+  rest.
 
 How long they take on island 7 (`cargo run --profile work -p isostate-core
 --example island_land -- 7`, processor seconds of the one thread, on a

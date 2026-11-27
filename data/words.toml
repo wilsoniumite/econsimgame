@@ -255,8 +255,15 @@ wiki = ["Market area"]
 [term.market_town]
 name = "Market town"
 says = "A town with a market, where its market area buys and sells."
+also = ["market towns"]
 see = ["market_area", "price"]
 wiki = ["Market town"]
+
+[term.population]
+name = "Population"
+says = "The people living on the island. The people of 1750 are shared among the first towns by the farmland round each."
+see = ["market_town", "farmland"]
+wiki = ["Population density"]
 
 [term.transport]
 name = "Transport"

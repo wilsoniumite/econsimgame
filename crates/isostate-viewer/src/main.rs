@@ -34,6 +34,8 @@ mod icons;
 mod ideas_plate;
 mod firm_card;
 mod inspector;
+// ISLAND-MAP: the start page's small map of a new island, made off the main thread (island_map.rs)
+mod island_map;
 mod lab;
 mod live;
 mod look;

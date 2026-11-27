@@ -187,12 +187,21 @@ pub fn land_alone(seed: u64, W: usize, H: usize, P: &LandParams) -> World {
 /// by; the small valleys, the bends and some lakes are not, and the cells'
 /// terrain reads a little less relief. No first towns, as `land_alone`.
 pub fn sketch_land(seed: u64, W: usize, H: usize, P: &LandParams) -> World {
+    sketch_land_towns(seed, W, H, 0, P)
+}
+
+/// `sketch_land` with `n_towns` first towns chosen on the sketch by the rule
+/// `generate_land` chooses them by (the start page's small map, until the
+/// whole island is made). On islands 1 to 8, 35 of the 48 stand within two
+/// cells of the whole island's; once one stands elsewhere, the rest may too
+/// (12 to 28 cells off), as each is chosen away from those before it.
+pub fn sketch_land_towns(seed: u64, W: usize, H: usize, n_towns: usize, P: &LandParams) -> World {
     let quick = LandParams { meander_steps: 0, ..P.clone() };
     let mut rng = land_stream(seed);
     let d = draw_design(&mut rng, W, H, &quick);
     let relief = crate::landform::build_relief_to(&d, &quick, true);
     let water = make_water(&d, &quick, &relief, &mut rng);
-    make_world(&d, &quick, &relief, &water, &mut rng, 0)
+    make_world(&d, &quick, &relief, &water, &mut rng, n_towns)
 }
 
 /// How steeply a cell's stream falls, metres a metre: from node `m`, its

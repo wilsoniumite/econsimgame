@@ -370,6 +370,8 @@ pub struct Resumed {
     /// its start has them, as the save says: what the card says of the game
     pub landfall: bool,
     pub switches: isostate_core::save::Switches,
+    /// the island's settings the save says, where any is not the usual island's
+    pub island: isostate_core::island::Island,
 }
 
 impl Resumed {
@@ -1161,6 +1163,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 by_hand: loaded.game.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count(),
                 landfall: loaded.game.at_landfall(),
                 switches: loaded.game.begun,
+                island: loaded.game.island(),
             });
             loaded.game
         }
