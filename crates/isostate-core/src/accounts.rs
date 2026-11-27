@@ -17,6 +17,7 @@
 //! account (`IslandYear::balance_*`), so a leak in the economy shows as a
 //! number, not as a silence.
 
+use std::borrow::Cow;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,7 @@ use serde_json::{Value, json};
 use crate::content::Content;
 use crate::facts::Kind;
 use crate::families;
+use crate::ledger::{Buyer, Ledger, Trade};
 use crate::mat::Mat;
 use crate::observer::{Series, annual};
 use crate::params::Params;
@@ -612,7 +614,8 @@ pub struct Books {
 
 /// What `econ::step_month` hands over once the month's goods have moved and
 /// been paid for, before prices respond. Every field is a local of that
-/// function, named as it is there.
+/// function, named as it is there; what every buyer asked, got and was sold
+/// is in its ledger (ledger.rs).
 pub struct Month<'a> {
     // land units
     pub et: &'a [usize],
@@ -620,11 +623,6 @@ pub struct Month<'a> {
     pub Y: &'a [f64],
     pub Lex: &'a [f64],
     pub cart_ex: &'a [f64],
-    pub mach_got: &'a [f64],
-    pub rail_got: &'a [f64],
-    /// What the land's machines for tasks got, by town and sector (`t * NS +
-    /// s`) and good (`tasks`; None while none is in use).
-    pub land_tasks: Option<&'a Mat>,
     /// The land's rents as `econ::pay_cell_rents` was handed them: the town each
     /// was paid in, the cell it was paid to, the amount. Unit by unit (`et`,
     /// `ex`, `rent_ex`), or under `mines` with each working's royalty split
@@ -648,34 +646,21 @@ pub struct Month<'a> {
     /// The hired managers' share of each works' profit (None without families).
     pub cut: Option<&'a [f64]>,
     pub a: &'a Mat,
-    pub use_f: &'a Mat,
     pub pin: &'a Mat,
     // buyers
-    pub hh_got: &'a Mat,
-    pub lord_got: &'a Mat,
     pub fam_by_town: &'a [f64],
     pub lord_budget: &'a [f64],
     pub hh_spend: &'a [f64],
     pub lord_spend: &'a [f64],
     pub urban_pay: &'a [f64],
-    /// What the carters' lorries got, oil and plant, by town and good, bought by
-    /// the town's households, who own them (the lorry, docs/rules/lorry.md; None
-    /// until one is found).
-    pub cart_tasks: Option<&'a Mat>,
     pub q_hh: &'a Mat,
     pub q_l: &'a Mat,
     pub share: &'a Mat,
-    pub fill: &'a Mat,
     pub lord_pop: &'a [f64],
-    pub oi: &'a [usize],
-    pub ot: &'a [usize],
-    pub inv_got: &'a Mat,
-    pub proj_got: &'a [Vec<f64>],
-    /// the university's rooms got, by town and good (docs/rules/state.md), booked as a project's materials
-    pub uni_got: &'a [(usize, usize, f64)],
+    /// The month's ledger of buyers: what each line got, and what each market
+    /// was asked and sold, and at what fill.
+    pub ledger: &'a Ledger,
     // markets
-    pub R: &'a Mat,
-    pub sold: &'a Mat,
     pub prod_TG: &'a Mat,
     pub exports: &'a Mat,
     pub imports: &'a Mat,
@@ -693,6 +678,13 @@ impl Books {
         let f64s = [&a.goods, &a.land, &a.methods, &a.towns, &a.needs, &a.trade, &a.uses, &a.works, &a.works_in, &a.months, &a.wages, &a.cash, &a.rent_sector, &self.mk, &self.ml, &self.div, &self.last_cash];
         let years: usize = self.years.iter().map(|y| std::mem::size_of::<IslandYear>() + 8 * (y.rent_by_sector.len() + y.need_households.len() + y.need_landlords.len()) + 16 * y.to_families.len()).sum();
         8 * (f64s.iter().map(|v| v.len()).sum::<usize>() + self.stock.data.len()) + 4 * (self.last_months.len() + self.last_works_in.len() + self.last_wages.len()) + years
+    }
+
+    /// The year in progress so far, in double precision: its goods `[T][G][KG]`
+    /// and its towns `[T][KT]` (`GOODS_FIELDS`, `TOWN_FIELDS`). For the test
+    /// that the month's ledger agrees with the books (`tests/ledger.rs`).
+    pub fn year_so_far(&self) -> (&[f64], &[f64]) {
+        (&self.cur.goods, &self.cur.towns)
     }
 
     /// The carting paid in the k-th year of the run, by what was carted: the
@@ -943,6 +935,25 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     let a = &mut b.cur;
     let mk = &mut b.mk;
     let (mut rents, mut fam_rents) = (0.0, 0.0);
+    // what the buyers got, from the month's ledger
+    let lg = m.ledger;
+    let mach_got = lg.got((Buyer::LandMachinery, Trade::Day)).expect("the land's machinery is always asked");
+    // machines: the books count the land's other goods (nitrogen's and
+    // breeding's chemicals) as they count what its machines for tasks got
+    // (run goods and plant, added into one), bought out of its revenue
+    let land_tasks = match (lg.got((Buyer::LandChemicals, Trade::Day)), lg.together(&[(Buyer::LandTasks, Trade::Day), (Buyer::LandTasks, Trade::Plant)])) {
+        (Some(c), Some((_, l))) => {
+            let mut x = c.clone();
+            for (v, y) in x.data.iter_mut().zip(&l.data) {
+                *v += *y;
+            }
+            Some(Cow::Owned(x))
+        }
+        (Some(c), None) => Some(Cow::Borrowed(c)),
+        (None, Some((_, l))) => Some(l),
+        (None, None) => None,
+    };
+    let use_f = lg.got((Buyer::Works, Trade::Day)).expect("the works are always asked");
 
     // ---- the land. There are tens of thousands of units and each of the month's
     // arrays over them is a quarter of a megabyte, so as few as will do are read:
@@ -961,8 +972,8 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         r[0] += m.Y[u];
         r[1] += m.Lex[u];
         r[2] += m.cart_ex[u];
-        r[3] += m.mach_got[u];
-        r[4] += m.rail_got[u];
+        r[3] += mach_got[(u, 0)];
+        r[4] += mach_got[(u, 1)];
     }
     // mines: the sinkers of a working being opened are hands at it too, paid the
     // town's wage out of its royalty (`mines::pay_crews`)
@@ -981,7 +992,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             let mut inputs = r[3] * p[(t, gm)] + r[4] * p[(t, gr)];
             // tasks (docs/rules/tasks.md, "On the land"): what the sector's machines
             // for tasks got, run goods and plant alike, bought out of its revenue
-            if let Some(got) = m.land_tasks {
+            if let Some(got) = &land_tasks {
                 for g in 0..G {
                     let x = got[(t * NS + s, g)];
                     if x != 0.0 {
@@ -1024,7 +1035,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         // what the works paid is the carting out to it
         let (mut mat_cost, mut all_cost) = (0.0, 0.0);
         for &g in &b.mgoods[me] {
-            let used = m.use_f[(i, g)];
+            let used = use_f[(i, g)];
             if used > 0.0 {
                 let mat = m.q[i] * m.a[(i, g)];
                 let at_town = m.pin[(i, g)].min(p[(t, g)]);
@@ -1092,26 +1103,29 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         }
     }
 
-    // ---- works being built
-    for (r, &f) in m.oi.iter().enumerate() {
-        let t = m.ot[r];
-        let mut pay = 0.0;
-        for g in 0..G {
-            let got = m.inv_got[(r, g)];
-            if got != 0.0 {
-                a.goods[(t * G + g) * KG + G_BUILD] += got;
-                pay += got * p[(t, g)];
+    // ---- works being built: their orders for capacity, and then (tasks) the
+    // plant of their machines, which is building as a works' capacity is
+    for l in [(Buyer::WorksOrders, Trade::Plant), (Buyer::WorksTasks, Trade::Plant)].into_iter().filter_map(|k| lg.line(k)) {
+        for (r, (&f, &t)) in l.who.iter().zip(&l.town).enumerate() {
+            let mut pay = 0.0;
+            for g in 0..G {
+                let got = l.got[(r, g)];
+                if got != 0.0 {
+                    a.goods[(t * G + g) * KG + G_BUILD] += got;
+                    pay += got * p[(t, g)];
+                }
             }
-        }
-        a.towns[t * KT + T_INVEST] += pay;
-        if keep_works {
-            a.works[f * KW + W_INVEST] += pay;
+            a.towns[t * KT + T_INVEST] += pay;
+            if keep_works {
+                a.works[f * KW + W_INVEST] += pay;
+            }
         }
     }
 
     // ---- railways and canals
-    for (pr, got) in st.projects.iter().zip(m.proj_got) {
-        let t = pr.town;
+    let proj_got = lg.got((Buyer::Ways, Trade::Plant)).expect("the railways and canals are always asked");
+    for (k, pr) in st.projects.iter().enumerate() {
+        let (t, got) = (pr.town, proj_got.row(k));
         let mut pay = 0.0;
         for g in 0..G {
             if got[g] != 0.0 {
@@ -1126,10 +1140,14 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         mk[t * kinds + hk(T_PAY_PROJ)] += wages;
     }
     // ---- the university's rooms, bought by the treasury as a project's materials
-    for &(t, g, got) in m.uni_got {
-        if got != 0.0 {
-            a.goods[(t * G + g) * KG + G_PROJ] += got;
-            a.towns[t * KT + T_PROJECTS] += got * p[(t, g)];
+    if let Some(l) = lg.line((Buyer::University, Trade::Plant)) {
+        let g = l.good(0);
+        for (r, &t) in l.town.iter().enumerate() {
+            let got = l.got[(r, 0)];
+            if got != 0.0 {
+                a.goods[(t * G + g) * KG + G_PROJ] += got;
+                a.towns[t * KT + T_PROJECTS] += got * p[(t, g)];
+            }
         }
     }
 
@@ -1137,6 +1155,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree,
     // and all that is left of a good that does not keep, which is then spoiled)
     let decay = crate::tree::month_loss(C, P);
+    let hh_got = lg.got((Buyer::Households, Trade::Day)).expect("the households are always asked");
+    let lord_got = lg.got((Buyer::Landlords, Trade::Day)).expect("the landlords are always asked");
+    let cart_tasks = lg.together(&[(Buyer::Lorries, Trade::Day), (Buyer::Lorries, Trade::Plant)]);
     for t in (0..T).filter(|&t| st.town_active[t]) {
         // families spend through their seat's landlords: their part of what the
         // landlords bought is their part of the budget (`families::pay_spending`)
@@ -1158,7 +1179,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             a.towns[kt + T_NAVVIES] += st.cn.navvies[t];
         }
         // the lorry: the households' purchase of their lorries' oil and plant
-        if let Some(got) = m.cart_tasks {
+        if let Some((_, got)) = &cart_tasks {
             for g in 0..G {
                 let x = got[(t, g)];
                 if x != 0.0 {
@@ -1169,19 +1190,19 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         }
         for g in 0..G {
             let k = (t * G + g) * KG;
-            let lord = m.lord_got[(t, g)];
-            a.goods[k + G_HH] += m.hh_got[(t, g)];
+            let lord = lord_got[(t, g)];
+            a.goods[k + G_HH] += hh_got[(t, g)];
             a.goods[k + G_FAM] += lord * fam_share;
             a.goods[k + G_LORDS] += lord * (1.0 - fam_share);
             a.goods[k + G_MADE] += m.prod_TG[(t, g)];
             a.goods[k + G_SENT] += m.exports[(t, g)];
             a.goods[k + G_RECV] += m.imports[(t, g)];
-            a.goods[k + G_ASKED] += m.R[(t, g)];
+            a.goods[k + G_ASKED] += lg.asked[(t, g)];
             // the stock, step by step as econ::step_month moves it: sales out, what
             // is left decays, the month's make in, never below nothing; then the
             // trade, and never below nothing again. Where more was sold than was
             // in store the floor makes up the difference: that is `oversold`.
-            let sold = m.sold[(t, g)];
+            let sold = lg.sold[(t, g)];
             let left = b.stock[(t, g)] - sold;
             let v1 = left * (1.0 - decay[g]) + m.prod_TG[(t, g)];
             let v2 = v1.max(0.0) + m.imports[(t, g)] - m.exports[(t, g)];
@@ -1198,7 +1219,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             for g in 0..G {
                 let pr = C.props[(g, s)];
                 if pr > 0.0 {
-                    paid += m.share[(t, g * S + s)] / pr * m.fill[(t, g)] * p[(t, g)];
+                    paid += m.share[(t, g * S + s)] / pr * lg.fill[(t, g)] * p[(t, g)];
                 }
             }
             a.needs[(t * S + s) * 2] += m.q_hh[(t, s)] * st.pop[t] * paid;

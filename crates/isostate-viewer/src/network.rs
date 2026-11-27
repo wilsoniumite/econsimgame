@@ -597,15 +597,9 @@ const APPROACH_PAST: f32 = 0.03;
 /// simulation has a bridge or a ford, and no more often. Where it would
 /// not, or where `route` takes the road round a meander along the bank, the
 /// way is `route`'s. On the new land it then keeps off standing water as
-/// `route` does (`round_water`).
-///
-/// `seek` is asked for the way of each stretch between two of those points
-/// (from a point and its direction to the next): its points after the first,
-/// or none for the curve. A road on the new land seeks its way over the
-/// ground there (`road_ground`); where the way it finds crosses a river more
-/// often than the straight line, or stands in water, the curve is drawn
-/// instead, as it is with no seeking at all.
-pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool, seek: &mut dyn FnMut(Vec2, Vec2, Vec2, Vec2) -> Option<Vec<Vec2>>) -> Way {
+/// `route` does (`round_water`). (Drawn only for a run that keeps no
+/// courses of its own: `road_course`.)
+pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool) -> Way {
     let straight = route_rivers(g, a, b, round);
     // (a way that goes round a meander, a lake or the tide keeps the way it had)
     if !straight.straight() || route(g, a, b, round).water != OnWater::None {
@@ -640,23 +634,12 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool,
     if stops.windows(2).any(|w| (w[1].0 - w[0].0).dot(chord) < 0.03) {
         return route(g, a, b, round);
     }
-    let curve = |stops: &[(Vec2, Vec2)], seek: &mut dyn FnMut(Vec2, Vec2, Vec2, Vec2) -> Option<Vec<Vec2>>| {
-        let mut pts: Vec<Vec2> = vec![a];
-        for (i, w) in stops.windows(2).enumerate() {
-            // (across a bridge or a ford and its ramps, every second stretch, the way runs
-            // straight and seeks nothing)
-            match (i % 2 == 0).then(|| seek(w[0].0, w[0].1, w[1].0, w[1].1)).flatten() {
-                Some(found) => pts.extend(found),
-                None => {
-                    let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };
-                    let n = ((w[0].0.distance(w[1].0) / 0.04).ceil() as usize).max(4);
-                    pts.extend((1..=n).map(|i| ends.point(i as f32 / n as f32, 0.0)));
-                }
-            }
-        }
-        pts
-    };
-    let mut pts = curve(&stops, seek);
+    let mut pts: Vec<Vec2> = vec![a];
+    for w in stops.windows(2) {
+        let ends = crate::course::Ends { a: w[0].0, da: w[0].1, b: w[1].0, db: w[1].1 };
+        let n = ((w[0].0.distance(w[1].0) / 0.04).ceil() as usize).max(4);
+        pts.extend((1..=n).map(|i| ends.point(i as f32 / n as f32, 0.0)));
+    }
     // it crosses each river as often as the straight line it is drawn for does, and only there
     let count = |pts: &[Vec2]| {
         let mut by: Vec<(u32, usize)> = Vec::new();
@@ -671,13 +654,7 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool,
         by.sort_unstable();
         by
     };
-    let want = count(&[a, b]);
-    // (a way sought over the ground that crosses a river more often, or stands in a lake or
-    // the tide, gives way to the curve)
-    if count(&pts) != want || (g.laid.is_some() && standing_on(g, &pts)) {
-        pts = curve(&stops, &mut |_, _, _, _| None);
-    }
-    if count(&pts) != want {
+    if count(&pts) != count(&[a, b]) {
         return route(g, a, b, round);
     }
     // each crossing as the straight line has it, crossed the way the curve runs there
@@ -687,6 +664,23 @@ pub fn bent_route(g: &Ground, a: Vec2, b: Vec2, da: Vec2, db: Vec2, round: bool,
         return way;
     }
     round_water(g, a, b, way)
+}
+
+/// The way of a road drawn on the course the simulation keeps for it (the
+/// core's courses.rs: from one place to the next, found over the ground and
+/// pulled taut; `Worn::course`), through `pts` as they are drawn
+/// (`road_course::eased`). It crosses a river wherever its line crosses one,
+/// square or aslant as its line runs there, and stands over standing water,
+/// on a causeway, only where its course does: the simulation's prices for
+/// the water keep it off wherever there is ground to go round by.
+pub fn kept_way(g: &Ground, pts: Vec<Vec2>) -> Way {
+    let mut crossings = Vec::new();
+    for w in pts.windows(2) {
+        let along = (w[1] - w[0]).normalize_or(Vec2::X);
+        crossings.extend(crate::rivers::crossings(&g.rivers, &g.water, w[0], w[1]).into_iter().map(|(at, river, half, level)| (at, river, half, level, along)));
+    }
+    let water = if g.laid.is_some() && standing_on(g, &pts) { OnWater::Causeway } else { OnWater::None };
+    Way { pts, crossings, water }
 }
 
 /// The road from a link's way as a cart drives it (`driven`), for any way.
@@ -1170,6 +1164,13 @@ impl Default for Worn {
 
 #[derive(Default)]
 struct WornKnown {
+    /// whether what is known was read from the simulation's ways' log
+    /// (`read_through`) rather than worked out by the rule (`wear_through`)
+    logged: bool,
+    /// read from the log: each cell's place, where its ways meet, in cells
+    places: Vec<Option<Vec2>>,
+    /// and each link's course (`c * 4 + slot`), from its own cell's place to its neighbour's, in cells
+    courses: std::collections::HashMap<u32, std::sync::Arc<[Vec2]>>,
     /// how many years have been gone through
     through: usize,
     /// for each link, the years of wear so far (with no window), or the last
@@ -1204,6 +1205,91 @@ impl Worn {
                 *known = WornKnown::default();
             }
         }
+    }
+
+    /// The course the simulation keeps for the link between cells `c` and `m`
+    /// as year `k` ends (the core's courses.rs), from `c`'s place to `m`'s, in
+    /// cells; None where the run keeps no courses, or none for this link yet.
+    pub fn course(&self, r: &Replay, k: usize, c: usize, m: usize) -> Option<std::sync::Arc<[Vec2]>> {
+        let (lo, hi) = (c.min(m), c.max(m));
+        let (o, s) = isostate_core::traffic::link(r.w, lo, hi)?;
+        let mut known = self.known.lock().unwrap();
+        if !logged(r) || k >= r.filled.min(r.ny) {
+            return None;
+        }
+        read_through(r, &mut known, k);
+        let pts = known.courses.get(&((o * 4 + s) as u32))?.clone();
+        Some(if o == c { pts } else { pts.iter().rev().copied().collect() })
+    }
+
+    /// Where cell `c`'s ways meet as year `k` ends, as the simulation keeps it
+    /// (its place); None where the run keeps no courses, or none has reached the cell.
+    pub fn place(&self, r: &Replay, k: usize, c: usize) -> Option<Vec2> {
+        let mut known = self.known.lock().unwrap();
+        if !logged(r) || k >= r.filled.min(r.ny) {
+            return None;
+        }
+        read_through(r, &mut known, k);
+        known.places.get(c).copied().flatten()
+    }
+}
+
+thread_local! {
+    /// In a test: work the roads drawn out by the viewer's own rule of wear,
+    /// as for a record that keeps no ways' log, to set the two side by side.
+    pub static WEAR_IN_TEST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the roads are read from the simulation's ways' log (the core's
+/// courses.rs): wherever the run keeps one.
+pub fn logged(r: &Replay) -> bool {
+    r.traffic.ways.kept() && !WEAR_IN_TEST.with(|a| a.get())
+}
+
+/// Where the ways of cell `c` meet in year `k`: the simulation's place for it
+/// where the run keeps one (`Worn::place`), else its meeting place (`centres`).
+pub fn ways_meet(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize) -> Vec2 {
+    g.worn.place(r, k, c).unwrap_or(Vec2::new(cen[c].0, cen[c].1))
+}
+
+/// Go through the ways' log up to year `k` (`Worn::course`): each year's
+/// places and courses kept, and the links drawn that year, as bits by link.
+/// A year whose log is the whole book starts from nothing; a year a live
+/// game never handed over draws what the year before drew.
+fn read_through(r: &Replay, known: &mut WornKnown, k: usize) {
+    let n4 = r.n * 4;
+    if !known.logged || known.on.len() != n4 {
+        *known = WornKnown { logged: true, places: vec![None; r.n], on: vec![false; n4], ..Default::default() };
+    }
+    let unit = isostate_core::courses::UNIT;
+    let at = |p: [u16; 2]| Vec2::new(p[0] as f32 / unit, p[1] as f32 / unit);
+    while known.through <= k {
+        if let Some((whole, year)) = r.traffic.ways.year(known.through) {
+            if whole {
+                known.places.iter_mut().for_each(|p| *p = None);
+                known.courses.clear();
+                known.on.iter_mut().for_each(|o| *o = false);
+            }
+            for (c, p, _) in year.places {
+                if let Some(slot) = known.places.get_mut(c as usize) {
+                    *slot = Some(at(p));
+                }
+            }
+            for (l, drawn, course) in year.links {
+                if let Some(o) = known.on.get_mut(l as usize) {
+                    *o = drawn;
+                }
+                if let Some(course) = course {
+                    known.courses.insert(l, course.pts.iter().map(|&p| at(p)).collect());
+                }
+            }
+        }
+        let mut bits = vec![0u64; n4.div_ceil(64)];
+        for (l, _) in known.on.iter().enumerate().filter(|x| *x.1) {
+            bits[l / 64] |= 1 << (l % 64);
+        }
+        known.years.push(bits);
+        known.through += 1;
     }
 }
 
@@ -1260,7 +1346,14 @@ pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)>
         return today;
     }
     let mut known = worn.known.lock().unwrap();
-    wear_through(r, worn, &mut known, k);
+    // (the simulation's own links drawn, where the run keeps its ways' log: the same links
+    // by the same rule, `the_roads_drawn_are_those_the_carts_wore_and_close_few_squares`)
+    let log = logged(r);
+    if log {
+        read_through(r, &mut known, k);
+    } else {
+        wear_through(r, worn, &mut known, k);
+    }
     let (w, h, n) = (r.w, r.h, r.n);
     let tr = &r.trans[k * n..(k + 1) * n];
     let state = |c: usize, m: usize| (tr[c] & 64 != 0 && tr[m] & 64 != 0) || (tr[c] & 128 != 0 && tr[m] & 128 != 0);
@@ -1283,7 +1376,7 @@ pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)>
             }
             // (road_segments gives the same links in the same order, less some diagonals)
             let drawn_today = today.next_if(|&(a, b, _)| a == c && b == m).is_some();
-            let keep = (state(c, m) && drawn_today) || known.worn(k, c * 4 + s);
+            let keep = (!log && state(c, m) && drawn_today) || known.worn(k, c * 4 + s);
             if keep {
                 out.push((c, m, lv));
             }
@@ -1299,7 +1392,10 @@ pub fn drawn_links(r: &Replay, worn: &Worn, k: usize) -> Vec<(usize, usize, u8)>
 fn wear_through(r: &Replay, worn: &Worn, known: &mut WornKnown, k: usize) {
     let (n, rule) = (r.n, worn.rule);
     if known.on.len() != n * 4 {
-        *known = WornKnown { through: 0, count: vec![0; n * 4], bits: vec![0; n * 4], heavy: vec![0; n * 4], on: vec![false; n * 4], years: Vec::new() };
+        *known = WornKnown { through: 0, count: vec![0; n * 4], bits: vec![0; n * 4], heavy: vec![0; n * 4], on: vec![false; n * 4], years: Vec::new(), ..Default::default() };
+    }
+    if known.logged {
+        *known = WornKnown::default();
     }
     let window = rule.window.min(32);
     let mask = if window == 0 { 0 } else { u32::MAX >> (32 - window) };

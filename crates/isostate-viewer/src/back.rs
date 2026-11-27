@@ -203,6 +203,8 @@ fn cut_years(r: &mut Replay, kept: usize) {
     if t.pairs.iter().all(|p| p.is_empty()) {
         t.pairs.clear();
     }
+    // (courses: the ways' log of the years forgotten)
+    t.ways.forget(kept);
 }
 
 /// The panels and the scenery that a take back makes forget.

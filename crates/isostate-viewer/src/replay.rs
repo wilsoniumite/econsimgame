@@ -1200,7 +1200,8 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     }
     let layout = serde_json::from_slice::<SquaresOnly>(&buf[4..base]).ok().and_then(|s| s.squares).map(|s| s.layout);
     match layout {
-        Some(l) if l == isostate_core::squares::LOG_LAYOUT && has("sq_first") && has("sq_log") => {
+        // (layout 3 is layout 2's log with the holdings' log beside it, `sq_hold`, not read here yet)
+        Some(l) if isostate_core::squares::LOG_READS.contains(&l) && has("sq_first") && has("sq_log") => {
             let (first, log) = (i32s("sq_first")?, typed(path, buf, base, find("sq_log")?, "uint8")?);
             if first.len() != ny + 1 {
                 return Err(format!("{path}: its squares' log says where {} years begin, and the run has {ny}", first.len().saturating_sub(1)));
@@ -1212,7 +1213,7 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             // (each year is read when it is first asked for: `Squares::cell`, `Squares::year`)
             builds.squares = Squares::of_record(log.into(), &first, header.meta.start_year as i64);
         }
-        Some(l) if l != isostate_core::squares::LOG_LAYOUT => eprintln!("{path} keeps its squares in a layout the viewer does not know ({l}; it reads {}), so they are left out", isostate_core::squares::LOG_LAYOUT),
+        Some(l) if !isostate_core::squares::LOG_READS.contains(&l) => eprintln!("{path} keeps its squares in a layout the viewer does not know ({l}; it reads {:?}), so they are left out", isostate_core::squares::LOG_READS),
         _ => eprintln!("{}", no_squares(path)),
     }
     if has("town_know") && !header.techs.is_empty() {
@@ -1247,6 +1248,29 @@ pub(crate) fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             traffic.goods = goods;
             traffic.mode = mode;
         }
+    }
+    // courses (the core's docs/rules/courses.md): the ways' log, both arrays or neither, in
+    // the layout the header names; a run that keeps none draws its roads as the viewer finds them
+    #[derive(Deserialize)]
+    struct WaysOnly {
+        ways: Option<SquaresHeader>,
+    }
+    let ways_layout = serde_json::from_slice::<WaysOnly>(&buf[4..base]).ok().and_then(|s| s.ways).map(|s| s.layout);
+    match ways_layout {
+        Some(isostate_core::courses::LOG_LAYOUT) if has("way_first") && has("way_log") => {
+            let (first, log) = (i32s("way_first")?, typed(path, buf, base, find("way_log")?, "uint8")?);
+            if first.len() != ny + 1 {
+                return Err(format!("{path}: its ways' log says where {} years begin, and the run has {ny}", first.len().saturating_sub(1)));
+            }
+            let first: Vec<usize> = first.iter().map(|&f| f.max(0) as usize).collect();
+            if let Some(k) = (0..ny).find(|&k| first[k] > first[k + 1] || first[k + 1] > log.len()) {
+                return Err(format!("{path}: its ways' log of year {k} runs from byte {} to {}, and the log has {}", first[k], first[k + 1], log.len()));
+            }
+            traffic.ways = crate::traffic::Ways::of_record(log.into(), &first);
+        }
+        Some(l) => eprintln!("{path} keeps its ways in a layout the viewer does not know ({l}; it reads {}), so its roads are drawn as the viewer finds them", isostate_core::courses::LOG_LAYOUT),
+        None if traffic.kept() => eprintln!("{path} keeps no courses of its ways (the simulation has kept them since 27 November 2026): its roads are drawn on curves between the cells' meeting places, as before"),
+        None => {}
     }
     if has("acct_trade_off") && has("acct_trade_key") && has("acct_trade_val") {
         #[derive(Deserialize)]

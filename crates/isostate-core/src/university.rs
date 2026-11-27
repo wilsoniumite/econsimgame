@@ -33,6 +33,7 @@ use serde::Serialize;
 
 use crate::content::Content;
 use crate::facts::Kind;
+use crate::ledger::{Fold, Line};
 use crate::mat::Mat;
 use crate::params::Params;
 use crate::sim::RunResult;
@@ -610,13 +611,14 @@ pub fn count_staff(st: &State, P: &Params, employment: &mut [f64]) {
 
 /// What each town's university orders of building work this month, in units:
 /// a twelfth of the rooms it lacks and what wears out, no more than
-/// `ROOMS_PURSE` of the treasury will pay for at the town's price. Empty while
-/// nothing is wanted.
-pub fn rooms_order(st: &State, C: &Content, P: &Params) -> Vec<(usize, usize, f64)> {
+/// `ROOMS_PURSE` of the treasury will pay for at the town's price: the
+/// ledger's line of the university's rooms (ledger.rs), a row for each town
+/// that orders, in one column, building. None while nothing is wanted.
+pub fn rooms_order(st: &State, C: &Content, P: &Params) -> Option<Line> {
     if !on(P) || st.purse.uni.students.is_empty() {
-        return Vec::new();
+        return None;
     }
-    let Some(&g) = C.good_index.get("building") else { return Vec::new() };
+    let &g = C.good_index.get("building")?;
     let u = &st.purse.uni;
     let per = P.state.university_rooms * st.purse.cut;
     let mut out = Vec::new();
@@ -632,22 +634,30 @@ pub fn rooms_order(st: &State, C: &Content, P: &Params) -> Vec<(usize, usize, f6
         let units = units.min(purse / price);
         if units > 0.0 {
             purse -= units * price;
-            out.push((t, g, units));
+            out.push((t, units));
         }
     }
-    out
+    if out.is_empty() {
+        return None;
+    }
+    let town: Vec<usize> = out.iter().map(|x| x.0).collect();
+    let ask = Mat::from_vec(out.len(), 1, out.iter().map(|x| x.1).collect());
+    Some(Line::of_goods(vec![g], town.clone(), town, Fold::EachRow, ask))
 }
 
 /// The rooms that came this month (`econ::step_month`, beside the railways'
 /// materials): put up, and paid for out of the treasury into the town's
-/// merchants. `got` is each order's units got; the pay goes into `merch` and
-/// `sales_value`. Then every town's rooms wear a month.
-pub fn rooms_got(st: &mut State, P: &Params, orders: &[(usize, usize, f64)], got: &[f64], merch: &mut [f64], sales_value: &mut [f64]) {
+/// merchants. `rooms` is the ledger's line of them, its got each order's units
+/// got; the pay goes into `merch` and `sales_value`. Then every town's rooms
+/// wear a month.
+pub fn rooms_got(st: &mut State, P: &Params, rooms: &Line, merch: &mut [f64], sales_value: &mut [f64]) {
     if !on(P) {
         return;
     }
     let mut paid = 0.0;
-    for (&(t, g, _), &n) in orders.iter().zip(got) {
+    let g = rooms.good(0);
+    for (r, &t) in rooms.town.iter().enumerate() {
+        let n = rooms.got[(r, 0)];
         let pay = n * st.price[(t, g)];
         if !(pay > 0.0) {
             continue;

@@ -37,6 +37,66 @@ pub struct Traffic {
     pub mode: Vec<u8>,
     /// each year's trade between each pair of towns, by seller and then buyer
     pub pairs: Vec<Vec<Pair>>,
+    /// where the ways run, as the simulation keeps them (the core's courses.rs)
+    pub ways: Ways,
+}
+
+/// The ways' log, year by year (the core's docs/rules/courses.md, "In the
+/// record"): each year's places chosen, courses found and links drawn or no
+/// longer drawn, read from a record's `way_log` or handed over by a live
+/// game a year at a time (`LiveYear::ways`). A year whose log is the whole
+/// book (a live game that missed a year) stands alone. The bytes are kept as
+/// they come and read by `network::Worn`, which goes through the years in
+/// order. Empty in a run that keeps no courses: the port's rules, the old
+/// island, and a record made before 27 November 2026.
+#[derive(Clone, Default, Debug)]
+pub struct Ways {
+    /// By year: whether its log is the whole book, the bytes, and where the year's begin and end in them.
+    years: Vec<Option<(bool, std::sync::Arc<[u8]>, usize, usize)>>,
+}
+
+impl Ways {
+    /// Whether the run keeps its ways.
+    pub fn kept(&self) -> bool {
+        self.years.iter().any(Option::is_some)
+    }
+
+    /// Year `k`'s log, read, and whether it is the whole book; None for a year not filled.
+    /// Bytes that do not read (a file damaged inside the log) are said so, and read as no change.
+    pub fn year(&self, k: usize) -> Option<(bool, isostate_core::courses::WaysYear)> {
+        let (whole, log, a, b) = self.years.get(k)?.as_ref()?;
+        let year = isostate_core::courses::decode_year(&log[*a..*b]).unwrap_or_else(|e| {
+            eprintln!("the ways of year {k} do not read ({e}), and are left out");
+            Default::default()
+        });
+        Some((*whole, year))
+    }
+
+    /// The years of a record's log: bytes `first[k] .. first[k + 1]` of `log` are year k's.
+    pub fn of_record(log: std::sync::Arc<[u8]>, first: &[usize]) -> Ways {
+        Ways { years: (0..first.len().saturating_sub(1)).map(|k| Some((false, log.clone(), first[k], first[k + 1]))).collect() }
+    }
+
+    /// Write year `k` of `ny` as a game hands it over (`LiveYear::ways`).
+    pub fn take_year(&mut self, ny: usize, k: usize, whole: bool, log: &[u8]) {
+        if k >= ny {
+            return;
+        }
+        if self.years.len() < ny {
+            self.years.resize(ny, None);
+        }
+        self.years[k] = Some((whole, log.into(), 0, log.len()));
+    }
+
+    /// Forget every year from `kept` on, as a take back does (`back::forget`).
+    pub fn forget(&mut self, kept: usize) {
+        for y in self.years.iter_mut().skip(kept) {
+            *y = None;
+        }
+        if self.years.iter().all(Option::is_none) {
+            self.years.clear();
+        }
+    }
 }
 
 impl Traffic {
@@ -295,7 +355,7 @@ fn line(g: &Ground, a: (f32, f32), b: (f32, f32)) -> Vec<Vec3> {
 /// where there is no road under it: what the year's carting took over a
 /// link the carts had not yet worn is left out (on island 7, 6.7 per cent
 /// of the carting's weight by length in 1850, 0.5 in 1900, 0.1 in 2050), and
-/// what is drawn follows the road's own way (`network::route`). Carting over
+/// what is drawn follows the road's own way (`network::course`). Carting over
 /// tracks and open ground, which the map has never drawn as a road, is
 /// drawn as before.
 pub fn drawn_links(r: &Replay, worn: &crate::network::Worn, k: usize, sc: &Scale) -> Vec<(usize, usize, f32, u8)> {
@@ -344,7 +404,9 @@ pub fn ribbons(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sc: &Scale,
                 seg.into_iter().skip(if j == 0 { 0 } else { 1 })
             }).collect()
         } else {
-            line(g, cen[c], cen[d])
+            // (from where the ways of the one square meet to where the other's do)
+            let (a, b) = (crate::network::ways_meet(r, g, cen, k, c), crate::network::ways_meet(r, g, cen, k, d));
+            line(g, (a.x, a.y), (b.x, b.y))
         };
         // a hair higher for each one laid, so the heavier lie over the lighter where they meet
         let up = 1e-6 * i as f32;

@@ -687,6 +687,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     // owners: the year's sums begin here, as the books do (the warm-up's shares stand)
     crate::owners::start(&mut st);
     // squares (docs/rules/squares.md): the place of what stands as the run opens
+    // courses (docs/rules/courses.md): the places and courses of the roads that stand
+    crate::courses::open(&mut st, &C, P, y0);
     crate::squares::open(&mut st, &C, P, y0);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
@@ -839,6 +841,8 @@ pub fn end_year(sim: &mut Sim) {
     // care (docs/rules/care.md): the watcher's year, after December's month
     crate::care::end_year(st, C, P, year);
     // squares (docs/rules/squares.md): the place of what the books now hold; read by no rule
+    // courses (docs/rules/courses.md): the ways the carts wore, their places and courses; read by no rule
+    crate::courses::close_year(st, C, P, year);
     crate::squares::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // engel: the date the lean reads in next year's months, whatever the switches

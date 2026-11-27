@@ -467,6 +467,72 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
             }
         }
     }
+    // ISOSTATE_PLAN_SQUARES=1: the simulation's squares of 125 m laid over the plan by their
+    // tenant (house blocks brick, a town's open ground buff, works slate, pits near black, a
+    // park green, derelict ground grey), the squares' edges faintly, and the year's roads
+    // as drawn (dark), the courses the simulation keeps for them (white, under) and where
+    // each cell's ways meet (red): the houses' squares against the drawn road
+    if std::env::var_os("ISOSTATE_PLAN_SQUARES").is_some() {
+        use isostate_core::squares::{Tenant, PER_CELL};
+        let side = (PER_CELL as f32).sqrt() as usize;
+        let sq = r.builds.squares.year(k);
+        for (i, c) in img.iter_mut().enumerate() {
+            let (x, z) = (x0 + ((i % w) as f32 + 0.5) * px, z0 + ((i / w) as f32 + 0.5) * px);
+            if x < 0.0 || z < 0.0 || x >= r.w as f32 || z >= r.h as f32 {
+                continue;
+            }
+            let cell = z as usize * r.w + x as usize;
+            let (qx, qz) = (((x.fract() * side as f32) as usize).min(side - 1), ((z.fract() * side as f32) as usize).min(side - 1));
+            let tint = match sq.get(&cell).map(|s| s[qz * side + qx].tenant) {
+                Some(Tenant::Houses(_)) => Some([0.72, 0.36, 0.26]),
+                Some(Tenant::Open(_)) => Some([0.86, 0.78, 0.6]),
+                Some(Tenant::Works(_)) => Some([0.42, 0.45, 0.55]),
+                Some(Tenant::Pit(_)) => Some([0.15, 0.14, 0.13]),
+                Some(Tenant::Park(_)) => Some([0.35, 0.6, 0.3]),
+                Some(Tenant::Derelict(_)) => Some([0.55, 0.55, 0.52]),
+                _ => None,
+            };
+            if let Some(t) = tint {
+                *c = [0.25 * c[0] + 0.75 * t[0], 0.25 * c[1] + 0.75 * t[1], 0.25 * c[2] + 0.75 * t[2]];
+            }
+            let edge = |v: f32| (v * side as f32).floor() != ((v + px) * side as f32).floor();
+            if ppc >= 60.0 && (edge(x) || edge(z)) {
+                *c = [0.8 * c[0] + 0.2, 0.8 * c[1] + 0.2, 0.8 * c[2] + 0.2];
+            }
+        }
+        let cen = crate::network::centres(r);
+        let mut line = |pts: &[bevy::math::Vec2], half: isize, col: [f32; 3]| {
+            for s in pts.windows(2) {
+                let steps = ((s[0].distance(s[1]) * ppc).ceil() as usize).max(1);
+                for t in 0..=steps {
+                    let p = s[0].lerp(s[1], t as f32 / steps as f32);
+                    let (i, j) = (((p.x - x0) * ppc).floor() as isize, ((p.y - z0) * ppc).floor() as isize);
+                    for dj in -half..=half {
+                        for di in -half..=half {
+                            let (a, b) = (i + di, j + dj);
+                            if a >= 0 && b >= 0 && (a as usize) < w && (b as usize) < h {
+                                img[b as usize * w + a as usize] = col;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        let links = crate::network::drawn_links(r, &g.worn, k);
+        for &(c, m, _) in &links {
+            if let Some(course) = g.worn.course(r, k, c, m) {
+                line(&course, 2, [1.0, 1.0, 1.0]);
+            }
+        }
+        for &(c, m, _) in &links {
+            line(&crate::network::course(r, g, &cen, c, m, k).pts, 0, [0.1, 0.1, 0.1]);
+        }
+        for c in 0..r.n {
+            if let Some(p) = g.worn.place(r, k, c) {
+                line(&[p - bevy::math::Vec2::splat(1.5 * px), p + bevy::math::Vec2::splat(1.5 * px)], 2, [0.85, 0.1, 0.1]);
+            }
+        }
+    }
     let rgb: Vec<u8> = img.iter().flat_map(|c| c.map(|v| (v.clamp(0.0, 1.0) * 255.0) as u8)).collect();
     match write_picture(&path, w, h, &rgb) {
         Ok(()) => eprintln!("wrote the plan to {path}"),

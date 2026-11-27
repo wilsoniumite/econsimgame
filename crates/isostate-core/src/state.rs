@@ -640,4 +640,8 @@ pub struct State {
     /// tenant and the year it was taken, and each works' and working's squares.
     /// Read by no rule.
     pub sq: crate::squares::SquareBook,
+    // ---------------- courses (docs/rules/courses.md; empty while `courses.enabled` is off)
+    /// Which ways the carts wore, each cell's place and each way's course,
+    /// kept for the squares and the record. Read by no rule.
+    pub wc: crate::courses::CourseBook,
 }

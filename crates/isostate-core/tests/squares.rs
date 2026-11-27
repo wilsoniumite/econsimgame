@@ -141,12 +141,14 @@ fn nothing_moves_with_the_switch() {
     assert!(on.state.sq.kept() && !off.state.sq.kept());
     assert!(series_csv(on) == series_csv(off), "the months (the economy and the books) moved with the squares");
     assert!(events_json(on) == events_json(off), "the news moved with the squares");
-    // the record, packed with the same parameters, is the same to the byte but for the squares' log:
-    // the squares write nothing else to it
+    // the record, packed with the same parameters, is the same to the byte but for the squares' log
+    // and the holdings' beside it: the squares write nothing else to it
     let mut on_rec = on.rec.clone();
     assert!(!on_rec.squares.is_empty() && off.rec.squares_first.is_empty());
     on_rec.squares.clear();
     on_rec.squares_first.clear();
+    on_rec.sq_hold.clear();
+    on_rec.sq_hold_first.clear();
     let pack = |r: &RunResult, rec: &record::Record| record::pack(&r.state, &r.content, &off.params, &r.events, rec, "game", false);
     let (a, b) = (pack(on, &on_rec), pack(off, &off.rec));
     let n = u32::from_le_bytes([a[0], a[1], a[2], a[3]]) as usize;

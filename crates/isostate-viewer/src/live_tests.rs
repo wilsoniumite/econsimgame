@@ -1544,6 +1544,9 @@ fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
     let s = &game.sim;
     let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
     let r = replay::parse("test.bin", &bytes).expect("the game's record reads");
+    // (the viewer's own rule, as for a record that keeps no ways' log: the record does, and is
+    // drawn by it, so the rule is set beside it at the end)
+    crate::network::WEAR_IN_TEST.with(|a| a.set(true));
     let worn = crate::network::Worn::default();
     let last = (game.last_year() - s.content.start_year) as usize;
     let mut before: Vec<(usize, usize, u8)> = Vec::new();
@@ -1570,6 +1573,29 @@ fn the_roads_drawn_are_those_the_carts_wore_and_close_few_squares() {
     let off = crate::network::drawn_links(&r, &worn, last);
     crate::network::ALL_IN_TEST.with(|a| a.set(false));
     assert_eq!(off, crate::network::road_segments(&r, last));
+    // the simulation keeps the same links by the same rule (the core's courses.rs): its
+    // ways' log, read year by year, draws every link this draws, and no other
+    assert!(s.params.courses.enabled, "the case is played with the courses kept");
+    let mut kept = std::collections::BTreeSet::new();
+    for k in 0..=last {
+        let bytes = &s.rec.way_log[s.rec.way_first[k] as usize..s.rec.way_first[k + 1] as usize];
+        for (l, drawn, _) in isostate_core::courses::decode_year(bytes).expect("the ways' log reads").links {
+            if drawn {
+                kept.insert(l as usize);
+            } else {
+                kept.remove(&(l as usize));
+            }
+        }
+        let drawn: std::collections::BTreeSet<usize> = crate::network::drawn_links(&r, &worn, k).into_iter().map(|(c, m, _)| {
+            let (o, slot) = isostate_core::traffic::link(r.w, c, m).unwrap();
+            o * 4 + slot
+        }).collect();
+        assert!(kept == drawn, "year {k}: the simulation keeps {} links drawn and the viewer draws {}; {} differ", kept.len(), drawn.len(), kept.symmetric_difference(&drawn).count());
+    }
+    crate::network::WEAR_IN_TEST.with(|a| a.set(false));
+    // and what is drawn from the record is the simulation's log
+    let logged = crate::network::Worn::default();
+    assert_eq!(crate::network::drawn_links(&r, &logged, last), crate::network::drawn_links(&r, &worn, last));
 }
 
 #[test]
