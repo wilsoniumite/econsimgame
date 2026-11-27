@@ -171,8 +171,13 @@ pub fn wage_bounds(st: &State, P: &Params) -> (f64, f64) {
     (WAGE_LO * anchor(st, P), WAGE_HI * upper(st))
 }
 
-/// What it costs to cart a unit of weight one unit of path.
+/// What it costs to cart a unit of weight one unit of path. Under
+/// `carriage.in_hands` it is the hands a load takes at the island's wage
+/// (docs/rules/carriage.md), and `freight_from` is not read.
 pub fn freight(st: &State, P: &Params) -> f64 {
+    if P.carriage.in_hands {
+        return crate::carriage::island(st, P);
+    }
     if !P.longrun.enabled {
         return P.freight;
     }

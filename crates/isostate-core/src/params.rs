@@ -452,6 +452,10 @@ pub struct Params {
     /// and the record. Read by no rule (not in the Python; see docs/rules/courses.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub courses: crate::courses::CourseParams,
+    /// Carriage in hands: a load takes hands and they are paid a wage (not in
+    /// the Python; off under every set of rules for now; see docs/rules/carriage.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub carriage: crate::carriage::CarriageParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -688,6 +692,7 @@ pub fn default_params() -> Params {
         squares: crate::squares::SquaresParams::default(),
         courses: crate::courses::CourseParams::default(),
         abroad: crate::abroad::AbroadParams::default(),
+        carriage: crate::carriage::CarriageParams::default(),
     }
 }
 

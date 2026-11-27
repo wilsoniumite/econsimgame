@@ -135,7 +135,7 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
         })
         .collect();
     let out = C.method_out[m];
-    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - crate::longrun::freight(st, P) * C.weight[out] * st.dcatch[c]).collect();
+    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - crate::carriage::freight_at(st, P, i) * C.weight[out] * st.dcatch[c]).collect();
     // works: the merchant's spread comes off the price, as it will off the works' revenue
     let spread = works::entry_spread(P, pbar[(i, out)]);
     if spread != 0.0 {
