@@ -1094,6 +1094,107 @@ mod tests {
         assert!(text.contains("row 8: settlers in a year"));
     }
 
+    /// The written check's table: every fact with a band has one, every fact with
+    /// none is printed only, each says how sure it is and where it is from, and no
+    /// start has two facts asking the same.
+    #[test]
+    fn the_written_table_is_whole() {
+        for f in &WRITTEN {
+            match f.class {
+                Class::Band | Class::Wrong => assert!(f.lo.is_some() || f.hi.is_some(), "{} has no band", f.asked),
+                Class::Open => assert!(f.lo.is_none() && f.hi.is_none(), "{} is printed only but has a band", f.asked),
+            }
+            assert!(!f.sure.is_empty() && !f.source.is_empty(), "{}", f.asked);
+        }
+        for start in ["settled", "landfall"] {
+            let arm = Then { start: start.to_string(), ..Then::default() };
+            let asked: Vec<&str> = WRITTEN.iter().filter(|f| f.start.holds_for(&arm)).map(|f| f.asked).collect();
+            let mut seen = asked.clone();
+            seen.sort();
+            seen.dedup();
+            assert_eq!(seen.len(), asked.len(), "{start}: a fact asked twice");
+        }
+    }
+
+    /// The written check on made-up arms of two islands: a band met, a band
+    /// missed, a fact of the other start left out, a known-wrong fact that is not
+    /// counted, a fact with no band, a reference beside it, and the colony's count.
+    #[test]
+    fn the_written_check() {
+        let arm = |label: &str, start: &str, facts: &[(&str, [f64; 2])]| {
+            let mut t = Then { label: label.to_string(), start: start.to_string(), seeds: vec![1, 2], ..Then::default() };
+            for (name, v) in facts {
+                t.values.insert(name.to_string(), vec![(1, v[0]), (2, v[1])]);
+            }
+            t
+        };
+        let now = arm(
+            "now",
+            "settled",
+            &[
+                (RUNS_FAILED, [0.0, 0.0]),
+                ("pop_1900_vs_1750", [4.8, 5.2]),
+                ("towns_1900", [30.0, 28.0]),
+                ("pop_1900", [600_000.0, 700_000.0]),
+                ("rail_km_1900", [1_200.0, 1_400.0]),
+                ("real_wage_linked_1900_vs_1750", [5.5, 6.0]),
+                ("income_share_work_1900", [0.64, 0.66]),
+            ],
+        );
+        let then = arm("then", "settled", &[("pop_1900_vs_1750", [5.6, 5.8]), ("towns_1900", [20.0, 22.0])]);
+        let find = |asked: &str| WRITTEN.iter().find(|f| f.asked == asked).unwrap();
+        // met, missed, and a fact of one start only
+        let f = find("people over 1750, 1900");
+        assert_eq!(written_met(f, &written_values(f, &now)), Some(true));
+        let f = find("towns in 1900");
+        assert_eq!(written_met(f, &written_values(f, &now)), Some(false));
+        let f = find("people in 1900");
+        assert!(written_values(f, &now).is_empty(), "a landfall fact read on the settled island");
+        // railway a 1,000 people: 1,200 / 600,000 and 1,400 / 700,000 are both 2 km
+        let f = find("railway in 1900, km a 1,000 people");
+        assert_eq!(written_values(f, &now), vec![(1, 2.0), (2, 2.0)]);
+        // a fact with no band has no verdict
+        let f = find("work's share of income, 1900");
+        assert_eq!(written_met(f, &written_values(f, &now)), None);
+        let (text, missed) = written(&now, Some((&then, "by hand")), None);
+        println!("{text}");
+        let band = WRITTEN.iter().filter(|f| f.class == Class::Band && f.start.holds_for(&now)).count();
+        // met: no run failed, people 1900, railway a head; missed: towns
+        assert!(text.starts_with(&format!("the written check: 3 of {band} met, 1 missed, {} without a value: now (settled, 2 islands)", band - 4)), "{text}");
+        assert_eq!(missed.len(), band - 3);
+        assert!(missed.iter().any(|m| m == "towns in 1900, now: mean 29 outside 10 to 25"), "{missed:?}");
+        let line = |name: &str| text.lines().find(|l| l.trim_start().starts_with(name)).unwrap().to_string();
+        // the reference beside it: people 5.7 and missed, towns 21 and met
+        assert!(line("people over 1750, 1900").contains(" met ") && line("people over 1750, 1900").contains("5.70  MISSED"), "{}", line("people over 1750, 1900"));
+        assert!(line("towns in 1900").contains("MISSED") && line("towns in 1900").contains("21  met"), "{}", line("towns in 1900"));
+        // known wrong: its band and a word that is not counted
+        assert!(line("the linked wage over 1750, 1900").contains("2.30 to 3.20") && line("the linked wage over 1750, 1900").contains(" missed "));
+        assert!(text.contains("known wrong today") && text.contains("printed, no band yet"));
+        // the colony's count, for a landfall arm
+        let colony = arm("colony", "landfall", &[("pop_1900", [300_000.0, 400_000.0])]);
+        let (text, _) = written(&colony, None, Some(14));
+        assert!(text.contains("and the colony's 24 (below): 14 met"), "{text}");
+        assert!(!text.contains("people over 1750") && text.contains("people in 1900"), "the colony's facts are landfall's: {text}");
+    }
+
+    /// Version 0.1.0's twelve, kept in the repository: two arms of eight islands,
+    /// each with the twelve and `last_town_founded`, to the last digit of main's
+    /// sweep at 190e5ad.
+    #[test]
+    fn version_010_is_kept() {
+        let v = v010();
+        assert_eq!(v.len(), 2);
+        for arm in &v {
+            assert_eq!(arm.seeds, (1..=8).collect::<Vec<u64>>(), "{}", arm.label);
+            for name in FACTS.iter().chain(&ALSO) {
+                assert_eq!(arm.values.get(*name).map(|v| v.len()), Some(8), "{} {name}", arm.label);
+            }
+        }
+        assert_eq!(v[0].start, "settled");
+        assert_eq!(v[0].values["pop_1900"][0], (1, 678729.4052856405));
+        assert!(is_colony(&v[1]));
+    }
+
     /// The growth after 1900, island by island, from the facts a run to 2050 has:
     /// a wage that grows 1.5 per cent a year to 1970 and then halves, and the land's
     /// share falling on one arm and rising on the other.
