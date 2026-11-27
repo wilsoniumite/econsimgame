@@ -58,7 +58,6 @@ TRIPLES = {WINDOWS: ["x86_64-pc-windows-msvc"], LINUX: ["x86_64-unknown-linux-gn
 APP = "Isolated State.app"
 # macOS 11 (Big Sur), the first for Apple silicon; the Intel program is held to it as well
 MAC_MINIMUM = "11.0"
-MAC_ID = "io.github.wilsoniumite.isolated-state"
 
 # What goes into the archive beside the program: (the file in the repository, its place in the
 # archive). The program carries its content, look, font and shaders inside it. The pages the game
@@ -398,12 +397,24 @@ def pack_linux(root, exe, version, commit, day, dist):
     return path, top + "/", crates
 
 
+def github_owner():
+    """The repository's owner on GitHub: GitHub's machines say it, and elsewhere origin's address does."""
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER")
+    if not owner:
+        m = re.search(r"github\.com[:/]([^/]+)/", git("remote", "get-url", "origin", check=False))
+        owner = m.group(1) if m else None
+    return owner
+
+
 def app_plist(version):
+    # the app's name for macOS, in the reverse of an address its makers hold: the repository's on GitHub
+    owner = github_owner()
+    ident = f"io.github.{owner.lower()}.isolated-state" if owner else "io.github.isolated-state"
     return {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": "Isolated State",
         "CFBundleExecutable": PROGRAM[MAC],
-        "CFBundleIdentifier": MAC_ID,
+        "CFBundleIdentifier": ident,
         "CFBundleInfoDictionaryVersion": "6.0",
         "CFBundleName": "Isolated State",
         "CFBundlePackageType": "APPL",
