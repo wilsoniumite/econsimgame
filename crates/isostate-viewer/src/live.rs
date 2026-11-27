@@ -2016,6 +2016,11 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
     if !y.pairs.is_empty() {
         r.traffic.take_pairs(ny, k, y.pairs.clone());
     }
+    // courses (the core's docs/rules/courses.md): the year's places, courses and links drawn,
+    // as a recording's ways' log keeps them
+    if let Some(w) = &y.ways {
+        r.traffic.ways.take_year(ny, k, w.whole, &w.log);
+    }
     // squares (the core's docs/rules/squares.md): what the year's end changed of them, as a recording's log keeps it
     if let Some(sq) = &y.squares {
         r.builds.squares.take_year(ny, k, sq.whole, &sq.changes);

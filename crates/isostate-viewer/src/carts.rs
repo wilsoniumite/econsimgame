@@ -689,19 +689,26 @@ mod tests {
         let mut longest = 0.0f64;
         // (the schedule's first run sets its systems up, which the game does once at its start)
         run(&mut w);
-        // the view shut, the clock in one year and then turned to another: nothing is found
-        for t in [last - 10, last - 10, last - 3, last - 3] {
-            w.resource_mut::<crate::Timeline>().t = t as f32;
-            longest = longest.max(run(&mut w));
+        // the view shut, the clock in one year and then turned to another: nothing is found. (Taken
+        // twice over other years, and the lesser longest kept: a cost of the turn's own shows in
+        // both, where a frame the machine held back for other work, as a test among hundreds
+        // side by side may be by some milliseconds, shows in one)
+        let mut twice = [0.0f64; 2];
+        for (i, years) in [[last - 10, last - 3], [last - 9, last - 4]].into_iter().enumerate() {
+            for t in [years[0], years[0], years[1], years[1]] {
+                w.resource_mut::<crate::Timeline>().t = t as f32;
+                twice[i] = twice[i].max(run(&mut w));
+            }
         }
-        assert_eq!(g.courses.kept(), 0, "a road's way was found on the main thread");
+        longest = longest.max(twice[0].min(twice[1]));
+        assert_eq!(g.courses.kept_ways(), 0, "a road's way was found on the main thread");
         assert_eq!(carts(&mut w), 0, "no year's rounds have been handed over");
         // the year's scenery, off the main thread in the game, finds its roads' ways and the
         // rounds, and hands the rounds over: the carts go out on them, and nothing more is found
         let k = last - 3;
         g.courses.find_year(&r, &g, &cen, k);
         let rounds = trains::year_rounds(&r, &g, &cen, k);
-        let found = g.courses.kept();
+        let found = g.courses.kept_ways();
         assert!(found > 100 && !rounds.is_empty(), "{found} ways, {} rounds in year {k} of {} ({} links drawn)", rounds.len(), r.filled, network::drawn_links(&r, &g.worn, k).len());
         w.resource_mut::<Roads>().hand(k, rounds);
         let handed = run(&mut w);
@@ -727,7 +734,7 @@ mod tests {
         for _ in 0..3 {
             calm = calm.max(run(&mut w));
         }
-        assert_eq!(g.courses.kept(), found, "a road's way was found on the main thread");
+        assert_eq!(g.courses.kept_ways(), found, "a road's way was found on the main thread");
         assert_eq!(w.resource::<Roads>().year(), Some(k));
         eprintln!("the carts' and the Traffic view's systems on the main thread: {longest:.3} ms at most a frame with the view shut and at the turns, {handed:.1} ms the frame a year's {} carts go out, {opened:.3} ms at most a frame while the ribbons were laid off it, {calm:.3} ms a frame after; {found} ways found off it", carts(&mut w));
         assert!(longest < 2.0, "a frame of the carts and the shut Traffic view took {longest} ms");
