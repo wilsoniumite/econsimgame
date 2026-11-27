@@ -612,6 +612,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::purse::take_teachers(st, P, &mut supply);
     // nor are the university's students and staff (docs/rules/state.md, "The university")
     crate::university::take_hands(st, P, &mut supply);
+    // people (docs/rules/people.md, "The hands that come with a district"): in the
+    // first month after the year's turn a town that took a district has at least
+    // the hands its employers carry in (nothing while `people.carry_hands` is off)
+    crate::peopling::carry_hands(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.

@@ -466,6 +466,10 @@ pub struct State {
     /// The chronicle reads it: a town whose district was redrawn is not set
     /// against what it was before.
     pub pp_moved: Vec<f64>,
+    /// Under `people.carry_hands`: the towns that took in a district at the last
+    /// year's turn, whose first month counts the hands their employers carry in
+    /// as hands for hire (`peopling::carry_hands`). Empty while it is off.
+    pub pp_took: Vec<bool>,
     /// Stream 8: the names of towns founded under these rules.
     pub pp_rng: Option<crate::rng::Rng>,
     /// For tests and scenarios: a cell where a town is to be founded this year,
