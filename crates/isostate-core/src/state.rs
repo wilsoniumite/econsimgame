@@ -422,6 +422,14 @@ pub struct State {
     /// ground by method (`works.by_method`, `works::settle_ground`): 1 until
     /// machines take some of their tasks. Empty while the rule is off.
     pub works_hands: Vec<f64>,
+    /// Whether each works' ground is floor let in the blocks of its town
+    /// (`works.in_blocks`, docs/rules/works.md part J; `works::floor_in_books`),
+    /// and so counts in `cell_floor`, not in `cell_K_share`. Empty while the rule is off.
+    pub works_floor: Vec<bool>,
+    /// By cell: the floor of its house blocks let to works (part J), as a share
+    /// of the cell's ground, as `cell_K_share` is of the works' yards. It takes
+    /// room from the houses as a yard does. Empty while the rule is off.
+    pub cell_floor: Vec<f64>,
 
     // ---------------- railways (docs/rules/railways.md; empty while `railways` is off)
     /// What the game's railway promoters remember: pairs joined, places refused,

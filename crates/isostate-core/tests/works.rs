@@ -45,11 +45,11 @@ fn off_is_the_port_and_on_is_the_game() {
     assert!(!default_params().works.enabled, "the port has no life cycle");
     assert!(game_params().works.enabled, "the game has");
     // the numbers are the same either way, so --set works.enabled=true measures the game's
-    // life cycle; the two mends G and H and the ground by method (I) are switches
-    // of their own, on in the game alone
-    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, by_method: false, ..WorksParams::game() }, WorksParams::default());
-    assert!(game_params().works.spread_first && game_params().works.keep_order && game_params().works.by_method);
-    assert!(!default_params().works.spread_first && !default_params().works.keep_order && !default_params().works.by_method);
+    // life cycle; the two mends G and H, the ground by method (I) and the works in
+    // the blocks (J) are switches of their own, on in the game alone
+    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, by_method: false, in_blocks: false, ..WorksParams::game() }, WorksParams::default());
+    assert!(game_params().works.spread_first && game_params().works.keep_order && game_params().works.by_method && game_params().works.in_blocks);
+    assert!(!default_params().works.spread_first && !default_params().works.keep_order && !default_params().works.by_method && !default_params().works.in_blocks);
     // and a port run never fills the state's tables
     let r = sim::run_with(&port(3, 0, 1752), default_content(), false, true).expect("money is conserved");
     assert_eq!(r.state.works_added.rows, 0);
@@ -321,6 +321,82 @@ fn the_ground_a_works_takes_is_by_its_method() {
     works::settle_ground(&mut st, &C, &on);
     assert_eq!(st.works_lease[f], 10.0 * works::land_take(&C, &on, mill, K));
     assert_eq!(works::land_held(&st, &C, &on, f), works::land_take(&C, &on, mill, K));
+}
+
+#[test]
+fn the_works_of_a_street_let_floor_in_the_blocks() {
+    // J. the game's content laid as a run lays it, under the port's rules with the
+    // life cycle, the ground by method and the works in the blocks (quick, and
+    // 1750 is the port's)
+    let mut on = params(7, 0, 1750);
+    on.works.by_method = true;
+    on.works.in_blocks = true;
+    let mut off = on.clone();
+    off.works.in_blocks = false;
+    let C = tree::content(&game_params(), game_content()).expect("the game's content");
+    // by cause: floor work (history's ground a hand at most 65 m²) that is sold where it is made
+    let named = |names: &[&str]| names.iter().map(|n| method(&C, n)).collect::<Vec<_>>();
+    for m in named(&["services", "emporium", "offices", "care_homes", "steel_frame", "masons", "carpenters", "bricklayers", "contract_builders"]) {
+        assert!(works::in_blocks(&C, &on, m) && !works::in_blocks(&C, &off, m), "{} lives in the blocks", C.method_name[m]);
+    }
+    for m in named(&["hand_loom", "smithy", "brewhouse", "textile_mill", "potbank", "gasworks", "bessemer", "coal_power_station"]) {
+        assert!(!works::in_blocks(&C, &on, m), "{} keeps a yard", C.method_name[m]);
+    }
+    // the books let floor only where the ground is by history's number: none found before 1901
+    for m in 0..C.M {
+        let books = works::floor_in_books(&C, &on, m);
+        assert_eq!(books, works::in_blocks(&C, &on, m) && works::by_method(&C, &on, m), "{}", C.method_name[m]);
+        assert!(!works::floor_in_books(&C, &off, m));
+    }
+    let (offices, mill) = (method(&C, "offices"), method(&C, "textile_mill"));
+    assert!(works::floor_in_books(&C, &on, offices) && !works::floor_in_books(&C, &on, method(&C, "services")));
+    // no cell limit for a method by history's number; the old methods keep theirs to the bit
+    assert_eq!(works::max_K(&C, &on, offices), f64::INFINITY);
+    assert!(works::max_K(&C, &off, offices).is_finite());
+    assert_eq!(works::max_K(&C, &on, mill).to_bits(), works::max_K(&C, &off, mill).to_bits());
+
+    // a works of 1750 on a town's cell made over into offices: at the year's
+    // settling its ground leaves the yards for the floor of the cell's blocks
+    let (mut st, _, _, _) = a_town(&on, &C);
+    assert_eq!(st.cell_floor.len(), st.N);
+    let f = alive(&st).into_iter().find(|&f| st.f_K[f] > 0.0 && st.urban[st.f_cell[f]]).expect("a works of 1750 in a town");
+    let c = st.f_cell[f];
+    let K = 3.0 * C.m_K0[offices];
+    let take = works::land_take(&C, &on, offices, K);
+    st.cell_K_share[c] += take - works::land_held(&st, &C, &on, f);
+    st.f_method[f] = offices;
+    st.f_K[f] = K;
+    st.f_order_K[f] = 0.0;
+    st.f_prod[f] = 1.0;
+    st.works_lease[f] = take;
+    let (yards, rent) = (st.cell_K_share[c], st.f_rent[f]);
+    works::settle_ground(&mut st, &C, &on);
+    assert!(st.works_floor[f]);
+    assert!((st.cell_floor[c] - take).abs() < 1e-15 && (st.cell_K_share[c] - (yards - take).max(0.0)).abs() < 1e-12);
+    assert_eq!(st.f_rent[f], rent, "it pays for its floor as for its yard, to the cell's owner");
+    // the cell's floor is ground taken: a yard that would need more than is left does not fit
+    let left = 1.0 - st.cell_K_share[c] - st.cell_floor[c];
+    let K_mill = 1.5 * left / works::land_take(&C, &on, mill, 1.0);
+    assert!(!works::cell_fits(&st, &C, &on, c, mill, K_mill) && works::cell_fits(&st, &C, &on, c, mill, 0.5 * K_mill));
+    // the cell leaves its town: the works keeps a yard there again
+    st.urban[c] = false;
+    works::settle_ground(&mut st, &C, &on);
+    assert!(!st.works_floor[f] && st.cell_floor[c].abs() < 1e-15);
+    assert!((st.cell_K_share[c] - yards).abs() < 1e-12);
+}
+
+#[test]
+fn the_floor_of_a_block_is_let_by_eighths() {
+    use isostate_core::squares::{floor_targets, town_split};
+    let P = game_params();
+    // each use its ground in eighths of a square, kept while its ground stays at squares.keep of it
+    assert_eq!(floor_targets(&[0.0, 3.4, 16.0, 0.0, 0.6], &[0; 5], &P), [0, 3, 16, 0, 1]);
+    assert_eq!(floor_targets(&[0.0, 0.0, 15.0, 0.0, 0.0], &[0, 0, 16, 0, 0], &P), [0, 0, 16, 0, 0], "fifteen of sixteen is kept");
+    assert_eq!(floor_targets(&[0.0, 0.0, 10.0, 0.0, 0.0], &[0, 0, 16, 0, 0], &P), [0, 0, 10, 0, 0], "ten of sixteen is given back");
+    // a cell whose floor fills more blocks than its age builds has them, while its ground holds them
+    assert_eq!(town_split(0.2, 0.0, 200, 200, 0), (0, 40));
+    assert_eq!(town_split(0.2, 0.0, 200, 200, 70), (0, 70));
+    assert_eq!(town_split(0.2, 0.1, 200, 60, 70), (20, 40));
 }
 
 #[test]

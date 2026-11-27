@@ -341,10 +341,17 @@
 # Taken: Taken again on the merged tree of night/g-batch-ground-a
 # (works-ground on main af4a90a, settle-a in it): against main the four hashes
 # of 1901-2050 move by works.by_method, the three of 1750-1900 hold
+# Taken: 1901-2050 all four: the works of a street live in the blocks of
+# houses (works.in_blocks, works.md part J): from 1901 the offices, care and
+# steel-frame builders on a town's cells let floor in its house blocks, which
+# takes room from the houses as a yard did and leaves the cell's yards to
+# other works, and those methods have no cell limit; on the squares the shops,
+# offices, care and builders hold floor in the blocks, not squares, and the
+# log carries it (layout 2); 1750-1900 held
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x4edba3b910184924
-1901-2050 books    0x619d8e79fc3f9168
-1901-2050 news     0x3514fed6187a6a0e
-1901-2050 run.bin  0x7ef359516d6c6b8b
+1901-2050 economy  0x1bae9ccaa3229ca5
+1901-2050 books    0x5e2e57fd02254c4c
+1901-2050 news     0xb5d341d96ce3e8a5
+1901-2050 run.bin  0x146834886cb77203
