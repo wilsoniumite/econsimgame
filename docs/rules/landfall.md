@@ -3,8 +3,9 @@
 A second start for the island. Not in the Python. The code is `landfall.rs`
 (the start), with `frontier.rs` ([frontier.md](frontier.md)) and
 `immigration.rs` ([immigration.md](immigration.md)) for the rules that come
-with it, and a lesser number of the hands' rule, `hands.short_rise` (below,
-"The trap"). Built on 26 November 2026 from the trial of that morning.
+with it. Built on 26 November 2026 from the trial of that morning. Until 27
+November it also set a lesser number of the hands' rule, `hands.short_rise`
+1.06; that guard is gone (below, "The trap").
 
 ## The two starts
 
@@ -28,8 +29,7 @@ How to ask for it:
 
 `--start landfall` is the start with the three rules that make a colony a
 colony: births that answer to free land and hamlets (`frontier.enabled`,
-`frontier.hamlets`), settlers from abroad (`immigration.enabled`), and the
-guard on a short town's wage (`hands.short_rise` 1.06), and with carriage
+`frontier.hamlets`), settlers from abroad (`immigration.enabled`), and with carriage
 that follows prices from 1750 (`longrun.freight_from` 1750, below,
 "Carriage that follows prices"), and with pits and quarries that work at
 the size of their market (`mines.glut`, below, "Pits at the size of their
@@ -205,20 +205,42 @@ whole island joins the market, the bill jumps, the carters take the town's
 hands, the town is short, and its wage doubles each month it stays short,
 which in four or five months is twenty or thirty times.
 
-**The guard.** `hands.short_rise`: the most a short town's wage may rise in
-a month. At 2, the month's own bound, nothing is read and the rule is as it
-was, so the settled island is the same to the bit. The landfall start sets
-1.06, twice in a year, and the rationing alone shares out the hands. With
-it, the first town of island 7 never doubles in a month; the colony's
-largest yearly rise of a town's wage to 1900 is 1.97 with births as today
-and 2.06 to 2.20 on five of sixteen runs with the other two rules, which are
-clearing wages and not the guard's (on the settled island itself one island
-of eight has 3.28, in 1786). **The mend** is for the piece that opens land
+**The guard, and why it went.** `hands.short_rise` is the most a short
+town's wage may rise in a month. At 2, the month's own bound, nothing is
+read and the rule is as it was. From 26 to 27 November the landfall start
+set 1.06, twice in a year, so that two starts had two numbers for one rule.
+Of the trap's three rules the first two were then mended at their source:
+the colony carts at prices from 1750 (next section), so its carters no
+longer swell as its coin wage falls, and its pits work at the size of their
+market (below), so its merchants no longer owe several times the money for
+ore nobody asked for. With both, the guard had nothing left to guard, and
+it cost hunger, so since 27 November both starts keep the game's 2. A game
+saved at landfall before then keeps its 1.06.
+
+Measured with `examples/years_turn.rs`, `--start landfall`, islands 1 to 8,
+the game's rules with six families, to 2050, at 2 and at 1.06, with
+settlers and without (`--set immigration.enabled=false`); no run failed:
+
+| landfall, islands 1 to 8 | settlers, 2 | settlers, 1.06 | no settlers, 2 | no settlers, 1.06 |
+|---|---|---|---|---|
+| largest yearly rise of a town's wage to 1900: mean of the islands / most | 1.45 / 1.66 | 1.54 / 1.74 | 1.54 / 1.98 | 1.57 / 1.70 |
+| the same in the 1750s, most | 1.14 | 1.36 | 1.23 | 1.23 |
+| years with hunger 1770 to 1900 / 1901 to 2050, an island | 0.12 / 0 | 0.62 / 0.38 | 0.12 / 0 | 0.12 / 0 |
+| wage in grain 1800 / 1900 / 2050 | 14.2 / 44.2 / 121.7 | 14.0 / 42.9 / 132.3 | 18.2 / 38.6 / 177.6 | 18.6 / 38.7 / 170.6 |
+| people 1800 / 1900 / 2050 | 57k / 544k / 1,556k | 55k / 550k / 1,565k | 19k / 178k / 293k | 19k / 176k / 289k |
+| largest yearly rise after 1900: mean of the islands | 9.5 | 7.3 | 9.2 | 8.6 |
+
+No town's wage rises more than twice in a year to 1900 on any of the sixteen
+runs at 2. After 1900 the rises of 4 to 15 a year are nearly all one fault,
+the year's turn: a small poor town beside a city takes a district, its
+January wage is set again to the newcomers', and its land at the city's
+prices wants many more hands than it has ([people.md](people.md), "The
+hands that come with a district"). Of the rises of three or more after
+1900, 17.6 an island of 17.8 are such towns at 2. The guard held those
+lower, by capping the months after the reset; it is not the mend for them.
+**The mend for the trap itself** is still for the piece that opens land
 year by year: a market whose reach grows with its charting does not cart
-from 100 km in its first year. Freight that follows the wage
-(`longrun.freight_from`) would stop the carters swelling as the wage falls;
-it is the pass over the rules' stage 6. Since 26 November the landfall start
-carts at prices from 1750 (next section), which is a step toward it.
+from 100 km in its first year.
 
 ## Carriage that follows prices
 
@@ -302,7 +324,8 @@ What it says:
    with the guard (`hands.short_rise` 1.06), over 2 on one island of eight
    (island 2, 2.19). At the game's own 2 it is 2.03, over 2 on three (island 7,
    3.64), and the colony goes hungry less (half a year to 1900 and 0.1 after,
-   against 1.0 and 1.0): the guard's question, the piece after next.
+   against 1.0 and 1.0): the guard's question, answered under "The trap" once
+   the pits were mended too.
 
 **The settled island with the same setting**, once, islands 1 to 8 to 1900
 (`sweep ... --set longrun.freight_from=1750 --standing --compare` today's):
@@ -466,7 +489,8 @@ arm C runs gave. Not tuned to.
   that grows with its charting is what makes the colony's country a country
   and not a thin film over the island.
 - **The trap above.** Opening land a year at a time keeps the carting bill
-  from jumping; `hands.short_rise` stays as a guard.
+  from jumping; the guard on a short town's wage (`hands.short_rise`) went
+  once carriage and pits were mended, and there is none to fall back on.
 - **Free land measured by charting.** The frontier's free share counts
   thinly worked land as free; charted and unclaimed land would be the honest
   measure ([frontier.md](frontier.md), "What worries me").
