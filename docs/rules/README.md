@@ -614,6 +614,18 @@ meant. `last_town_founded` is shown beneath the twelve, as "also", and not
 counted: it leans with anything that changes what carriage costs. The check
 changes no run. `src/standing.rs`.
 
+**The written check** (27 November 2026) is printed first, above the twelve:
+facts held to bands written from history, each with its source and how sure
+it is, the same for both starts where history allows, in three kinds of line
+(with a band and counted; known wrong today, printed with their band; no band
+yet). Its bands do not move with the island, as the twelve's do, so it says
+whether a change moved the island towards the world or away from it. It needs
+no reference, and it fails nothing yet. Beneath it the twelve are printed as
+"what moved", still the gate, and once more against version 0.1.0's own two
+sweeps, kept in `data/standing-0.1.0.csv`, so that every later sweep can say
+how far the island has gone from that version. The table, its sources, what
+"from memory" means and main's score are in [standing.md](standing.md).
+
 **The check is a gate.** When any of the twelve is not inside, the sweep ends
 with an error (exit code 2) after it has written and printed everything, and
 its last lines name each such fact: the setting, its mean, the band (the

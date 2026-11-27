@@ -27,9 +27,11 @@
 //! those of an earlier sweep, seed for seed where the two have seeds in common,
 //! counts the seeds in which each fact rose and fell, and marks the facts whose
 //! seed ranges do not overlap. `--standing` adds the standing check
-//! (`standing.rs`): twelve facts of the played century, each later setting (or,
-//! with one setting, this sweep against `--compare`'s) set against the first's
-//! spread across seeds, printed last and written to `standing.txt`. A fact of
+//! (`standing.rs`): the written check, facts with bands from history for every
+//! setting (docs/rules/standing.md); then twelve facts of the played century,
+//! each later setting (or, with one setting, this sweep against `--compare`'s)
+//! set against the first's spread across seeds, and against version 0.1.0's;
+//! printed last and written to `standing.txt`. A fact of
 //! the twelve that is not inside makes the sweep end with an error, after it
 //! has written everything; `--growth` makes the growth the design asks of the
 //! years after 1900, which the check reports beside the twelve, fail it too.
@@ -784,8 +786,9 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          summary.txt  the table the sweep printed: each fact's mean and [least .. greatest] across seeds\n\
          scorecard.txt  the aims the documents state, each against its fact's mean, with a tolerance from\n\
          \x20            the spread across seeds and a loss (isostate-core scorecard DIR prints it again)\n\
-         standing.txt  with --standing: the standing check, twelve facts of the played century against\n\
-         \x20            the first setting's spread across seeds, and the growth after 1900 (docs/rules/README.md)\n\
+         standing.txt  with --standing: the standing check: the written check, bands from history\n\
+         \x20            (docs/rules/standing.md); twelve facts of the played century against the first setting's\n\
+         \x20            spread across seeds and against version 0.1.0's; and the growth after 1900\n\
          \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
          whatever else the machine was doing, so it says as much about the machine that day as about the\n\
          code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
@@ -1223,11 +1226,9 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         None => None,
     };
     let plan = plan(&o)?;
-    // the colony's check needs nothing to set it against: its bands are history's
+    // the written check and the colony's need nothing to set them against: their bands are
+    // written; the old twelve are taken where there is a reference (two settings, or --compare)
     let colony = plan.settings.iter().any(|s| s.start == "landfall");
-    if o.standing && plan.settings.len() < 2 && o.compare.is_none() && !colony {
-        return Err(format!("--standing needs something to set the sweep against: two settings (--set key=a,b) or --compare OTHER_DIR\n{USAGE}"));
-    }
     if o.colony && !colony {
         return Err(format!("--colony asks for the colony's check, which only the landfall start has: give --start landfall\n{USAGE}"));
     }

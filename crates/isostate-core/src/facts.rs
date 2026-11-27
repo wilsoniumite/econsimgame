@@ -135,6 +135,111 @@ pub fn years_over_twice_local_median(p: &[f64], window: usize) -> usize {
         .count()
 }
 
+/// The written check's hands a ton-cell (`carters_per_1000_weight_cells_Y`) are
+/// read in `CROW_YEAR` over the first year and over `CROW_BASE`, besides the marks.
+pub const CROW_YEAR: i64 = 1800;
+pub const CROW_BASE: i64 = 1760;
+
+/// The spans of the written check's price facts (`standing::WRITTEN`): the
+/// played century and the one after it, each cut to the run.
+pub const PRICE_SPANS: [(i64, i64); 2] = [(1750, 1900), (1901, 2050)];
+
+/// The written check's prices between towns, from the yearly snapshot's prices
+/// (each town's mean of the year's months). For each span of `PRICE_SPANS` that
+/// lies in the run (its first year raised to the run's, and grain's to
+/// `PRICE_FROM`, since prices are still settling before it):
+///
+/// - `grain_price_gap_A_Z`: grain's price between towns, the mean over every
+///   pair of towns with people of |ln(P_i / P_j)|, a year, then the mean of the
+///   years that have a pair (the measure of NBER w16236, Table 1, on 40 English
+///   counties);
+/// - `town_price_index_vs_city_least_A_Z` and `_greatest_`: each town's prices
+///   in the cost of living's basket (`cpi_basket`, the households' and the
+///   lords' purchases of the first year) over the same basket at the prices of
+///   the year's largest town by people, the least and the greatest of any town
+///   in any year;
+/// - `wage_in_grain_decade_Y_vs_1760`: the island's mean wage over grain's
+///   national price, the mean of the ten years round Y (Y-5 to Y+4, cut to the
+///   run) over the same round 1760, for 1800, 1850 and 1900.
+///
+/// Nothing here is read by the simulation.
+pub fn written_facts(r: &RunResult, ann: &[Vec<f64>]) -> Vec<(String, Kind, f64)> {
+    let (st, C, rec) = (&r.state, &r.content, &r.rec);
+    let y0 = C.start_year;
+    let y1 = y0 + rec.n_years as i64 - 1;
+    let (T, G) = (rec.T, C.G);
+    let mut out = Vec::new();
+    if rec.n_years == 0 || rec.town_price.len() < rec.n_years * T * G {
+        return out;
+    }
+    let price = |k: usize, t: usize, g: usize| rec.town_price[(k * T + t) * G + g] as f64;
+    let lived = |k: usize| -> Vec<usize> { (0..T).filter(|&t| rec.town_active[k * T + t] == 1 && rec.town_pop[k * T + t] > 0.0).collect() };
+    let grain = C.good_index.get("grain").copied();
+    let basket = &st.cpi_basket;
+    for (a, z) in PRICE_SPANS {
+        let (a, z) = (a.max(y0), z.min(y1));
+        if a > z {
+            continue;
+        }
+        let years = |from: i64| (from.max(a)..=z).map(move |y| (y - y0) as usize);
+        if let Some(g) = grain.filter(|_| PRICE_FROM.max(a) <= z) {
+            let gaps: Vec<f64> = years(PRICE_FROM)
+                .filter_map(|k| {
+                    let p: Vec<f64> = lived(k).into_iter().map(|t| price(k, t, g)).filter(|&p| p > 0.0 && p.is_finite()).collect();
+                    let mut sum = 0.0;
+                    let mut pairs = 0usize;
+                    for i in 0..p.len() {
+                        for j in i + 1..p.len() {
+                            sum += (p[i] / p[j]).ln().abs();
+                            pairs += 1;
+                        }
+                    }
+                    (pairs > 0).then(|| sum / pairs as f64)
+                })
+                .collect();
+            out.push((format!("grain_price_gap_{}_{z}", PRICE_FROM.max(a)), Kind::Real, mean(&gaps)));
+        }
+        if basket.len() == G {
+            let (mut least, mut greatest) = (f64::NAN, f64::NAN);
+            for k in years(a) {
+                let towns = lived(k);
+                let Some(&city) = towns.iter().max_by(|&&i, &&j| rec.town_pop[k * T + i].total_cmp(&rec.town_pop[k * T + j])) else { continue };
+                let cost = |t: usize| (0..G).map(|g| basket[g] * price(k, t, g)).sum::<f64>();
+                let at_city = cost(city);
+                if !(at_city > 0.0) {
+                    continue;
+                }
+                for &t in towns.iter().filter(|&&t| t != city) {
+                    let v = cost(t) / at_city;
+                    if v.is_finite() {
+                        // f64::min and max take the number over a NaN, so the first town-year sets both
+                        least = least.min(v);
+                        greatest = greatest.max(v);
+                    }
+                }
+            }
+            out.push((format!("town_price_index_vs_city_least_{a}_{z}"), Kind::Ratio, least));
+            out.push((format!("town_price_index_vs_city_greatest_{a}_{z}"), Kind::Ratio, greatest));
+        }
+    }
+    // the wage in grain, decade means round the marks over the same round 1760
+    let series = |name: &str| -> &[f64] { st.series.index.get(name).map_or(&[][..], |&k| &ann[k]) };
+    let (wage, grain_p) = (series("wage"), series("price_grain"));
+    let decade = |y: i64| -> f64 {
+        let v: Vec<f64> = ((y - 5).max(y0)..=(y + 4).min(y1))
+            .filter_map(|x| Some(wage.get((x - y0) as usize)? / grain_p.get((x - y0) as usize)?))
+            .filter(|v| v.is_finite())
+            .collect();
+        mean(&v)
+    };
+    if !wage.is_empty() && !grain_p.is_empty() && y0 <= 1760 {
+        for y in [1800, 1850, 1900].into_iter().filter(|&y| y <= y1) {
+            out.push((format!("wage_in_grain_decade_{y}_vs_1760"), Kind::Ratio, decade(y) / decade(1760)));
+        }
+    }
+    out
+}
+
 /// Besides the fifty-year marks, the railway's length is taken in this year
 /// (PLAN.md 1.3: rail km by 1870).
 pub const RAIL_YEAR: i64 = 1870;
@@ -210,6 +315,11 @@ pub struct MonthNotes {
     /// cell's produce and works' goods to their market, and the trade between
     /// towns), at the year's path costs.
     pub weight_path: Vec<f64>,
+    /// Per year: the same weight times the cells it went over as the crow flies
+    /// (each cell to its market's town, each town to the other; half a cell at
+    /// least), which no road, canal or train shortens (the written check's hands
+    /// a ton-cell, `standing::WRITTEN`).
+    pub weight_cells: Vec<f64>,
     /// Each cell's market in December, to see which towns took cells at the year's end.
     pub catch_december: Vec<i64>,
     /// The towns that took cells from another town's market at the last year's end.
@@ -280,6 +390,22 @@ pub fn gather_month(g: &mut Gathered, sim: &Sim, month: usize) {
             }
         }
         n.weight_path.push(land + trade);
+        // the same weight over the cells as the crow flies (carriage.md of the study relay, section 3)
+        let W = st.world.W;
+        let crow = |a: usize, b: usize| -> f64 { ((a / W) as f64 - (b / W) as f64).hypot((a % W) as f64 - (b % W) as f64) };
+        let land_c: f64 = (0..st.N)
+            .filter(|&c| st.catch[c] >= 0 && st.dcatch[c].is_finite())
+            .map(|c| st.cell_flow[c] * crow(c, st.town_node[st.catch[c] as usize]).max(0.5))
+            .sum();
+        let mut trade_c = 0.0;
+        for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
+            for j in (0..st.T_max).filter(|&j| j != i && st.town_active[j]) {
+                if st.town_cost[(i, j)].is_finite() {
+                    trade_c += st.trade_F[(i, j)] * crow(st.town_node[i], st.town_node[j]);
+                }
+            }
+        }
+        n.weight_cells.push(land_c + trade_c);
         n.catch_december = st.catch.clone();
     }
 }
@@ -862,6 +988,27 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         for &y in &marks[1..] {
             b.num(format!("carters_per_1000_weight_path_{y}_vs_{y0}"), Kind::Ratio, per(y) / per(y0));
         }
+        // The written check's hands a ton-cell (standing::WRITTEN): the same carters over the
+        // weight times the cells it went over as the crow flies, so that every better way (road,
+        // canal, train, sea, lorry) counts as fewer hands. At the marks and in CROW_BASE, and
+        // 1800 over each of them: the landfall start reads 1760, its first year being one town.
+        if g.months.weight_cells.len() == n {
+            let per_c = |y: i64| -> f64 {
+                let k = (y - y0) as usize;
+                st.cart_years.get(warm + k).map_or(f64::NAN, |&(_, c)| 1000.0 * c / 12.0 / g.months.weight_cells[k])
+            };
+            let mut years: Vec<i64> = marks.iter().copied().chain([CROW_BASE]).filter(|&y| y >= y0 && y <= y1).collect();
+            years.sort();
+            years.dedup();
+            for &y in &years {
+                b.num(format!("carters_per_1000_weight_cells_{y}"), Kind::Real, per_c(y));
+            }
+            let mut bases = vec![y0, CROW_BASE];
+            bases.dedup();
+            for base in bases.into_iter().filter(|&base| base >= y0 && base < CROW_YEAR && CROW_YEAR <= y1) {
+                b.num(format!("carters_per_1000_weight_cells_{CROW_YEAR}_vs_{base}"), Kind::Ratio, per_c(CROW_YEAR) / per_c(base));
+            }
+        }
     }
     // Town-months (aim 13 and the faults of section 4.1; `carting.adjust`), from the months
     // the sweep noted; no value for a run stepped a year at a time.
@@ -1260,6 +1407,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         b.num(name, kind, v);
     }
     b.group = GROUPS[6];
+    // the written check (standing::WRITTEN): prices between towns and the wage in grain by decade
+    for (name, kind, v) in written_facts(r, &ann) {
+        b.num(name, kind, v);
+    }
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
