@@ -793,7 +793,9 @@ mod tests {
     /// road moves from the year it is first drawn to the last, every link
     /// drawn has its course, and the simulation's places of most town cells
     /// are the meeting places the viewer draws their markets at (a town that
-    /// grew where a way had passed before keeps the way's place).
+    /// grew where a way had passed before keeps the way's place). Read as a
+    /// record that keeps no courses, the same island is drawn on the viewer's
+    /// curves through the meeting places, as before.
     #[test]
     fn every_road_drawn_runs_on_the_simulations_course() {
         let (game, r) = island_7();
@@ -843,23 +845,13 @@ mod tests {
         STRAIGHT_IN_TEST.with(|a| a.set(false));
         eprintln!("{links} links drawn in four years, at most {furthest} of a cell off their courses; of {towns} towns' markets, {at_market} where their ways meet");
         assert!(links > 1000 && towns > 3 && at_market * 4 >= towns * 3, "{links} links; of {towns} towns' markets, {at_market} where their ways meet");
-    }
-
-    /// A run that keeps no courses (here the same record, read as one that
-    /// does not): the viewer's curves through the cells' meeting places, as
-    /// before. No point of any road drawn moves from the year it is first
-    /// drawn to the last; most roads are drawn on curves, and where a road
-    /// passes through a meeting place the line turns there less than 5
-    /// degrees at most of them, where straight it did at under a quarter; no
-    /// link's way crosses a river more often than the way drawn before; and
-    /// the straight runs are shorter than the straight lines' were.
-    #[test]
-    fn without_courses_roads_bend_through_their_meeting_places_and_never_move() {
-        let (game, r) = island_7();
-        let s = &game.sim;
+        // and the same record read as one that keeps no courses (a record made before, the
+        // port's rules, the old island): the viewer's curves through the cells' meeting places,
+        // as before. No point of any road drawn moves; most roads are drawn on curves, and where
+        // a road passes through a meeting place the line turns there less than 5 degrees at
+        // most of them, where straight it did at under a quarter; no link's way crosses a river
+        // more often than the way drawn before; and the straight runs are shorter
         NO_COURSES_IN_TEST.with(|a| a.set(true));
-        let cen = network::centres(&r);
-        let last = (game.last_year() - s.content.start_year) as usize;
         let g = crate::world::build_ground(&r);
         let curved = shape(&r, &g, &cen, last);
         assert_eq!(moved(&r, &g, &cen, 0..=last), (0, 0.0), "a road's line moved");
