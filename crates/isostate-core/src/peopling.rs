@@ -452,7 +452,7 @@ pub fn candidates(st: &State, C: &Content, P: &Params) -> Vec<Candidate> {
             if mine[k] {
                 let i = st.catch[k] as usize;
                 cells += 1;
-                saved += crate::longrun::freight(st, P) * st.cell_flow_year[k] * (st.dcatch[k] - d[k]);
+                saved += crate::carriage::freight_at(st, P, i) * st.cell_flow_year[k] * (st.dcatch[k] - d[k]);
                 wages += 12.0 * work[k] * st.wbar[i];
                 gone[i] += work[k];
             }
@@ -841,7 +841,7 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
             continue;
         }
         let (i, j, g) = (i as usize, j as usize, C.sector_good[st.ex_sector[u]]);
-        let saved = crate::longrun::freight(st, P) * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
+        let saved = crate::carriage::freight_at(st, P, j) * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
         trade[(j, g)] += st.ex_out[u];
         worth[(j, g)] += st.ex_out[u] * (st.price[(i, g)] - saved);
         hoped[(j, g)] += st.ex_out[u] * (st.pexp[(i, g)] - saved);
@@ -854,7 +854,7 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
             for g in 0..G {
                 let asked = share[(i, j)] * st.requests[(i, g)];
                 // what `econ::step_month` charges a merchant to bring a unit from i to j
-                let fetch = crate::longrun::freight(st, P) * C.weight[g] * st.town_cost[(i, j)] + P.handling * st.price[(i, g)];
+                let fetch = crate::carriage::freight_at(st, P, i) * C.weight[g] * st.town_cost[(i, j)] + P.handling * st.price[(i, g)];
                 trade[(j, g)] += asked;
                 worth[(j, g)] += asked * (st.price[(i, g)] + fetch);
                 hoped[(j, g)] += asked * (st.pexp[(i, g)] + fetch);

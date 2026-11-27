@@ -188,6 +188,53 @@ name = "Woodland"
 says = "Land under trees, felled for timber."
 see = ["bid_rent"]
 
+[term.hills]
+name = "Hills"
+says = "High ground lifted up and worn down by rivers. Higher hills give more mountain and less farmland."
+also = ["hill"]
+see = ["farmland", "rain"]
+wiki = ["Hill"]
+
+[term.rain]
+name = "Rain"
+says = "The rain of a year, brought by the west wind. Most falls on the windward hills and least in their lee. Farmland grows best with neither too much nor too little."
+see = ["farmland", "meander"]
+wiki = ["Rain shadow"]
+
+[term.meander]
+name = "Meander"
+says = "A bend of a river on level ground. Bends grow, move downstream and at last cut themselves off."
+also = ["meanders"]
+wiki = ["Meander"]
+
+[term.lake]
+name = "Lake"
+says = "Still water held behind a lip, in an upland valley or a lowland basin. Boats cross it, and its outlet is a good site for a town."
+also = ["lakes"]
+see = ["site"]
+wiki = ["Lake"]
+
+[term.coal]
+name = "Coal"
+says = "Fuel dug from the coalfields beside the hills. Firms burn it for heat."
+see = ["heat"]
+wiki = ["Coal mining"]
+
+[term.ore]
+name = "Ore"
+says = "Iron ore, dug in the hills and with the coal. Firms smelt it into iron."
+wiki = ["Iron ore"]
+
+[term.stone]
+name = "Stone"
+says = "Rock dug from quarries where hard rock lies bare. Builders and roads use it."
+wiki = ["Quarry"]
+
+[term.clay]
+name = "Clay"
+says = "Soft ground dug in the vales and made into bricks."
+wiki = ["Clay"]
+
 [term.wild_land]
 name = "Wild land"
 says = "Land not worth the cost of working it."
@@ -208,8 +255,15 @@ wiki = ["Market area"]
 [term.market_town]
 name = "Market town"
 says = "A town with a market, where its market area buys and sells."
+also = ["market towns"]
 see = ["market_area", "price"]
 wiki = ["Market town"]
+
+[term.population]
+name = "Population"
+says = "The people living on the island. The people of 1750 are shared among the first towns by the farmland round each."
+see = ["market_town", "farmland"]
+wiki = ["Population density"]
 
 [term.transport]
 name = "Transport"

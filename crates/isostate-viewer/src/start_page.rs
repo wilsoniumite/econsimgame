@@ -33,12 +33,16 @@ use bevy::app::ScheduleRunnerPlugin;
 use bevy::camera::RenderTarget;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
-use bevy::render::render_resource::{TextureFormat, TextureUsages};
+use bevy::asset::RenderAssetUsages;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
+use isostate_core::island::{default_of, range_of, Island, Part, SETTINGS};
+
+use crate::island_map::{self, MapAsk};
 use crate::saves::{self, Listed, Place};
 use crate::ui::{self, BTN, INK, MUTED, RULE};
 use crate::UiFont;
@@ -73,6 +77,22 @@ pub struct PictureAsk {
     /// Landfall's settlers and ideas by sea chosen off (`settlers:off`, `ideas-by-sea:off`)
     pub no_settlers: bool,
     pub no_ideas: bool,
+    /// the island's settings unfolded (`island`), and each one chosen
+    /// (`island:rain=450`, once a setting), the picture waiting for the whole
+    /// island's map
+    pub island: bool,
+    pub sets: Island,
+    /// with the island's number (`seed:N`)
+    pub seed: Option<u64>,
+    /// time the page's frames (`time`): 8 s of frames as fast as they come,
+    /// the hills stepped up and down every 0.5 s while the settings are open
+    /// so that the map is made again and again, and a line on standard error
+    /// with the times (`Timing`), before the picture
+    pub time: bool,
+    /// the timing with no step (`still`): the settings open and their map made once
+    pub still: bool,
+    /// the timing with a step every 4 s for 12 s (`slow`), so that each step's whole island is made
+    pub slow: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -111,9 +131,18 @@ pub fn wanted(argv: &[String], set: &[String]) -> Result<Option<Asked>, String> 
                         "begin" => pic.begin = true,
                         "settlers:off" => pic.no_settlers = true,
                         "ideas-by-sea:off" => pic.no_ideas = true,
+                        "island" => pic.island = true,
+                        "time" => pic.time = true,
+                        "still" => pic.still = true,
+                        "slow" => pic.slow = true,
+                        w if w.starts_with("island:") => {
+                            pic.sets = pic.sets.and(&Island::parse(&w["island:".len()..]).map_err(|e| format!("--page-shot: {e}"))?);
+                            pic.island = true;
+                        }
+                        w if w.starts_with("seed:") => pic.seed = Some(w["seed:".len()..].parse().map_err(|_| format!("--page-shot: {w} needs the island's number after seed:"))?),
                         w if w.starts_with("tip:") => pic.tip = Some(w["tip:".len()..].to_string()),
                         w if w.starts_with("start:") && starts().iter().any(|s| s.word == &w["start:".len()..]) => pic.start = Some(w["start:".len()..].to_string()),
-                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family, begin, settlers:off, ideas-by-sea:off, tip:NAME or start:WORD ({})", isostate_core::landfall::STARTS.join(", "))),
+                        w => return Err(format!("--page-shot: {w} is not a word it takes: more, family, begin, settlers:off, ideas-by-sea:off, island, island:NAME=VALUE, seed:N, time, still, slow, tip:NAME or start:WORD ({})", isostate_core::landfall::STARTS.join(", "))),
                     }
                 }
                 asked.mode = Mode::Picture(pic);
@@ -211,13 +240,62 @@ pub struct Choices {
     pub size: (u32, u32),
     /// a map view's word (`overlay::Overlay::word`), or None for the plain map
     pub view: Option<String>,
+    /// the island's settings (isostate_core::island), each None as the usual
+    /// island has it; said on the command line only where the start and the
+    /// land chosen take it (`island_said`)
+    pub island: Island,
 }
 
 impl Default for Choices {
     fn default() -> Self {
-        Choices { kind: Kind::Sandbox, start: 0, seed: SEED, families: FAMILIES, to: isostate_core::save::LATEST_YEAR, advance: 0, old_land: false, settlers: true, ideas: true, season: 0, size: SIZE, view: None }
+        Choices { kind: Kind::Sandbox, start: 0, seed: SEED, families: FAMILIES, to: isostate_core::save::LATEST_YEAR, advance: 0, old_land: false, settlers: true, ideas: true, season: 0, size: SIZE, view: None, island: Island::default() }
     }
 }
+
+/// One of the island's settings as the page offers it, in the order of
+/// `isostate_core::island::SETTINGS`: its label, its term in the glossary
+/// (data/words.toml), and the values its steps go through, each inside the
+/// setting's range (a test says so); landfall's people have steps of their own.
+pub struct OnPage {
+    pub label: &'static str,
+    pub term: &'static str,
+    pub steps: &'static [f64],
+}
+
+const RICHES: &[f64] = &[0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5];
+pub const ON_PAGE: [OnPage; 11] = [
+    OnPage { label: "Hills", term: "hills", steps: &[500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1150.0, 1300.0, 1450.0, 1600.0] },
+    OnPage { label: "Rain", term: "rain", steps: &[450.0, 600.0, 750.0, 900.0, 1050.0, 1200.0, 1350.0, 1500.0, 1650.0, 1800.0] },
+    OnPage { label: "Meanders", term: "meander", steps: &[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] },
+    OnPage { label: "Lakes", term: "lake", steps: &[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0] },
+    OnPage { label: "Coal", term: "coal", steps: RICHES },
+    OnPage { label: "Ore", term: "ore", steps: RICHES },
+    OnPage { label: "Stone", term: "stone", steps: RICHES },
+    OnPage { label: "Clay", term: "clay", steps: RICHES },
+    OnPage { label: "Woodland", term: "woodland", steps: &[0.25, 0.5, 0.75, 1.0, 1.5, 2.0] },
+    OnPage { label: "Population", term: "population", steps: &[30_000.0, 45_000.0, 60_000.0, 90_000.0, 135_000.0, 200_000.0, 270_000.0, 400_000.0, 540_000.0] },
+    OnPage { label: "Market towns", term: "market_town", steps: &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] },
+];
+/// Landfall's people, in place of the settled island's.
+pub const LANDFALL_STEPS: &[f64] = &[2_000.0, 3_000.0, 4_000.0, 5_000.0, 7_000.0, 10_000.0, 14_000.0, 20_000.0];
+
+/// The steps of setting `i` on this start.
+pub fn steps_of(i: usize, landfall: bool) -> &'static [f64] {
+    if landfall && SETTINGS[i].name == "people" { LANDFALL_STEPS } else { ON_PAGE[i].steps }
+}
+
+/// A setting's value as the page shows it: "1,000 m", "900 mm/yr", "×1.5", "135,000", "6".
+pub fn setting_words(i: usize, v: f64) -> String {
+    match SETTINGS[i].unit {
+        "m" => format!("{} m", ui::thousands(v as f32)),
+        "mm a year" => format!("{} mm/yr", ui::thousands(v as f32)),
+        "times" => format!("\u{00d7}{v}"),
+        _ => ui::thousands(v as f32),
+    }
+}
+
+/// The groups the settings are laid in, by their part.
+pub const GROUPS: [(Part, &str); 3] = [(Part::Land, "Land"), (Part::Riches, "Riches"), (Part::People, "People")];
 
 /// One choice, as a row of the page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -233,6 +311,8 @@ pub enum Field {
     Season,
     Size,
     View,
+    /// one of the island's settings, by its place in `SETTINGS`
+    Isle(usize),
 }
 
 impl Field {
@@ -240,8 +320,14 @@ impl Field {
     pub const NEW: [Field; 7] = [Field::Kind, Field::Start, Field::Abroad, Field::Seed, Field::Families, Field::To, Field::Advance];
     pub const MORE: [Field; 4] = [Field::Land, Field::Season, Field::Size, Field::View];
 
+    /// The island's settings' rows, in the order of their groups.
+    pub fn island() -> Vec<Field> {
+        GROUPS.iter().flat_map(|(part, _)| (0..SETTINGS.len()).filter(move |&i| SETTINGS[i].part == *part).map(Field::Isle)).collect()
+    }
+
     pub fn label(self) -> &'static str {
         match self {
+            Field::Isle(i) => ON_PAGE[i.min(ON_PAGE.len() - 1)].label,
             Field::Kind => "Play",
             Field::Start => "Start",
             Field::Abroad => "Abroad",
@@ -271,6 +357,8 @@ impl Field {
             Field::Season => "Holds one season all year, for its look. Clock lets the seasons turn with the months.",
             Field::Size => "The size of the game's window, in pixels. The window can be made larger once the game is open.",
             Field::View => "The map view the game opens on. M steps through the views in the game.",
+            // (a setting's tooltip is its term's, from the glossary: `setting_tip`)
+            Field::Isle(i) => crate::words::glossary().get(ON_PAGE[i.min(ON_PAGE.len() - 1)].term).map_or("", |t| t.says.as_str()),
         }
     }
 
@@ -282,8 +370,18 @@ impl Field {
     /// Whether its row is on the page with these choices: Landfall's two
     /// switches only when Landfall is chosen (on the settled island both are
     /// off, and the page offers nothing to change there).
+    /// The island's settings: the land's and the riches' act on the new land
+    /// alone, and the market towns are the settled island's (landfall has one).
     pub fn shown(self, c: &Choices) -> bool {
-        self != Field::Abroad || c.landfall()
+        match self {
+            Field::Abroad => c.landfall(),
+            Field::Isle(i) => match SETTINGS[i].part {
+                Part::People if SETTINGS[i].name == "towns" => !c.landfall() && !c.old_land,
+                Part::People => true,
+                _ => !c.old_land,
+            },
+            _ => true,
+        }
     }
 }
 
@@ -343,15 +441,49 @@ impl Choices {
             Field::Advance => (1751 + self.advance).to_string(),
             Field::Size => format!("{} \u{00d7} {}", self.size.0, self.size.1),
             Field::View => views().into_iter().find(|(w, _)| *w == self.view).map_or("Plain".into(), |(_, name)| name),
+            Field::Isle(i) => setting_words(i, self.island_value(i)),
             _ => self.options(f).0.get(self.options(f).1).cloned().unwrap_or_default(),
         }
+    }
+
+    /// The island's settings as the command line says them: each that differs
+    /// from the usual island, inside its range on the start chosen, and of a
+    /// row the page shows (`Field::shown`).
+    pub fn island_said(&self) -> Island {
+        let landfall = self.landfall();
+        let mut out = Island::default();
+        for i in 0..SETTINGS.len() {
+            let Some(v) = self.island.get(i) else { continue };
+            let (least, most) = range_of(i, landfall);
+            if Field::Isle(i).shown(self) && v != default_of(i, landfall) && (least..=most).contains(&v) {
+                *out.slot(i) = Some(v);
+            }
+        }
+        out
+    }
+
+    /// Setting `i` as the game will be made with it.
+    pub fn island_value(&self, i: usize) -> f64 {
+        self.island_said().get(i).unwrap_or_else(|| default_of(i, self.landfall()))
+    }
+
+    /// The island the small map is of.
+    pub fn map_ask(&self) -> MapAsk {
+        MapAsk { seed: self.seed, old_land: self.old_land, landfall: self.landfall(), island: self.island_said() }
     }
 
     /// Choose a laid-out field's option `i`.
     pub fn set(&mut self, f: Field, i: usize) {
         match f {
             Field::Kind => self.kind = if i == 1 { Kind::Family } else { Kind::Sandbox },
-            Field::Start => self.start = i.min(starts().len().saturating_sub(1)),
+            Field::Start => {
+                let was = self.start;
+                self.start = i.min(starts().len().saturating_sub(1));
+                // the people are each start's own: another start begins with its own
+                if self.start != was {
+                    self.island.people = None;
+                }
+            }
             // a chip turned the other way
             Field::Abroad if i == 0 => self.settlers = !self.settlers,
             Field::Abroad => self.ideas = !self.ideas,
@@ -384,6 +516,15 @@ impl Choices {
                 let all = views();
                 let at = all.iter().position(|(w, _)| *w == self.view).unwrap_or(0);
                 self.view = all[go(at, all.len())].0.clone();
+            }
+            // along the setting's steps, from the value as it is (which may lie between two)
+            Field::Isle(i) => {
+                let (landfall, v) = (self.landfall(), self.island_value(i));
+                let steps = steps_of(i, landfall);
+                let next = if by > 0 { steps.iter().copied().find(|&s| s > v + 1e-9) } else { steps.iter().rev().copied().find(|&s| s < v - 1e-9) };
+                if let Some(s) = next {
+                    *self.island.slot(i) = (s != default_of(i, landfall)).then_some(s);
+                }
             }
             // round the four: both on, no settlers, no technology, neither
             Field::Abroad => {
@@ -428,6 +569,8 @@ impl Choices {
             Field::Season => if self.season == 0 { "The seasons follow the clock.".into() } else { "Held all year.".into() },
             Field::Size => "The game's window, in pixels.".into(),
             Field::View => if self.view.is_none() { "Opens on the plain map.".into() } else { "Opens on this map view. M steps through them.".into() },
+            // (a setting's row has no line under it: its tooltip says what it is)
+            Field::Isle(_) => String::new(),
         }
     }
 
@@ -475,6 +618,10 @@ impl Choices {
         if self.old_land {
             v.push("--old-land".to_string());
         }
+        let island = self.island_said();
+        if !island.plain() {
+            v.extend(["--island".to_string(), island.words()]);
+        }
         v.extend(self.window_args());
         v
     }
@@ -483,7 +630,7 @@ impl Choices {
     pub fn to_text(&self) -> String {
         let start = starts().get(self.start).map_or("settled", |s| s.word);
         format!(
-            "The start page's last choices. Delete this file to forget them.\nkind: {}\nstart: {start}\nsettlers: {}\nideas_by_sea: {}\nseed: {}\nfamilies: {}\nto: {}\nadvance: {}\nold_land: {}\nseason: {}\nsize: {}x{}\nview: {}\n",
+            "The start page's last choices. Delete this file to forget them.\nkind: {}\nstart: {start}\nsettlers: {}\nideas_by_sea: {}\nseed: {}\nfamilies: {}\nto: {}\nadvance: {}\nold_land: {}\nseason: {}\nsize: {}x{}\nview: {}\nisland: {}\n",
             if self.kind == Kind::Family { "family" } else { "sandbox" },
             if self.settlers { "on" } else { "off" },
             if self.ideas { "on" } else { "off" },
@@ -495,7 +642,9 @@ impl Choices {
             SEASONS[self.season.min(SEASONS.len() - 1)].0,
             self.size.0,
             self.size.1,
-            self.view.as_deref().unwrap_or("plain")
+            self.view.as_deref().unwrap_or("plain"),
+            // (every setting the page holds, said or not on this start, so that a start chosen back finds its own)
+            if self.island.plain() { "usual".to_string() } else { self.island.words() }
         )
     }
 
@@ -519,6 +668,20 @@ impl Choices {
                 "season" => c.season = SEASONS.iter().position(|s| s.0 == value).unwrap_or(0),
                 "size" => c.size = value.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).filter(|s| SIZES.contains(s)).unwrap_or(SIZE),
                 "view" => c.view = views().into_iter().find(|(w, _)| w.as_deref() == Some(value)).and_then(|(w, _)| w),
+                // (a setting outside every start's range is left as the usual island has it)
+                "island" => {
+                    let mut isl = Island::parse(value).unwrap_or_default();
+                    for i in 0..SETTINGS.len() {
+                        let ok = |landfall| {
+                            let (least, most) = range_of(i, landfall);
+                            isl.get(i).is_some_and(|v| (least..=most).contains(&v))
+                        };
+                        if !ok(false) && !ok(true) {
+                            *isl.slot(i) = None;
+                        }
+                    }
+                    c.island = isl;
+                }
                 _ => {}
             }
         }
@@ -570,6 +733,9 @@ pub enum Focus {
     Field(Field),
     Draw,
     Begin,
+    /// the button that unfolds the island's settings, and the one that puts them back
+    Island,
+    Reset,
     More,
     Copy,
     WhatsNew,
@@ -584,6 +750,9 @@ pub struct Page {
     pub saves: Vec<Listed>,
     pub focus: Focus,
     pub more: bool,
+    /// the island's settings unfolded, with their map, in the saved games' place
+    /// (More and they are not open together: the window is too short for both)
+    pub island: bool,
     /// a line from the page itself: what it could not do
     pub said: Option<String>,
     pub mode: Mode,
@@ -598,7 +767,12 @@ impl Page {
     pub fn order(&self) -> Vec<Focus> {
         let mut v: Vec<Focus> = (0..self.saves.len()).map(Focus::Save).collect();
         v.extend(Field::NEW.iter().filter(|f| f.shown(&self.choices)).map(|&f| Focus::Field(f)));
-        v.extend([Focus::Draw, Focus::Begin, Focus::More]);
+        v.extend([Focus::Draw, Focus::Begin, Focus::Island]);
+        if self.island {
+            v.push(Focus::Reset);
+            v.extend(Field::island().into_iter().filter(|f| f.shown(&self.choices)).map(Focus::Field));
+        }
+        v.push(Focus::More);
         if self.more {
             v.extend(Field::MORE.iter().map(|&f| Focus::Field(f)));
         }
@@ -676,10 +850,29 @@ enum Press {
     GoOn(usize),
     Draw,
     Begin,
+    Island,
+    Reset,
     More,
     Copy,
     Notes,
     Quit,
+}
+/// The saved games and More, hidden while the island's settings are open.
+#[derive(Component)]
+struct GoOnColumn;
+/// The island's settings' card.
+#[derive(Component)]
+struct IslandCard;
+/// A group's name among the settings, hidden when none of its rows is shown.
+#[derive(Component)]
+struct GroupHead(Part);
+#[derive(Component)]
+struct MapImage;
+/// The two numbers under the map.
+#[derive(Component, Clone, Copy, PartialEq)]
+enum MapNumber {
+    Area,
+    Density,
 }
 /// Where a field's options or value are laid, made again when they change.
 #[derive(Component)]
@@ -699,7 +892,7 @@ struct SaidText;
 struct NewCount;
 /// The word on More's button: More, or Less while it is open.
 #[derive(Component)]
-struct MoreWord;
+struct MoreWord(bool);
 /// The parts of the page whose heights decide how tall the list of saved games may be.
 #[derive(Component, Clone, Copy, PartialEq)]
 enum Fits {
@@ -760,20 +953,27 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
     if let Some(p) = &picture {
         choices.settlers &= !p.no_settlers;
         choices.ideas &= !p.no_ideas;
+        choices.island = choices.island.and(&p.sets);
+        if let Some(s) = p.seed {
+            choices.seed = s.clamp(1, MOST_SEED);
+        }
     }
     let saves = saves::listed_in(&saves::folder());
     let size = asked.size.unwrap_or(choices.size);
     // Enter goes on with the newest saved game, as a plain start did before the page; a
     // picture of a choice made shows the new island's command line
-    let chose = picture.as_ref().is_some_and(|p| p.more || p.family || p.start.is_some() || p.no_settlers || p.no_ideas);
+    let chose = picture.as_ref().is_some_and(|p| p.more || p.family || p.start.is_some() || p.no_settlers || p.no_ideas || p.island || p.seed.is_some());
     let focus = if saves.is_empty() || chose { Focus::Begin } else { Focus::Save(0) };
     eprintln!("the start page: {} saved game{} in {}", saves.len(), if saves.len() == 1 { "" } else { "s" }, saves::folder().display());
-    let page = Page { choices, saves, focus, more: picture.as_ref().is_some_and(|p| p.more), said: None, mode: asked.mode.clone(), go: None, t0 };
+    let island_open = picture.as_ref().is_some_and(|p| p.island);
+    let page = Page { choices, saves, focus, more: picture.as_ref().is_some_and(|p| p.more) && !island_open, island: island_open, said: None, mode: asked.mode.clone(), go: None, t0 };
 
     let mut app = App::new();
-    if picture.is_some() {
+    if let Some(p) = &picture {
+        // (a timing runs its frames as fast as they come, so that a frame's time is its work)
+        let wait = if p.time { std::time::Duration::ZERO } else { std::time::Duration::from_secs_f64(1.0 / 30.0) };
         app.add_plugins(DefaultPlugins.set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }).disable::<WinitPlugin>())
-            .add_plugins(ScheduleRunnerPlugin::run_loop(std::time::Duration::from_secs_f64(1.0 / 30.0)));
+            .add_plugins(ScheduleRunnerPlugin::run_loop(wait));
         let waiting = crate::PipelinesWaiting::default();
         app.insert_resource(waiting.clone());
         if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
@@ -797,9 +997,10 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
         .add_plugins(crate::tips::plugin)
         // (after the pointer's own pass over the buttons, so that a button Enter presses stays pressed for the cards to see)
         .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).after(bevy::ui::UiSystems::Focus).after(crate::tips::escape))
-        .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, fit, news_count, up_after, go).chain());
+        .init_resource::<MapState>()
+        .add_systems(Update, (ui::button_colours, ui::row_colours, ui::wheel_lists, ui::scroll_thumbs, pointer, presses, draw, draw_island, map_ask, map_take, fit, news_count, up_after, go).chain());
     if let Some(p) = picture {
-        app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None });
+        app.insert_resource(Shooting { ask: p, frames: 0, image: None, asked_at: None, held: None, timing: None });
         app.add_systems(Update, shoot.after(go));
     }
     // (a picture that was not written, or a game that did not take its own, ends the program with 1)
@@ -812,7 +1013,7 @@ pub fn run(asked: Asked, t0: std::time::Instant) -> i32 {
 #[derive(Resource)]
 struct PageSize((u32, u32));
 
-fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>, mut images: ResMut<Assets<Image>>, page: Res<Page>, size: Res<PageSize>, shooting: Option<ResMut<Shooting>>) {
+fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>, mut images: ResMut<Assets<Image>>, page: Res<Page>, size: Res<PageSize>, shooting: Option<ResMut<Shooting>>, mut map: ResMut<MapState>) {
     let font = fonts.add(Font::from_bytes(crate::FREDOKA.to_vec()));
     commands.insert_resource(UiFont(font.clone()));
     // (the tooltips keep themselves inside the main camera's view)
@@ -824,11 +1025,15 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>, mut images: Re
         cam.insert(RenderTarget::Image(handle.clone().into()));
         shooting.image = Some(handle);
     }
-    spawn_page(&mut commands, &font, &page);
+    // the small map's picture, clear until its first map is made
+    let extent = Extent3d { width: island_map::MAP_W as u32, height: island_map::MAP_H as u32, depth_or_array_layers: 1 };
+    let image = images.add(Image::new(extent, TextureDimension::D2, vec![0; island_map::MAP_W * island_map::MAP_H * 4], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default()));
+    map.image = Some(image.clone());
+    spawn_page(&mut commands, &font, &page, image);
 }
 
 /// The page, laid once; its fields' values are laid again as they change (`draw`).
-fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page) {
+fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page, map: Handle<Image>) {
     let now = saves::now();
     commands
         .spawn((
@@ -845,7 +1050,7 @@ fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page) {
             root.spawn(Node { column_gap: Val::Px(18.0), flex_shrink: 1.0, min_height: Val::Px(0.0), align_items: AlignItems::FlexStart, ..default() }).with_children(|row| {
                 // the saved games, and under them More, folded away: open, it takes the room the
                 // list gives up, and the list scrolls, so that the foot stays in a window 720 high
-                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(14.0), max_height: Val::Percent(100.0), min_height: Val::Px(0.0), ..default() }).with_children(|col| {
+                row.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(14.0), max_height: Val::Percent(100.0), min_height: Val::Px(0.0), ..default() }, GoOnColumn)).with_children(|col| {
                     go_on_card(col, f, page, now);
                     col.spawn((
                         ui::card(Node { display: Display::None, flex_direction: FlexDirection::Column, width: Val::Px(520.0), padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)), row_gap: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() }),
@@ -858,6 +1063,8 @@ fn spawn_page(commands: &mut Commands, f: &Handle<Font>, page: &Page) {
                     });
                 });
                 new_card(row, f);
+                // the island's settings and their map, unfolded in the saved games' place
+                island_card(row, f, map);
             });
             // the foot stands at the bottom of the window
             root.spawn(Node { flex_grow: 1.0, ..default() });
@@ -912,6 +1119,8 @@ fn save_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, i: usize, s: &Listed
     if s.old_land {
         details.push("old island".into());
     }
+    // where its island's settings differ from the usual island's
+    details.extend(saves::island_words(&s.island));
     p.spawn((
         Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(10.0), Val::Px(7.0)), border: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(10.0)), flex_shrink: 0.0, ..default() },
         BackgroundColor(Color::NONE),
@@ -960,11 +1169,103 @@ fn new_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>) {
             });
             b.spawn(ui::text(f, "Enter starts what is lit.", 13.5, MUTED));
             b.spawn(Node { flex_grow: 1.0, ..default() });
+            // the island's settings, folded away until asked for, beside the new island
+            b.spawn((ui_button(), BackgroundColor(BTN), BorderColor::all(Color::NONE), Interaction::default(), FocusPolicy::Block, ui::Hoverable, Focusable(Focus::Island), Press::Island)).with_children(|m| {
+                m.spawn((ui::text(f, "Island settings", 14.0, INK), MoreWord(true)));
+            });
             // More, folded away under the cards: the land, a season held, the window, the map view
             b.spawn((ui_button(), BackgroundColor(BTN), BorderColor::all(Color::NONE), Interaction::default(), FocusPolicy::Block, ui::Hoverable, Focusable(Focus::More), Press::More)).with_children(|m| {
-                m.spawn((ui::text(f, "More", 14.0, INK), MoreWord));
+                m.spawn((ui::text(f, "More", 14.0, INK), MoreWord(false)));
             });
         });
+    });
+}
+
+/// What the tooltips of Reset, Area and Density say.
+pub const RESET_SAYS: &str = "Reset puts every island setting back to the usual island. The usual island is the land of every game before 27 November 2026.";
+pub const AREA_SAYS: &str = "The dry land of the island, lakes and sea left out.";
+pub const DENSITY_SAYS: &str = "People per km² of land in 1750. More people on the same land give each worker less land to farm.";
+
+/// The tooltip of setting `i`: its term's own, from the glossary, with its
+/// range and the usual island's value as rows.
+fn setting_tip(i: usize) -> crate::tips::Tip {
+    let g = crate::words::glossary();
+    use crate::words::plain;
+    let range = |landfall| {
+        let (least, most) = range_of(i, landfall);
+        format!("{} to {}", setting_words(i, least), setting_words(i, most))
+    };
+    let mut rows = vec![(plain("Range"), plain(range(false))), (plain("Usual"), plain(setting_words(i, default_of(i, false))))];
+    if SETTINGS[i].name == "people" {
+        rows.extend([(plain("Landfall range"), plain(range(true))), (plain("Landfall usual"), plain(setting_words(i, default_of(i, true))))]);
+    }
+    crate::tips::Tip::new(ON_PAGE[i].label, crate::tips::TipBody::term(g, ON_PAGE[i].term, None, rows))
+}
+
+/// The island's settings in their three groups, beside the small map of the
+/// island they make, with its legend and its two numbers.
+fn island_card(row: &mut ChildSpawnerCommands, f: &Handle<Font>, map: Handle<Image>) {
+    row.spawn((
+        ui::card(Node { display: Display::None, flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(18.0), Val::Px(14.0)), row_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(18.0)), flex_shrink: 0.0, ..default() }),
+        IslandCard,
+    ))
+    .with_children(|c| {
+        c.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).with_children(|h| {
+            h.spawn(ui::text(f, "Island settings", 22.0, INK));
+            h.spawn(Node { flex_grow: 1.0, ..default() });
+            h.spawn((ui_button(), BackgroundColor(BTN), BorderColor::all(Color::NONE), Interaction::default(), FocusPolicy::Block, ui::Hoverable, Focusable(Focus::Reset), Press::Reset)).with_children(|b| {
+                b.spawn((ui::text(f, "Reset", 14.0, INK), tip("Reset", RESET_SAYS)));
+            });
+        });
+        c.spawn(Node { column_gap: Val::Px(12.0), align_items: AlignItems::FlexStart, ..default() }).with_children(|body| {
+            body.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(0.0), ..default() }).with_children(|col| {
+                for (part, name) in GROUPS {
+                    col.spawn((ui::text(f, name, 15.0, INK), Node { margin: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(5.0), Val::Px(1.0)), ..default() }, GroupHead(part)));
+                    for field in Field::island().into_iter().filter(|fl| matches!(fl, Field::Isle(i) if SETTINGS[*i].part == part)) {
+                        setting_row(col, f, field);
+                    }
+                }
+            });
+            body.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), margin: UiRect::top(Val::Px(6.0)), ..default() }).with_children(|m| {
+                m.spawn((ImageNode::new(map), Node { width: Val::Px(island_map::MAP_W as f32), height: Val::Px(island_map::MAP_H as f32), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }, BackgroundColor(Color::srgb(0.86, 0.88, 0.84)), MapImage));
+                // the legend: the towns of the start and the four riches' marks
+                m.spawn(Node { column_gap: Val::Px(10.0), align_items: AlignItems::Center, ..default() }).with_children(|l| {
+                    let g = crate::words::glossary();
+                    for (name, key, col, size) in [("Towns", "market_town", [0.22, 0.13, 0.08], 9.0), ("Coal", "coal", island_map::COAL, 6.0), ("Ore", "ore", island_map::ORE, 6.0), ("Stone", "stone", island_map::STONE, 6.0), ("Clay", "clay", island_map::CLAY, 6.0)] {
+                        l.spawn(Node { column_gap: Val::Px(4.0), align_items: AlignItems::Center, ..default() }).with_children(|k| {
+                            k.spawn((Node { width: Val::Px(size), height: Val::Px(size), border_radius: BorderRadius::all(Val::Px(size / 2.0)), ..default() }, BackgroundColor(Color::srgb(col[0], col[1], col[2]))));
+                            k.spawn((ui::text(f, name, 13.0, MUTED), crate::tips::Tip::new(name, crate::tips::TipBody::term(g, key, None, Vec::new()))));
+                        });
+                    }
+                });
+                m.spawn(Node { column_gap: Val::Px(14.0), align_items: AlignItems::Baseline, ..default() }).with_children(|n| {
+                    for (label, says, which) in [("Area", AREA_SAYS, MapNumber::Area), ("Density", DENSITY_SAYS, MapNumber::Density)] {
+                        n.spawn(Node { column_gap: Val::Px(6.0), align_items: AlignItems::Baseline, ..default() }).with_children(|p| {
+                            p.spawn((ui::text(f, label, 13.5, MUTED), tip(label, says)));
+                            p.spawn((ui::text(f, "\u{2026}", 16.0, INK), which));
+                        });
+                    }
+                });
+            });
+        });
+    });
+}
+
+/// A setting's row: its label, with its tooltip, and its value between - and +.
+fn setting_row(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field) {
+    let Field::Isle(i) = field else { return };
+    p.spawn((
+        Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)), border: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
+        BorderColor::all(Color::NONE),
+        Interaction::default(),
+        Focusable(Focus::Field(field)),
+        FieldRow(field),
+    ))
+    .with_children(|r| {
+        r.spawn(Node { width: Val::Px(88.0), flex_shrink: 0.0, ..default() }).with_children(|l| {
+            l.spawn((ui::text(f, field.label(), 14.0, MUTED), setting_tip(i)));
+        });
+        r.spawn((Node { align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() }, FieldBox(field)));
     });
 }
 
@@ -1018,8 +1319,14 @@ fn lay_field(p: &mut ChildSpawnerCommands, f: &Handle<Font>, field: Field, c: &C
                 });
         };
         step(p, "\u{2212}", -1);
-        p.spawn(Node { min_width: Val::Px(if field == Field::Size { 118.0 } else { 64.0 }), justify_content: JustifyContent::Center, ..default() }).with_children(|v| {
-            v.spawn(ui::text(f, &c.value(field), 17.0, INK));
+        // (a setting's value is in the colour of what is chosen while it differs from the usual island's)
+        let (width, size, ink) = match field {
+            Field::Size => (118.0, 17.0, INK),
+            Field::Isle(i) => (84.0, 15.0, if c.island_said().get(i).is_some() { CHOSEN } else { INK }),
+            _ => (64.0, 17.0, INK),
+        };
+        p.spawn(Node { min_width: Val::Px(width), justify_content: JustifyContent::Center, ..default() }).with_children(|v| {
+            v.spawn(ui::text(f, &c.value(field), size, ink));
         });
         step(p, "+", 1);
         if field == Field::Seed {
@@ -1126,7 +1433,17 @@ fn act(page: &mut Page, press: Press) {
         }
         Press::More => {
             page.more = !page.more;
+            page.island &= !page.more;
             page.focus = Focus::More;
+        }
+        Press::Island => {
+            page.island = !page.island;
+            page.more &= !page.island;
+            page.focus = Focus::Island;
+        }
+        Press::Reset => {
+            page.choices.island = Island::default();
+            page.focus = Focus::Reset;
         }
         Press::Copy => {
             let line = command_line(&program(), &page.args());
@@ -1164,6 +1481,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut page: ResMut<Page>, wn: Res<crate::
             match page.focus {
                 Focus::Field(f) => page.choices.step(f, by),
                 Focus::More if (by > 0) != page.more => act(&mut page, Press::More),
+                Focus::Island if (by > 0) != page.island => act(&mut page, Press::Island),
                 _ => {}
             }
         }
@@ -1174,6 +1492,8 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut page: ResMut<Page>, wn: Res<crate::
             // a field of the new island, or of More: Enter begins with the choices as they stand
             Focus::Field(_) | Focus::Begin => act(&mut page, Press::Begin),
             Focus::Draw => act(&mut page, Press::Draw),
+            Focus::Island => act(&mut page, Press::Island),
+            Focus::Reset => act(&mut page, Press::Reset),
             Focus::More => act(&mut page, Press::More),
             Focus::Copy => act(&mut page, Press::Copy),
             Focus::Notes => act(&mut page, Press::Notes),
@@ -1194,6 +1514,11 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut page: ResMut<Page>, wn: Res<crate::
             if matches!(page.focus, Focus::Field(f) if Field::MORE.contains(&f)) {
                 page.focus = Focus::More;
             }
+        } else if page.island {
+            page.island = false;
+            if matches!(page.focus, Focus::Field(Field::Isle(_)) | Focus::Reset) {
+                page.focus = Focus::Island;
+            }
         } else {
             page.go = Some(Vec::new());
         }
@@ -1210,7 +1535,7 @@ fn draw(
     boxes: Query<(Entity, &FieldBox)>,
     mut lines: Query<(&mut Text, &FieldLine), (Without<CommandText>, Without<SaidText>, Without<MoreWord>)>,
     mut command: Query<&mut Text, (With<CommandText>, Without<SaidText>, Without<MoreWord>)>,
-    mut more_word: Query<&mut Text, (With<MoreWord>, Without<SaidText>)>,
+    mut more_word: Query<(&mut Text, &MoreWord), Without<SaidText>>,
     mut said: Query<(&mut Text, &mut Node), (With<SaidText>, Without<CommandText>)>,
     mut more: Query<&mut Node, (With<MoreCard>, Without<SaidText>, Without<FieldRow>)>,
     mut rows: Query<(&mut Node, &FieldRow), (Without<SaidText>, Without<MoreCard>)>,
@@ -1244,11 +1569,122 @@ fn draw(
             n.display = display;
         }
     }
-    for mut t in &mut more_word {
-        t.0 = if page.more { "Less" } else { "More" }.to_string();
+    // (the island's settings' button says Hide settings while they are open, as More says Less)
+    for (mut t, w) in &mut more_word {
+        let word = match (w.0, if w.0 { page.island } else { page.more }) {
+            (true, true) => "Hide settings",
+            (true, false) => "Island settings",
+            (false, true) => "Less",
+            (false, false) => "More",
+        };
+        if t.0 != word {
+            t.0 = word.to_string();
+        }
     }
     for (fo, mut b) in &mut rings {
         *b = BorderColor::all(if fo.0 == page.focus { FOCUS } else { Color::NONE });
+    }
+}
+
+/// Show the island's settings in the saved games' place while they are open,
+/// and a group's name only while one of its rows is shown.
+fn draw_island(page: Res<Page>, mut q: Query<(&mut Node, Option<&GoOnColumn>, Option<&IslandCard>, Option<&GroupHead>), Or<(With<GoOnColumn>, With<IslandCard>, With<GroupHead>)>>) {
+    if !page.is_changed() {
+        return;
+    }
+    let shown = |on: bool| if on { Display::Flex } else { Display::None };
+    for (mut n, go_on, card, head) in &mut q {
+        let display = match (go_on, card, head) {
+            (Some(_), _, _) => shown(!page.island),
+            (_, Some(_), _) => shown(page.island),
+            (_, _, Some(h)) => shown(Field::island().iter().any(|f| matches!(f, Field::Isle(i) if SETTINGS[*i].part == h.0) && f.shown(&page.choices))),
+            _ => continue,
+        };
+        if n.display != display {
+            n.display = display;
+        }
+    }
+}
+
+/// The small map, and the maps made for it (island_map.rs): the threads that
+/// make them, the last island asked for and its number, and the map on show.
+#[derive(Resource, Default)]
+struct MapState {
+    maker: Option<island_map::Maker>,
+    turn: u64,
+    asked: Option<MapAsk>,
+    asked_at: Option<std::time::Instant>,
+    /// the map on show: its number and whether it is the whole island
+    shown: Option<(u64, bool)>,
+    image: Option<Handle<Image>>,
+    /// how long each map took from the ask to the page, seconds, sketch and whole
+    took: Vec<(bool, f32)>,
+}
+
+/// Ask for the map of the island chosen, once the settings are open, whenever
+/// the island chosen changes. Nothing waits for it.
+fn map_ask(page: Res<Page>, mut map: ResMut<MapState>) {
+    if !page.is_changed() || !page.island {
+        return;
+    }
+    let ask = page.choices.map_ask();
+    if map.asked.as_ref() == Some(&ask) {
+        return;
+    }
+    map.turn += 1;
+    let turn = map.turn;
+    map.maker.get_or_insert_with(island_map::Maker::start).ask(turn, &ask);
+    map.asked = Some(ask);
+    map.asked_at = Some(std::time::Instant::now());
+}
+
+/// Put a map made in the picture's place when it is newer than the one on
+/// show, and dim the map while a newer one is being made.
+fn map_take(mut map: ResMut<MapState>, mut images: ResMut<Assets<Image>>, mut node: Query<&mut ImageNode, With<MapImage>>, mut numbers: Query<(&mut Text, &MapNumber)>) {
+    let made = map.maker.as_ref().map(|m| m.take()).unwrap_or_default();
+    for pic in made {
+        if let Some(fault) = &pic.fault {
+            eprintln!("the start page's map could not be made: {fault}");
+            continue;
+        }
+        if !island_map::replaces(map.shown, (pic.turn, pic.whole)) {
+            continue;
+        }
+        let since = map.asked_at.map_or(0.0, |t| t.elapsed().as_secs_f32());
+        if pic.turn == map.turn {
+            map.took.push((pic.whole, since));
+        }
+        let density = pic.density();
+        eprintln!(
+            "the start page's map: the {} of island {} made in {:.2} s{}: {} km² of land, {} towns, {density:.1} people/km²",
+            if pic.whole { "whole island" } else { "sketch" },
+            map.asked.as_ref().map_or(0, |a| a.seed),
+            pic.took,
+            if pic.turn == map.turn { format!(", on the page {since:.2} s after it was asked for") } else { ", an older island's".to_string() },
+            pic.land_km2,
+            pic.towns
+        );
+        if let Some(mut img) = map.image.as_ref().and_then(|h| images.get_mut(h)) {
+            img.data = Some(pic.rgba);
+        }
+        map.shown = Some((pic.turn, pic.whole));
+        for (mut t, which) in &mut numbers {
+            let v = match which {
+                MapNumber::Area => format!("{} km\u{00b2}", ui::thousands(pic.land_km2 as f32)),
+                MapNumber::Density => format!("{density:.1} /km\u{00b2}"),
+            };
+            if t.0 != v {
+                t.0 = v;
+            }
+        }
+    }
+    // the old map stays, dimmed, until the new one is ready
+    let waiting = map.shown.is_none_or(|(turn, _)| turn < map.turn);
+    let alpha = if waiting { 0.45 } else { 1.0 };
+    for mut n in &mut node {
+        if n.color.alpha() != alpha {
+            n.color = Color::WHITE.with_alpha(alpha);
+        }
     }
 }
 
@@ -1376,12 +1812,39 @@ struct Shooting {
     image: Option<Handle<Image>>,
     asked_at: Option<u32>,
     held: Option<std::time::Instant>,
+    timing: Option<Timing>,
+}
+
+/// A timing of the page's frames (`--page-shot PATH,time`): every frame's
+/// time for `TIME_SECS` seconds, a setting stepped every `TIME_STEP` seconds
+/// while the settings are open, as somebody clicking + and - quickly would.
+struct Timing {
+    began: std::time::Instant,
+    last: std::time::Instant,
+    frames: Vec<f32>,
+    steps: u32,
+    done: bool,
+}
+
+const TIME_SECS: f32 = 8.0;
+const TIME_STEP: f32 = 0.5;
+
+impl Timing {
+    /// The frames' times, ms: their number, the median, the 90th and 99th centile, the mean, the longest.
+    fn words(&self) -> String {
+        let mut ms: Vec<f32> = self.frames.iter().map(|s| s * 1000.0).collect();
+        ms.sort_by(f32::total_cmp);
+        let at = |q: f32| ms.get(((ms.len() as f32 - 1.0) * q).round() as usize).copied().unwrap_or(0.0);
+        let mean = ms.iter().sum::<f32>() / ms.len().max(1) as f32;
+        format!("{} frames, median {:.2} ms, 90th {:.2} ms, 99th {:.2} ms, mean {:.2} ms, longest {:.2} ms", ms.len(), at(0.5), at(0.9), at(0.99), mean, ms.last().copied().unwrap_or(0.0))
+    }
 }
 
 /// With nobody at the page: wait for it to be laid out, its font drawn, its
 /// shaders made and What's new read, take its picture, and with `begin` press
 /// Begin, starting the game it would start with a picture of its own.
-fn shoot(mut commands: Commands, mut s: ResMut<Shooting>, mut page: ResMut<Page>, wn: Res<crate::whats_new::WhatsNew>, waiting: Res<crate::PipelinesWaiting>, mut tips: ResMut<crate::tips::Tips>, mut exit: MessageWriter<AppExit>) {
+#[allow(clippy::too_many_arguments)]
+fn shoot(mut commands: Commands, mut s: ResMut<Shooting>, mut page: ResMut<Page>, map: Res<MapState>, wn: Res<crate::whats_new::WhatsNew>, waiting: Res<crate::PipelinesWaiting>, mut tips: ResMut<crate::tips::Tips>, mut exit: MessageWriter<AppExit>) {
     s.frames += 1;
     // the pointer rests on a name, as a script's does (tips.rs), long enough for its tooltip to lock
     if tips.aim.is_none() {
@@ -1392,9 +1855,38 @@ fn shoot(mut commands: Commands, mut s: ResMut<Shooting>, mut page: ResMut<Page>
         None => {
             let held = *s.held.get_or_insert_with(std::time::Instant::now);
             let pending = waiting.0.load(std::sync::atomic::Ordering::Relaxed);
+            // (with the settings open, the picture waits for the whole island's map)
+            let mapped = !page.island || (map.turn > 0 && map.shown == Some((map.turn, true)));
             let ready = (wn.ready || held.elapsed().as_secs_f32() > 10.0) && pending == 0 && (s.ask.tip.is_none() || held.elapsed().as_secs_f32() > 2.5);
-            if s.frames < 20 || (!ready && held.elapsed().as_secs_f32() < 45.0) {
+            if s.frames < 20 || (!(ready && (mapped || s.timing.as_ref().is_some_and(|t| !t.done))) && held.elapsed().as_secs_f32() < 45.0) {
                 return;
+            }
+            // a timing first, once the page is up: then the picture, once its map is made
+            if s.ask.time && !s.timing.as_ref().is_some_and(|t| t.done) {
+                let now = std::time::Instant::now();
+                let (still, every, secs_all) = (s.ask.still, if s.ask.slow { 4.0 } else { TIME_STEP }, if s.ask.slow { 12.0 } else { TIME_SECS });
+                let t = s.timing.get_or_insert_with(|| Timing { began: now, last: now, frames: Vec::new(), steps: 0, done: false });
+                let frame = now.duration_since(t.last).as_secs_f32();
+                t.last = now;
+                if now != t.began {
+                    t.frames.push(frame);
+                }
+                let secs = now.duration_since(t.began).as_secs_f32();
+                if page.island && !still && secs >= every * (t.steps + 1) as f32 {
+                    // hills up a step and down again, a new island each time
+                    t.steps += 1;
+                    let by = if t.steps % 2 == 1 { 1 } else { -1 };
+                    page.choices.step(Field::Isle(0), by);
+                }
+                if secs >= secs_all {
+                    t.done = true;
+                    let maps: Vec<String> = map.took.iter().map(|(whole, s)| format!("{}{s:.2}", if *whole { "w" } else { "s" })).collect();
+                    eprintln!("the start page's frames over {secs_all} s, the settings {}: {}; {} steps; maps on the page after (s sketch, w whole, s): {}", if !page.island { "folded".to_string() } else if still { "open, still".to_string() } else { format!("open, a step every {every} s") }, t.words(), t.steps, maps.join(" "));
+                }
+                return;
+            }
+            if !mapped {
+                eprintln!("the start page's map was not made in 45 s");
             }
             if let Some(parent) = std::path::Path::new(&s.ask.path).parent().filter(|p| !p.as_os_str().is_empty()) {
                 let _ = std::fs::create_dir_all(parent);
@@ -1514,6 +2006,7 @@ mod tests {
             "--script click:Begin",
             "--describe 31,29",
             "--load a.json",
+            "--island rain=600",
             "--help",
             "--version",
         ] {
@@ -1523,8 +2016,12 @@ mod tests {
         assert_eq!(wanted(&line("--start-page"), &[]), Ok(Some(Asked { mode: Mode::Window { from_game: true }, size: None })));
         assert_eq!(
             wanted(&line("--page-shot out/p.png,more,begin --size 1280x720"), &[]),
-            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true, tip: None, start: None, no_settlers: false, no_ideas: false }), size: Some((1280, 720)) }))
+            Ok(Some(Asked { mode: Mode::Picture(PictureAsk { path: "out/p.png".into(), more: true, family: false, begin: true, tip: None, start: None, no_settlers: false, no_ideas: false, island: false, sets: Island::default(), seed: None, time: false, still: false, slow: false }), size: Some((1280, 720)) }))
         );
+        // the island's settings in a picture: open, each chosen, and timed
+        let Ok(Some(Asked { mode: Mode::Picture(p), .. })) = wanted(&line("--page-shot p.png,island:rain=450,island:lakes=0,seed:11,time"), &[]) else { panic!("a picture") };
+        assert!(p.island && p.time && p.seed == Some(11) && p.sets == Island::parse("rain=450,lakes=0").unwrap());
+        assert!(wanted(&line("--page-shot p.png,island:rian=450"), &[]).unwrap_err().contains("rian"));
         assert!(wanted(&line("--start-page --family"), &[]).unwrap_err().contains("--family is an option of a game"));
         assert!(wanted(&line("--page-shot"), &[]).is_err());
         assert!(wanted(&line("--page-shot p.png,blue"), &[]).unwrap_err().contains("blue"));
@@ -1560,6 +2057,25 @@ mod tests {
             ("Landfall, Settlers off and on again", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 0); c.set(Field::Abroad, 0); }), "--sandbox --new --landfall", |a| a.landfall && a.switches.plain()),
             // (the settled island has neither: a choice left off under Landfall says nothing there)
             ("Settled island after Landfall alone", Box::new(|c| { c.set(Field::Start, 1); c.set(Field::Abroad, 0); c.set(Field::Abroad, 1); c.set(Field::Start, 0); }), "--sandbox --new", |a| !a.landfall && a.switches.plain()),
+            // the island's settings, a row each (and every step of each below)
+            ("Hills: 1,150 m", Box::new(|c| c.step(Field::Isle(0), 1)), "--sandbox --new --island hills=1150", |a| a.island == Island::parse("hills=1150").unwrap()),
+            ("Rain: 750 mm/yr", Box::new(|c| c.step(Field::Isle(1), -1)), "--sandbox --new --island rain=750", |a| a.island == Island::parse("rain=750").unwrap()),
+            ("Meanders: ×0", Box::new(|c| c.island.wander = Some(0.0)), "--sandbox --new --island wander=0", |a| a.island.wander == Some(0.0)),
+            ("Lakes: ×3", Box::new(|c| c.island.lakes = Some(3.0)), "--sandbox --new --island lakes=3", |a| a.island.lakes == Some(3.0)),
+            ("Coal: ×2.5", Box::new(|c| c.island.coal = Some(2.5)), "--sandbox --new --island coal=2.5", |a| a.island.coal == Some(2.5)),
+            ("Ore: ×0.25", Box::new(|c| c.island.ore = Some(0.25)), "--sandbox --new --island ore=0.25", |a| a.island.ore == Some(0.25)),
+            ("Stone: ×1.5", Box::new(|c| c.step(Field::Isle(6), 1)), "--sandbox --new --island stone=1.5", |a| a.island.stone == Some(1.5)),
+            ("Clay: ×0.75", Box::new(|c| c.step(Field::Isle(7), -1)), "--sandbox --new --island clay=0.75", |a| a.island.clay == Some(0.75)),
+            ("Woodland: ×2", Box::new(|c| c.island.woods = Some(2.0)), "--sandbox --new --island woods=2", |a| a.island.woods == Some(2.0)),
+            ("Population: 200,000", Box::new(|c| c.step(Field::Isle(9), 1)), "--sandbox --new --island people=200000", |a| a.island.people == Some(200_000.0) && !a.landfall),
+            ("Market towns: 12", Box::new(|c| c.island.towns = Some(12.0)), "--sandbox --new --island towns=12", |a| a.island.towns == Some(12.0)),
+            ("Two settings, family", Box::new(|c| { c.set(Field::Kind, 1); c.island.hills = Some(1600.0); c.island.rain = Some(1800.0); }), "--family --new --island hills=1600,rain=1800", |a| !a.sandbox && a.island == Island::parse("hills=1600,rain=1800").unwrap()),
+            ("Hills up a step and down again", Box::new(|c| { c.step(Field::Isle(0), 1); c.step(Field::Isle(0), -1); }), "--sandbox --new", |a| a.island.plain()),
+            ("Landfall, Population: 7,000", Box::new(|c| { c.set(Field::Start, 1); c.step(Field::Isle(9), 1); }), "--sandbox --new --landfall --island people=7000", |a| a.landfall && a.island.people == Some(7_000.0)),
+            // (landfall has one town; another start begins with its own people)
+            ("Landfall after Market towns: 8 and Population: 270,000", Box::new(|c| { c.island.towns = Some(8.0); c.island.people = Some(270_000.0); c.set(Field::Start, 1); }), "--sandbox --new --landfall", |a| a.landfall && a.island.plain()),
+            // (the old island takes the people alone)
+            ("Old island, with Rain: 600 mm/yr and Population: 60,000", Box::new(|c| { c.island.rain = Some(600.0); c.island.people = Some(60_000.0); c.set(Field::Land, 1); }), "--sandbox --new --old-land --island people=60000", |a| a.old_land && a.island == Island::parse("people=60000").unwrap()),
         ];
         for (name, choose, want, check) in rows {
             let mut c = Choices::default();
@@ -1572,6 +2088,30 @@ mod tests {
             let o = crate::opening(&parsed);
             assert!(!o.plain() && !o.unattended, "{name}");
         }
+        // every step of every setting, on each start and land it is shown on, begins the game its
+        // argument begins: the command line's reader takes it, inside the setting's range, and
+        // the setting the game is made with is the one the page shows
+        let mut tried = 0;
+        for (start, old_land) in [(0, false), (1, false), (0, true), (1, true)] {
+            for i in 0..SETTINGS.len() {
+                let base = Choices { start, old_land, ..Choices::default() };
+                if !Field::Isle(i).shown(&base) {
+                    continue;
+                }
+                for &v in steps_of(i, base.landfall()) {
+                    let mut c = base.clone();
+                    *c.island.slot(i) = Some(v);
+                    let args = c.args();
+                    let a = crate::parse(&args).unwrap_or_else(|e| panic!("{} = {v}, start {start}, old land {old_land}: {e}", SETTINGS[i].name));
+                    let usual = v == default_of(i, base.landfall());
+                    assert_eq!(a.island.get(i), (!usual).then_some(v), "{} = {v}: {}", SETTINGS[i].name, args.join(" "));
+                    assert_eq!(c.value(Field::Isle(i)), setting_words(i, v));
+                    assert_eq!((a.landfall, a.old_land), (base.landfall(), old_land));
+                    tried += 1;
+                }
+            }
+        }
+        assert!(tried > 150, "{tried}");
         // every start the simulation offers is on the page, with an argument the command line knows
         assert_eq!(starts().iter().map(|s| s.word).collect::<Vec<_>>(), isostate_core::landfall::STARTS);
         for s in starts() {
@@ -1582,7 +2122,7 @@ mod tests {
     #[test]
     fn a_saved_game_is_gone_on_with_by_name_and_kept_where_it_was() {
         let dir = saves::test_dir("start-page-saves");
-        let listed = |place: Place, path: &str| Listed { path: PathBuf::from(path), place, seed: 11, families: 4, year: 1800, month: 3, to: 2050, family: "Fairfax".into(), old_land: false, landfall: false, switches: Default::default(), when: 0 };
+        let listed = |place: Place, path: &str| Listed { path: PathBuf::from(path), place, seed: 11, families: 4, year: 1800, month: 3, to: 2050, family: "Fairfax".into(), old_land: false, landfall: false, switches: Default::default(), island: Default::default(), when: 0 };
         let fam = crate::parse(&listed(Place::Family, "s/island-11-families-4.json").args()).unwrap();
         assert!(!fam.sandbox && fam.family && fam.load.as_deref() == Some("s/island-11-families-4.json"));
         assert_eq!(crate::opening(&fam).keeping(), crate::live::Keeping::Autosave);
@@ -1592,7 +2132,7 @@ mod tests {
         let trial = crate::parse(&listed(Place::Trial, "s/trials/island-11-families-4.json").args()).unwrap();
         assert_eq!(crate::opening(&trial).keeping(), crate::live::Keeping::Named("s/trials/island-11-families-4.json".into()));
         // the window's choices go with it
-        let mut page = Page { choices: Choices::default(), saves: vec![listed(Place::Sandbox, "a b/x.json")], focus: Focus::Save(0), more: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
+        let mut page = Page { choices: Choices::default(), saves: vec![listed(Place::Sandbox, "a b/x.json")], focus: Focus::Save(0), more: false, island: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
         page.choices.step(Field::Size, -1);
         assert_eq!(page.args(), ["--sandbox", "--load", "a b/x.json", "--size", "1600x900"]);
         assert_eq!(command_line("isolated-state", &page.args()), "isolated-state --sandbox --load \"a b/x.json\" --size 1600x900");
@@ -1631,6 +2171,13 @@ mod tests {
         assert_eq!(Choices::from_text(&c.to_text()), c);
         c.set(Field::Abroad, 1);
         assert_eq!(Choices::from_text(&c.to_text()), c);
+        // the island's settings, those the start says and those it does not (the towns at landfall)
+        c.island = Island::parse("hills=1450,coal=0.5,people=7000,towns=9").unwrap();
+        assert_eq!(Choices::from_text(&c.to_text()), c);
+        assert!(c.to_text().contains("island: hills=1450,coal=0.5,people=7000,towns=9\n"));
+        // a setting out of every range is the usual island's
+        assert_eq!(Choices::from_text("island: rain=10,hills=1450\n").island, Island::parse("hills=1450").unwrap());
+        assert!(Choices::from_text("island: usual\n").island.plain());
         // a file kept before the two switches were on the page has both on, as landfall has them
         let before = "kind: sandbox\nstart: landfall\nseed: 7\n";
         assert!(Choices::from_text(before).settlers && Choices::from_text(before).ideas);
@@ -1648,13 +2195,16 @@ mod tests {
     /// all of them and round, and Left or Right changes every field.
     #[test]
     fn every_choice_is_reached_without_the_mouse() {
-        let listed = Listed { path: PathBuf::from("x.json"), place: Place::Sandbox, seed: 7, families: 6, year: 1790, month: 0, to: 2050, family: String::new(), old_land: false, landfall: false, switches: Default::default(), when: 0 };
-        let mut page = Page { choices: Choices::default(), saves: vec![listed.clone(), listed], focus: Focus::Save(0), more: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
-        // on the settled island, and under Landfall with its two switches
-        for (more, start) in [(false, 0), (true, 0), (false, 1), (true, 1)] {
+        let listed = Listed { path: PathBuf::from("x.json"), place: Place::Sandbox, seed: 7, families: 6, year: 1790, month: 0, to: 2050, family: String::new(), old_land: false, landfall: false, switches: Default::default(), island: Default::default(), when: 0 };
+        let mut page = Page { choices: Choices::default(), saves: vec![listed.clone(), listed], focus: Focus::Save(0), more: false, island: false, said: None, mode: Mode::Window { from_game: false }, go: None, t0: std::time::Instant::now() };
+        // on the settled island, and under Landfall with its two switches; More open, or the island's settings
+        for (more, island, start) in [(false, false, 0), (true, false, 0), (false, true, 0), (false, false, 1), (true, false, 1), (false, true, 1)] {
             page.more = more;
+            page.island = island;
             page.choices = Choices { start, ..Choices::default() };
             assert_eq!(page.order().contains(&Focus::Field(Field::Abroad)), start == 1);
+            assert_eq!(page.order().contains(&Focus::Reset), island);
+            assert_eq!(page.order().contains(&Focus::Field(Field::Isle(10))), island && start == 0, "the market towns are the settled island's");
             let order = page.order();
             let mut seen = Vec::new();
             page.focus = order[0];
@@ -1666,10 +2216,11 @@ mod tests {
             assert_eq!(page.focus, order[0], "round again");
             page.move_focus(-1);
             assert_eq!(page.focus, *order.last().unwrap());
-            for want in [Focus::Save(1), Focus::Draw, Focus::Begin, Focus::More, Focus::Copy, Focus::WhatsNew, Focus::Backlog, Focus::Notes, Focus::Quit] {
+            for want in [Focus::Save(1), Focus::Draw, Focus::Begin, Focus::Island, Focus::More, Focus::Copy, Focus::WhatsNew, Focus::Backlog, Focus::Notes, Focus::Quit] {
                 assert!(order.contains(&want), "{want:?}");
             }
-            let fields: Vec<Field> = Field::NEW.iter().chain(if more { &Field::MORE[..] } else { &[] }).copied().filter(|f| f.shown(&page.choices)).collect();
+            let settings = if island { Field::island() } else { Vec::new() };
+            let fields: Vec<Field> = Field::NEW.iter().chain(if more { &Field::MORE[..] } else { &[] }).chain(&settings).copied().filter(|f| f.shown(&page.choices)).collect();
             for f in fields {
                 assert!(order.contains(&Focus::Field(f)), "{f:?}");
                 let before = page.choices.clone();
@@ -1683,6 +2234,16 @@ mod tests {
                 page.choices.start = start;
             }
         }
+        // Reset puts every setting back, and the island's settings and More are not open together
+        page.choices = Choices { island: Island::parse("hills=600,coal=2").unwrap(), ..Choices::default() };
+        act(&mut page, Press::Reset);
+        assert!(page.choices.island.plain() && page.choices.args() == ["--sandbox", "--new"]);
+        page.island = false;
+        page.more = true;
+        act(&mut page, Press::Island);
+        assert!(page.island && !page.more);
+        act(&mut page, Press::More);
+        assert!(page.more && !page.island);
     }
 
     #[test]
@@ -1711,7 +2272,32 @@ mod tests {
             assert_eq!(crate::words::label_fault(s.name), None);
         }
         // the tooltips keep the glossary's rules (docs/designs/words.md): three sentences, 18 words each
-        let says: Vec<(&str, &str)> = Field::NEW.iter().chain(&Field::MORE).map(|f| (f.label(), f.says())).chain([("Command", COMMAND_SAYS), ("Go on", GO_ON_SAYS)]).collect();
+        let isle = Field::island();
+        let says: Vec<(&str, &str)> = Field::NEW
+            .iter()
+            .chain(&Field::MORE)
+            .chain(&isle)
+            .map(|f| (f.label(), f.says()))
+            .chain([("Command", COMMAND_SAYS), ("Go on", GO_ON_SAYS), ("Reset", RESET_SAYS), ("Area", AREA_SAYS), ("Density", DENSITY_SAYS)])
+            .collect();
+        // each of the island's settings is a term of the glossary, its label the term's name or another spelling of it
+        let g = crate::words::glossary();
+        assert_eq!(Field::island().len(), SETTINGS.len());
+        for (i, p) in ON_PAGE.iter().enumerate() {
+            assert!(g.get(p.term).is_some(), "{}: no term {}", p.label, p.term);
+            assert_eq!(g.key_of(p.label), Some(p.term), "{}", p.label);
+            assert!(SETTINGS[i].term.is_empty() || SETTINGS[i].term == p.term || p.term == "population", "{}", p.label);
+            // every step inside the setting's range, the usual island's among them
+            for landfall in [false, true] {
+                let (least, most) = range_of(i, landfall);
+                let steps = steps_of(i, landfall);
+                assert!(steps.iter().all(|v| (least..=most).contains(v)) && steps.windows(2).all(|w| w[0] < w[1]), "{}", p.label);
+                assert!(steps.contains(&default_of(i, landfall)), "{}", p.label);
+                assert_eq!((steps[0], *steps.last().unwrap()), (least, most), "{}: the steps reach both ends of the range", p.label);
+            }
+            assert_eq!(crate::words::label_fault(&setting_words(i, SETTINGS[i].most)), None);
+        }
+        assert_eq!(saves::island_words(&Island::parse("rain=600,coal=2,people=270000").unwrap()), ["rain 600 mm/yr", "coal \u{00d7}2", "population 270,000"]);
         for (name, text) in says {
             assert_eq!(crate::words::label_fault(name), None);
             let s = crate::words::sentences(text);

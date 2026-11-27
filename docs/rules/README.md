@@ -617,7 +617,7 @@ changes no run. `src/standing.rs`.
 **The written check** (27 November 2026) is printed first, above the twelve:
 facts held to bands written from history, each with its source and how sure
 it is, the same for both starts where history allows, in three kinds of line
-(with a band and counted; known wrong today, printed with their band; no band
+(with a band and counted; unlike England's, printed with their band; no band
 yet). Its bands do not move with the island, as the twelve's do, so it says
 whether a change moved the island towards the world or away from it. It needs
 no reference, and it fails nothing yet. Beneath it the twelve are printed as
@@ -1240,3 +1240,7 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
   of cost 105, which knows each idea from the year `data/abroad.toml` gives (history's year where the
   content has one, else the settled island's); the tasks' uses come five years after abroad. Off, the
   island is alone: the isolated state. [abroad.md](abroad.md), `abroad.ideas`.
+- **carriage in hands** (off under both sets of rules for now): a load takes hands over the path's cost,
+  the same number on both starts, and they are paid the carting town's wage or the island's; beside it
+  a good that spoils is not stocked. [carriage.md](carriage.md), `carriage.in_hands`, `carriage.wage`,
+  `prices.spoils_unkept`.

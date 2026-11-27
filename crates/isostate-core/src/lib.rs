@@ -31,6 +31,7 @@ pub mod atlas;
 pub mod atlas_ideas;
 pub mod canals;
 pub mod care;
+pub mod carriage;
 pub mod carting;
 pub mod chronicle;
 pub mod city;
@@ -55,6 +56,8 @@ pub mod heaps;
 pub mod highways;
 pub mod immigration;
 pub mod inspect;
+// the island's settings: its land, its riches and its people at the start
+pub mod island;
 // IDEAS-PLATE: the island's ideas as a timeline, for the game's panel
 pub mod island_ideas;
 pub mod lab;

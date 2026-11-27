@@ -128,6 +128,7 @@ with it none was on sixteen islands.
 | `no_spoil_markup` | true | a good that spoils carries no markup ("Goods that spoil", below); off under the port |
 | `crumb` | 0.01 | a stock under this share of a month of the works' make at full time is no glut ("A crumb is no glut", above); 0 under the port, and no stock is a crumb |
 | `exports_ask` | false | what merchants carry out of a town is asked of its market ("What is carried out is asked", below); off under both sets of rules until carriage is paid in hands |
+| `spoils_unkept` | false | a good that spoils is not stocked ("A good that spoils is not stocked", below); off under both sets of rules, beside carriage in hands |
 
 The least share of capacity merchants go on taking in the worst glut was a
 setting, `glut_floor`, at 0, until stage 5 of the pass over the rules made it
@@ -461,6 +462,27 @@ one test with families the families' share of all money went from 10 per
 cent to 66. That was before the merchants' debt was mended ("Goods that
 spoil", below) and before carriage was measured; the switch now lets the
 question be asked of the island as it is.
+
+## A good that spoils is not stocked
+
+`prices.spoils_unkept`, added on 27 November 2026 with carriage in hands
+([carriage.md](carriage.md)): the mend the century probe named, built. **Off
+under both sets of rules**, and not written out while off. With it on, a good
+that loses more than `SPOILS` (a tenth) of its stock a month is held as a
+good that does not keep, as electricity and care are: what is not sold in the
+month is lost at its end (`tree::month_loss`), and its price moves on the
+month's asking against its making (`tree::price_gap`), not on shelves its
+merchants could never fill. Of today's goods that is services (half a month)
+and town gas (0.15, not carried between towns); building work, at a tenth,
+is still kept. It is a rule that reads the good's decay rather than a line
+of the content (`stock_months = 0` for services), because the content cannot
+be switched by a parameter, and because it says the cause in the words
+`no_spoil_markup` already uses. It has a switch of its own, not carriage's,
+because it is a rule of the shelves, and the probe found it mends main too
+(island 7's merchants 0.072 to 0.087 of income in the 1790s with nothing else
+on): the flip of the first century can then turn it on or leave it alone by
+itself. What it did beside carriage in hands and `exports_ask` is in
+[carriage.md](carriage.md), "What it did".
 
 ## In company with the machines
 

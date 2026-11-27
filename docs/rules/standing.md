@@ -39,7 +39,7 @@ The lines come in three kinds, printed apart:
 - **facts with a band, counted**: met or MISSED, and the first line counts
   them: `the written check: N of M met, K missed, J without a value`. A sweep that
   ends in 1900 has no value for the facts after 1900.
-- **known wrong today**: printed with their band and one word, and not counted
+- **unlike England's**: printed with their band and one word, and not counted
   against a landing. The study knew main misses these and that the first moves
   will not mend them (the settled island's wage, above all); they stay printed
   so that nobody forgets them.
@@ -108,7 +108,7 @@ from memory).
 | the linked wage, 2050 over 1970 | `real_wage_linked_2050_vs_1750` over `_1970_` | 1.0 or more | both | design | the same |
 | share of hands on the land, 2050 less 1900 | `farm_share_2050` less `farm_share_1900` | 0 or less | both | design | the same: fewer hands on the land in 2050 |
 
-### Known wrong today: printed with their band, not counted
+### Unlike England's: printed with their band, not counted
 
 | fact | read as | band | start | sure | source |
 |---|---|---|---|---|---|

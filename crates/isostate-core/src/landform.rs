@@ -77,6 +77,52 @@ pub struct LandParams {
     pub neck: f64,
     /// Height in metres that counts as 1 in the world's `h`.
     pub h_ref: f64,
+    // the island's settings (island.rs, docs/rules/land.md, "The island's
+    // settings"): dials laid over the numbers above, each 1 as the land comes,
+    // and written to a run's parameters only when they are not
+    /// How freely the rivers wander: the meander steps (`meander_steps`) are
+    /// taken this many times over.
+    #[serde(skip_serializing_if = "is_one")]
+    pub wander: f64,
+    /// How many lakes: the upland lakes looked for (`upland_lakes`) and the
+    /// chance of the lowland lake (`lowland_lake`, at most 1) this many times over.
+    #[serde(skip_serializing_if = "is_one")]
+    pub lakes: f64,
+    /// How rich the ground is in each of its five riches.
+    #[serde(skip_serializing_if = "Riches::plain")]
+    pub riches: Riches,
+}
+
+/// How rich the island is in what is dug and cut, each a factor on its field
+/// as the land makes it: 1 as it comes, less where it is scarce, more where it
+/// is plentiful. Coal and ore are raised or lowered before the least seam or
+/// body worth counting is cut off (0.18 and 0.15), so plentiful coal is more
+/// coalfield as well as richer; every field still lies in 0 to 1.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Riches {
+    pub coal: f64,
+    pub ore: f64,
+    pub stone: f64,
+    pub clay: f64,
+    pub woods: f64,
+}
+
+impl Default for Riches {
+    fn default() -> Riches {
+        Riches { coal: 1.0, ore: 1.0, stone: 1.0, clay: 1.0, woods: 1.0 }
+    }
+}
+
+impl Riches {
+    /// Every one as the land makes it.
+    pub fn plain(&self) -> bool {
+        *self == Riches::default()
+    }
+}
+
+fn is_one(v: &f64) -> bool {
+    *v == 1.0
 }
 
 impl Default for LandParams {
@@ -104,6 +150,9 @@ impl Default for LandParams {
             bend_radius: 3.0,
             neck: 2.5,
             h_ref: 1500.0,
+            wander: 1.0,
+            lakes: 1.0,
+            riches: Riches::default(),
         }
     }
 }
@@ -112,6 +161,20 @@ impl LandParams {
     /// The game's land.
     pub fn game() -> LandParams {
         LandParams { enabled: true, ..LandParams::default() }
+    }
+
+    /// The most upland lakes looked for and the chance of the lowland lake,
+    /// with the island's setting `lakes` laid on them (at 1 they are
+    /// `upland_lakes` and `lowland_lake` to the bit).
+    pub fn lake_counts(&self) -> (usize, f64) {
+        let lakes = self.lakes.max(0.0);
+        ((self.upland_lakes as f64 * lakes).round() as usize, (self.lowland_lake * lakes).min(1.0))
+    }
+
+    /// The steps of meander migration, with the island's setting `wander` laid
+    /// on them (at 1 they are `meander_steps`).
+    pub fn meander_count(&self) -> usize {
+        (self.meander_steps as f64 * self.wander.max(0.0)).round() as usize
     }
 }
 
@@ -486,10 +549,12 @@ pub fn draw_design(rng: &mut Rng, W: usize, H: usize, P: &LandParams) -> Design 
         let (x, y) = d.beside(t, s * Wf * uniform(rng, 0.15, 0.27));
         d.basins.push(Blob { x, y, sx: uniform(rng, 7.0, 11.0), sy: uniform(rng, 5.0, 8.0), ang: uniform(rng, 0.0, PI), k: 1.0 });
     }
-    d.lowland_lake = random(rng) < P.lowland_lake;
+    // (the island's setting `lakes` takes both this many times over: 1 as the land comes)
+    let (upland, lowland) = P.lake_counts();
+    d.lowland_lake = random(rng) < lowland;
     // (the draw is made whatever the number, so the stream stays in step)
-    let more = P.upland_lakes.saturating_sub(1).max(1);
-    d.upland_lakes = (2 + ((random(rng) * more as f64) as usize).min(more - 1)).min(P.upland_lakes);
+    let more = upland.saturating_sub(1).max(1);
+    d.upland_lakes = (2 + ((random(rng) * more as f64) as usize).min(more - 1)).min(upland);
     // coalfields on the belt's flanks, lying along it; ore in the belt itself
     for _ in 0..4 {
         let t = uniform(rng, 0.12, 0.88);
@@ -980,6 +1045,15 @@ pub struct Relief {
 /// fineness, where the trunk valleys and the watersheds are settled, then on the
 /// fine grid.
 pub fn build_relief(d: &Design, P: &LandParams) -> Relief {
+    build_relief_to(d, P, false)
+}
+
+/// The relief as `build_relief` makes it, or (`coarse_only`) only its first
+/// part: the steps on the grid of half the fineness, where the trunk valleys
+/// and watersheds are settled, with nothing on the fine grid after them. The
+/// second is the sketch of an island the start page draws while it waits for
+/// the whole (`landcells::sketch_land`).
+pub fn build_relief_to(d: &Design, P: &LandParams, coarse_only: bool) -> Relief {
     let (W, H) = (d.W, d.H);
     let k = P.fine.clamp(2, 8) & !1;
     let total = (P.coarse_steps + P.fine_steps).max(1);
@@ -988,11 +1062,12 @@ pub fn build_relief(d: &Design, P: &LandParams) -> Relief {
     for _ in 0..P.coarse_steps {
         e.step(P);
     }
+    let k = if coarse_only { coarse.k } else { k };
     if coarse.k != k {
         let fine = Grid::new(W, H, k);
         e = e.refine(d.fields(fine, P), total, d.seeds[9]);
     }
-    for _ in 0..P.fine_steps {
+    for _ in 0..if coarse_only { 0 } else { P.fine_steps } {
         e.step(P);
     }
     let n = e.g.n();

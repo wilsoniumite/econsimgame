@@ -490,7 +490,8 @@ pub fn now() -> u64 {
 /// settled island whatever the game on the table began from. The start's two
 /// switches go with the start, so `--settlers` and `--ideas-by-sea` are left
 /// out too: the new game begins as its start has them (docs/rules/landfall.md,
-/// "The start's switches"), and the start page is where they are chosen.
+/// "The start's switches"), and the start page is where they are chosen. So
+/// are the island's settings (`--island`): a new game is the island as it comes.
 pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool, landfall: bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -498,8 +499,9 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool,
         match args[i].as_str() {
             // (a script is of the game that was on the table, not of the new one)
             "--load" | "--seed" | "--families" | "--advance" | "--script" => i += 1,
-            // (the start's switches go with the start, which is the button's)
-            "--settlers" | "--ideas-by-sea" => i += 1,
+            // (the start's switches go with the start, which is the button's; and the island's
+            // settings with the island, which the start page chooses)
+            "--settlers" | "--ideas-by-sea" | "--island" => i += 1,
             // (and --sandbox beside --family would be refused)
             "--new" | "--family" | "--sandbox" => {}
             // (the start is the button's: landfall, docs/rules/landfall.md, or the settled island)
@@ -537,6 +539,17 @@ pub fn switch_words(s: isostate_core::save::Switches) -> Vec<&'static str> {
     v
 }
 
+/// What an island's settings say of a game, where they are not the usual
+/// island's (isostate_core::island): "rain 600 mm/yr", "coal ×2", "population
+/// 270,000", in the order of the settings, with the start page's own labels
+/// and numbers. Nothing for the usual island. The start page's list of saved
+/// games and the card of a game gone on with say these.
+pub fn island_words(island: &isostate_core::island::Island) -> Vec<String> {
+    (0..isostate_core::island::SETTINGS.len())
+        .filter_map(|i| island.get(i).map(|v| format!("{} {}", crate::start_page::ON_PAGE[i].label.to_lowercase(), crate::start_page::setting_words(i, v))))
+        .collect()
+}
+
 // ------------------------------------------------------------------ the saved games, listed
 
 /// Which of the three places a listed game is kept in.
@@ -571,6 +584,8 @@ pub struct Listed {
     pub landfall: bool,
     /// the start's two switches, where it was begun with either otherwise than its start has them
     pub switches: isostate_core::save::Switches,
+    /// the island's settings, where any is not the usual island's (`Save::island`)
+    pub island: isostate_core::island::Island,
     /// when the file was last written, in seconds since 1970
     pub when: u64,
 }
@@ -633,6 +648,7 @@ pub fn listed_in(folder: &Path) -> Vec<Listed> {
                     old_land: !s.land,
                     landfall: s.landfall,
                     switches: isostate_core::save::Switches { settlers: s.settlers, ideas_by_sea: s.ideas_by_sea },
+                    island: s.island,
                     when,
                     path,
                 }),
@@ -717,6 +733,7 @@ mod tests {
             landfall: false,
             settlers: None,
             ideas_by_sea: None,
+            island: Default::default(),
             to: None,
             orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
             waiting: Vec::new(),
