@@ -1944,15 +1944,17 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
 
 /// What the card of a game gone on with says of how it began, where its
 /// start's two switches are not the start's own (docs/rules/landfall.md, "The
-/// start's switches"): "Landfall · no settlers · no technology from abroad".
-/// None for a start as it comes, which the card says nothing of.
+/// start's switches") or its island's settings are not the usual island's
+/// (isostate_core::island): "Landfall · no settlers · no technology from
+/// abroad", "Settled island · rain 600 mm/yr · coal ×2". None for a start as
+/// it comes on the usual island, which the card says nothing of.
 pub fn begun_line(back: &live::Resumed) -> Option<String> {
-    let words = crate::saves::switch_words(back.switches);
+    let words: Vec<String> = crate::saves::switch_words(back.switches).into_iter().map(String::from).chain(crate::saves::island_words(&back.island)).collect();
     if words.is_empty() {
         return None;
     }
     let start = if back.landfall { "Landfall" } else { "Settled island" };
-    Some(std::iter::once(start).chain(words).collect::<Vec<_>>().join(" \u{00b7} "))
+    Some(std::iter::once(start.to_string()).chain(words).collect::<Vec<_>>().join(" \u{00b7} "))
 }
 
 /// What a new game's opening card says when a file was in the saved game's

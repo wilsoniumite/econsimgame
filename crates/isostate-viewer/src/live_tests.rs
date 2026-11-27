@@ -326,7 +326,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
 
     // loaded as --load loads it; nothing is written, so the first game's file stays as it is
     let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
     // the last year's months for the maps, as the books kept them
@@ -513,7 +513,7 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     let c = Table::open(&Opening { load: Some(name), shots: true, ..default() });
     assert_eq!(c.live.resumed.as_ref().unwrap().date(false), "April 1755");
     // a game that is over has no January after its last year
-    assert_eq!(Resumed { year: 1900, month: 0, orders: 0, refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() }.date(true), "1900");
+    assert_eq!(Resumed { year: 1900, month: 0, orders: 0, refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() }.date(true), "1900");
     assert!(!c.live.resumed.as_ref().unwrap().drifted);
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
@@ -878,7 +878,7 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
 
 #[test]
 fn the_card_says_what_could_not_be_brought_back() {
-    let back = |refused, drifted| Resumed { year: 1779, month: 0, orders: 41 - refused, refused, drifted, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() };
+    let back = |refused, drifted| Resumed { year: 1779, month: 0, orders: 41 - refused, refused, drifted, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() };
     assert_eq!(crate::game::resumed_note(&back(0, false)), None);
     assert_eq!(
         crate::game::resumed_note(&back(0, true)).unwrap(),
@@ -888,8 +888,8 @@ fn the_card_says_what_could_not_be_brought_back() {
         crate::game::resumed_note(&back(3, true)).unwrap(),
         "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently. The save as it was is kept."
     );
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() }).unwrap().contains(" Your one order could not"));
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() }).unwrap().contains(" All four of your orders could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() }).unwrap().contains(" Your one order could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() }).unwrap().contains(" All four of your orders could not"));
     // an earlier save than the last, with or without the rules having changed
     assert_eq!(
         crate::game::resumed_note(&Resumed { passed_over: 1, ..back(0, false) }).unwrap(),
@@ -901,7 +901,7 @@ fn the_card_says_what_could_not_be_brought_back() {
     let both = crate::game::resumed_note(&Resumed { passed_over: 2, ..back(0, true) }).unwrap();
     assert!(both.starts_with("The last save could not be read, so this is an earlier one, from 1779. The island's rules have changed"), "{both}");
     // a sandbox's short card: where the session was left and what was done by hand in it, and what Begin again leaves
-    let session = |month, by_hand| Resumed { year: 1790, month, orders: by_hand, refused: 0, drifted: false, passed_over: 0, by_hand, landfall: false, switches: Default::default() };
+    let session = |month, by_hand| Resumed { year: 1790, month, orders: by_hand, refused: 0, drifted: false, passed_over: 0, by_hand, landfall: false, switches: Default::default(), island: Default::default() };
     assert_eq!(crate::game::session_left_words(&session(2, 2), false), "As you left it in March 1791, with two edits by hand.");
     assert_eq!(crate::game::session_left_words(&session(0, 1), false), "As you left it in January 1791, with one edit by hand.");
     assert_eq!(crate::game::session_left_words(&session(0, 0), false), "As you left it in January 1791, with nothing done by hand.");
@@ -1029,7 +1029,7 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
 
     // a plain start goes on with it
     let b = Table::open(&Opening { seed: 7, families: 3, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, month: 0, orders, refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default() }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, month: 0, orders, refused: 0, drifted: false, passed_over: 0, by_hand: 0, landfall: false, switches: Default::default(), island: Default::default() }));
     assert!(b.live.kept);
     assert_eq!(b.year(), 1752);
     drop(b);

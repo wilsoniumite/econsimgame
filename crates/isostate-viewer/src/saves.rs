@@ -539,6 +539,17 @@ pub fn switch_words(s: isostate_core::save::Switches) -> Vec<&'static str> {
     v
 }
 
+/// What an island's settings say of a game, where they are not the usual
+/// island's (isostate_core::island): "rain 600 mm/yr", "coal ×2", "population
+/// 270,000", in the order of the settings, with the start page's own labels
+/// and numbers. Nothing for the usual island. The start page's list of saved
+/// games and the card of a game gone on with say these.
+pub fn island_words(island: &isostate_core::island::Island) -> Vec<String> {
+    (0..isostate_core::island::SETTINGS.len())
+        .filter_map(|i| island.get(i).map(|v| format!("{} {}", crate::start_page::ON_PAGE[i].label.to_lowercase(), crate::start_page::setting_words(i, v))))
+        .collect()
+}
+
 // ------------------------------------------------------------------ the saved games, listed
 
 /// Which of the three places a listed game is kept in.
@@ -573,6 +584,8 @@ pub struct Listed {
     pub landfall: bool,
     /// the start's two switches, where it was begun with either otherwise than its start has them
     pub switches: isostate_core::save::Switches,
+    /// the island's settings, where any is not the usual island's (`Save::island`)
+    pub island: isostate_core::island::Island,
     /// when the file was last written, in seconds since 1970
     pub when: u64,
 }
@@ -635,6 +648,7 @@ pub fn listed_in(folder: &Path) -> Vec<Listed> {
                     old_land: !s.land,
                     landfall: s.landfall,
                     switches: isostate_core::save::Switches { settlers: s.settlers, ideas_by_sea: s.ideas_by_sea },
+                    island: s.island,
                     when,
                     path,
                 }),
