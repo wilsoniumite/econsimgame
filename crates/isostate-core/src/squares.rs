@@ -581,6 +581,8 @@ enum Want {
 /// What a square on a kept course's frontage is worth to a house block or a
 /// shop, over its other terms (courses.rs).
 const FRONTAGE: f32 = 1.0;
+/// How far from a kept course a works' yard still counts as on its way, in squares (courses.rs).
+const YARD_REACH: f32 = 3.0;
 
 fn score(t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
     if t.water[k] && want != Want::Park {
@@ -595,10 +597,14 @@ fn score(t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
     // courses: a house block or a shop on the way's frontage, within a square of it,
     // before any square behind (FRONTAGE is about eight squares nearer the town's middle)
     let front = if fr.courses && way <= 1.0 && matches!(want, Want::Houses | Want::Shop) { FRONTAGE } else { 0.0 };
+    // courses: a works wants its way within reach (YARD_REACH squares), not on its
+    // frontage, so that the works of a cell do not crowd along its one course and hem
+    // each other in (with the eight half-links every square was near a way)
+    let yard_way = if fr.courses { way.min(YARD_REACH) } else { way };
     front + match want {
         Want::Shop => -0.3 * way - 0.15 * mid - bad + 0.2 * h,
-        Want::Works => -0.2 * way + 0.06 * mid - bad + 0.2 * h,
-        Want::Mill => -0.2 * way + 0.06 * mid - 0.35 * wat - bad + 0.2 * h,
+        Want::Works => -0.2 * yard_way + 0.06 * mid - bad + 0.2 * h,
+        Want::Mill => -0.2 * yard_way + 0.06 * mid - 0.35 * wat - bad + 0.2 * h,
         Want::Pit => -0.05 * way + 0.06 * mid - 0.5 * bad + 0.2 * h,
         Want::Houses => -0.25 * way - 0.12 * mid - 1.5 * bad + 0.3 * h,
         Want::Park => {
