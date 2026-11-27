@@ -139,6 +139,10 @@ struct Args {
     /// the new game begins at landfall, one town in a corner (`--landfall`;
     /// docs/rules/landfall.md)
     landfall: bool,
+    /// the new game's settlers by ship and ideas by sea, where asked for
+    /// (`--settlers on|off`, `--ideas-by-sea on|off`; docs/rules/landfall.md,
+    /// "The start's switches"); None is the start's own
+    switches: isostate_core::save::Switches,
     /// a saved game to go on with
     load: Option<String>,
     /// where to save, instead of the island's autosave
@@ -226,6 +230,11 @@ it was left, behind a short card (Go on, or Begin again). --family plays the fam
   --landfall           a new game begun at landfall: one town of 5,000 settlers in a corner of
                        the island, its people answering to the free land, and settlers coming
                        by sea (docs/rules/landfall.md). A saved game says its start itself
+  --settlers on|off    a new game with settlers by ship or without (on at landfall, off on
+                       the settled island). A saved game says how it began
+  --ideas-by-sea on|off
+                       a new game whose ports learn from abroad, or not (on at landfall, off
+                       on the settled island). In a game both are switches of the Rules tab
   --new-land           does nothing: every new game is on the new land. Kept so that commands
                        written before the switch still run
   --load FILE          go on with this saved game
@@ -277,10 +286,11 @@ Pictures and checks with no window:
   --ground-debug       draw the ground as flat class colours and nothing else
   --class-map          write the CPU's land class under every pixel of each view, and stop
   --script STEPS       play keys and clicks and print what happens (see src/script.rs)
-  --page-shot PATH[,more][,family][,start:WORD][,tip:NAME][,begin]
+  --page-shot PATH[,more][,family][,start:WORD][,settlers:off][,ideas-by-sea:off][,tip:NAME][,begin]
                        a picture of the start page, with More open, with the family game
-                       chosen, and then Begin pressed: the game it starts takes a picture
-                       of its own (PATH-island.png)
+                       chosen, with a start chosen and landfall's switches off, and then
+                       Begin pressed: the game it starts takes a picture of its own
+                       (PATH-island.png)
 
 The standard shots (src/shots.rs) and the lab (src/lab.rs):
 
@@ -340,6 +350,15 @@ fn number<T: std::str::FromStr>(opt: &str, s: &str) -> Result<T, String> {
     s.parse().ok().filter(|_| !endless).ok_or_else(|| format!("{opt}: {s} is not a number it can take"))
 }
 
+/// A switch on the command line: on or off.
+fn on_off(opt: &str, s: &str) -> Result<bool, String> {
+    match s.trim() {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        s => Err(format!("{opt} takes on or off, not {s}")),
+    }
+}
+
 /// Two numbers with `sep` between them, as in --look 31.5,29.5 and --size 1600x1000.
 fn pair<T: std::str::FromStr>(opt: &str, s: &str, sep: char) -> Result<(T, T), String> {
     match s.split_once(sep) {
@@ -391,6 +410,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         fresh: false,
         old_land: false,
         landfall: false,
+        switches: isostate_core::save::Switches::default(),
         load: None,
         save: None,
         keep: false,
@@ -447,6 +467,8 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
             "--old-land" => { a.old_land = true; a.new = true; a.fresh = true; }
             "--landfall" => { a.landfall = true; a.new = true; a.fresh = true; }
+            "--settlers" => { a.switches.settlers = Some(on_off(opt, &next(i)?)?); a.new = true; a.fresh = true; i += 1; }
+            "--ideas-by-sea" => { a.switches.ideas_by_sea = Some(on_off(opt, &next(i)?)?); a.new = true; a.fresh = true; i += 1; }
             // (the new land is every new game's since the switch: the option is kept so that old commands run)
             "--new-land" => {}
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
@@ -570,6 +592,9 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if let (true, Some(file)) = (a.landfall, &a.load) {
         return Err(format!("--landfall starts a new game, and --load goes on with one: a saved game is played again from the start it says without being told, so leave --landfall out to go on with {file}"));
     }
+    if let (false, Some(file)) = (a.switches.plain(), &a.load) {
+        return Err(format!("--settlers and --ideas-by-sea begin a new game, and --load goes on with one: a saved game is played again as it began without being told, and in a game the two are switches of the Rules tab, so leave them out to go on with {file}"));
+    }
     // options that only mean something beside another say so, rather than being passed over in silence
     if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
         eprintln!("--out, --tilt, --turn and --loupe go with --lab and do nothing without it");
@@ -644,6 +669,7 @@ fn opening(a: &Args) -> live::Opening {
         keep: a.keep,
         old_land: a.old_land,
         landfall: a.landfall,
+        switches: a.switches,
         sandbox: a.sandbox,
         // every new game runs to 2050 unless --to says otherwise (and --shots plays to 1900)
         to: Some(a.to.unwrap_or(isostate_core::save::LATEST_YEAR)),
@@ -1093,7 +1119,8 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            format!("Island {} with {}{}{}, {} by {} pixels", args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, if args.landfall { ", from landfall" } else { "" }, args.size.0, args.size.1)
+            let switches: String = saves::switch_words(args.switches).iter().map(|w| format!(", {w}")).collect();
+            format!("Island {} with {}{}{}{switches}, {} by {} pixels", args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, if args.landfall { ", from landfall" } else { "" }, args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -2937,6 +2964,15 @@ mod tests {
         assert!(a.new && a.fresh && a.old_land && a.seed == 3);
         assert!(args("runs/x/run.bin --old-land").unwrap().new && !args("--new").unwrap().old_land);
         assert!(args("--old-land --load mine.json").err().unwrap().starts_with("--old-land starts a new game, and --load goes on with one"));
+        // the start's two switches ask for a new game, on or off, and not a saved one
+        let a = args("--landfall --settlers off --ideas-by-sea on").unwrap();
+        assert!(a.new && a.fresh && a.landfall);
+        assert_eq!(a.switches, isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: Some(true) });
+        assert_eq!(args("--ideas-by-sea off").unwrap().switches, isostate_core::save::Switches { settlers: None, ideas_by_sea: Some(false) });
+        assert!(args("--landfall").unwrap().switches.plain() && args("--new").unwrap().switches.plain());
+        assert_eq!(args("--settlers no").err().unwrap(), "--settlers takes on or off, not no");
+        assert_eq!(args("--settlers").err().unwrap(), "--settlers needs a value after it");
+        assert!(args("--settlers off --load mine.json").err().unwrap().starts_with("--settlers and --ideas-by-sea begin a new game, and --load goes on with one"));
         // --new-land does nothing since every new game is on the new land: a command written before still runs
         let a = args("--new-land").unwrap();
         assert!(!a.fresh && !a.old_land && a.load.is_none());
@@ -3096,7 +3132,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--old-land", "--landfall", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--version", "--help", "--start-page", "--page-shot"] {
+        for opt in ["--new", "--seed", "--old-land", "--landfall", "--settlers", "--ideas-by-sea", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--version", "--help", "--start-page", "--page-shot"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

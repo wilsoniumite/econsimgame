@@ -1942,6 +1942,19 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
     }
 }
 
+/// What the card of a game gone on with says of how it began, where its
+/// start's two switches are not the start's own (docs/rules/landfall.md, "The
+/// start's switches"): "Landfall · no settlers · no technology from abroad".
+/// None for a start as it comes, which the card says nothing of.
+pub fn begun_line(back: &live::Resumed) -> Option<String> {
+    let words = crate::saves::switch_words(back.switches);
+    if words.is_empty() {
+        return None;
+    }
+    let start = if back.landfall { "Landfall" } else { "Settled island" };
+    Some(std::iter::once(start).chain(words).collect::<Vec<_>>().join(" \u{00b7} "))
+}
+
 /// What a new game's opening card says when a file was in the saved game's
 /// place and nothing in it could be gone on with (a save cut short, one from
 /// a later version of the game, some other file): that this is why the game
@@ -1970,6 +1983,9 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
         15.0,
         INK,
     ));
+    if let Some(line) = begun_line(back) {
+        c.spawn(text(f, &line, 13.5, MUTED));
+    }
     if let Some(note) = resumed_note(back) {
         c.spawn((
             Node { margin: UiRect::top(Val::Px(4.0)), padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
@@ -2069,6 +2085,9 @@ fn session_card(commands: &mut Commands, f: &Handle<Font>, seed: u64, back: &liv
             .with_children(|c| {
                 c.spawn(text(f, &format!("Island {seed}"), 24.0, ink));
                 c.spawn(text(f, &session_left_words(back, over), 15.0, INK));
+                if let Some(line) = begun_line(back) {
+                    c.spawn(text(f, &line, 13.5, MUTED));
+                }
                 if let Some(note) = resumed_note(back) {
                     c.spawn((
                         Node { margin: UiRect::top(Val::Px(4.0)), padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },

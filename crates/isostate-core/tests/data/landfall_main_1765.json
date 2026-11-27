@@ -1,0 +1,23 @@
+{
+  "format": 3,
+  "version": "0.1.0",
+  "rules": {"name":"game","fingerprint":"5596fe18c7f71898"},
+  "seed": 7,
+  "families": 6,
+  "started": 1795743827,
+  "saved": "2026-11-27 01:43 UTC",
+  "year": 1765,
+  "month": 0,
+  "family": "Fairfax",
+  "seat": "Melness",
+  "worth": 67411,
+  "check": "31ffa4cf055b885d",
+  "land": true,
+  "landfall": true,
+  "to": 2050,
+  "orders": [
+    {"year":1750,"kind":"decide","id":0,"choice":{"kind":"trade","group":"iron"}},
+    {"year":1750,"kind":"found","method":"forge_rails","cell":7168}
+  ],
+  "waiting": []
+}
