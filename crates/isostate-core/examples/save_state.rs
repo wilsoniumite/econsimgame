@@ -315,7 +315,7 @@ bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
 bin_struct!(TownBytes { version });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode, squares, squares_first });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale, ground_layers, way_goods, way_mode, squares, squares_first, sq_hold, sq_hold_first, way_log, way_first });
 bin_struct!(Change { at, tenant, year, face, floor });
 
 /// The series: names, labels and every month so far. The index by name is a
@@ -525,6 +525,8 @@ macro_rules! state_parts {
                 care: Default::default(),
                 // squares (docs/rules/squares.md): carried across as the roads are
                 sq: Default::default(),
+                // courses (docs/rules/courses.md): carried across as the roads are
+                wc: Default::default(),
             }
         }
 
@@ -663,6 +665,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.immigration = carry.immigration.clone();
     st.care = carry.care.clone();
     st.sq = carry.sq.clone();
+    st.wc = carry.wc.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

@@ -36,6 +36,7 @@ pub mod chronicle;
 pub mod city;
 pub mod cli;
 pub mod commons;
+pub mod courses;
 pub mod content;
 pub mod crossings;
 pub mod econ;

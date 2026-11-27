@@ -282,6 +282,15 @@ pub struct Record {
     /// the run keeps its squares).
     pub squares: Vec<crate::squares::Change>,
     pub squares_first: Vec<u32>,
+    /// squares, layout 3: the holdings' log, each year's bytes
+    /// (`squares::encode_holds`), year k's `sq_hold[sq_hold_first[k] .. sq_hold_first[k + 1]]`.
+    pub sq_hold: Vec<u8>,
+    pub sq_hold_first: Vec<u32>,
+    /// courses (docs/rules/courses.md): the ways' log, each year's bytes
+    /// (`courses::encode_year`), laid out as the holdings' (both empty unless
+    /// the run keeps its courses).
+    pub way_log: Vec<u8>,
+    pub way_first: Vec<u32>,
 }
 
 /// Whether a record keeps the `GROUND_LAYERS`: one past 1900 of a run whose
@@ -329,6 +338,10 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         way_mode: if P.traffic.enabled { vec![0u8; n_years * N] } else { Vec::new() },
         squares: Vec::new(),
         squares_first: if P.squares.enabled { vec![0; n_years + 1] } else { Vec::new() },
+        sq_hold: Vec::new(),
+        sq_hold_first: if P.squares.enabled { vec![0; n_years + 1] } else { Vec::new() },
+        way_log: Vec::new(),
+        way_first: if crate::courses::active(st, P) { vec![0; n_years + 1] } else { Vec::new() },
     }
 }
 
@@ -344,6 +357,28 @@ pub fn squares_snapshot(rec: &mut Record, st: &State, k: usize) {
     rec.squares.extend_from_slice(&st.sq.changes);
     let to = rec.squares.len() as u32;
     rec.squares_first[k + 1..].iter_mut().for_each(|f| *f = to);
+    bytes_snapshot(&mut rec.sq_hold, &mut rec.sq_hold_first, &st.sq.holds, k);
+}
+
+/// A year's bytes of a log kept as one array and where each year begins
+/// (`sq_hold`, `way_log`): year k's replace what it had, and the years after
+/// it are left with none until they come.
+fn bytes_snapshot(log: &mut Vec<u8>, first: &mut [u32], year: &[u8], k: usize) {
+    if first.len() < k + 2 {
+        return;
+    }
+    log.truncate(first[k] as usize);
+    log.extend_from_slice(year);
+    let to = log.len() as u32;
+    first[k + 1..].iter_mut().for_each(|f| *f = to);
+}
+
+/// courses: year k's changes into the ways' log (`CourseBook::log`).
+pub fn courses_snapshot(rec: &mut Record, st: &State, k: usize) {
+    if !st.wc.kept() {
+        return;
+    }
+    bytes_snapshot(&mut rec.way_log, &mut rec.way_first, &st.wc.log, k);
 }
 
 fn to_u8(x: f64) -> u8 {
@@ -479,6 +514,8 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
     }
     // squares: what the year's end changed of them
     squares_snapshot(rec, st, k);
+    // courses: the places, courses and drawn links the year's end changed
+    courses_snapshot(rec, st, k);
     for t in 0..T {
         let act = st.town_active[t];
         rec.town_active[k * T + t] = act as u8;
@@ -677,6 +714,17 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
             arrays.push(i32_array("sq_first", vec![n_years + 1], &first));
             let n = log.len();
             arrays.push(u8_array("sq_log", vec![n], log));
+            // layout 3: the holdings' log beside it, laid out the same way
+            let first: Vec<i32> = rec.sq_hold_first.iter().map(|&f| f as i32).collect();
+            arrays.push(i32_array("sq_hold_first", vec![n_years + 1], &first));
+            arrays.push(u8_array("sq_hold", vec![rec.sq_hold.len()], rec.sq_hold.clone()));
+        }
+        // courses (docs/rules/courses.md): the ways' log, only in a run that keeps it;
+        // year k's are bytes way_first[k] .. way_first[k + 1] of way_log
+        if rec.way_first.len() == n_years + 1 {
+            let first: Vec<i32> = rec.way_first.iter().map(|&f| f as i32).collect();
+            arrays.push(i32_array("way_first", vec![n_years + 1], &first));
+            arrays.push(u8_array("way_log", vec![rec.way_log.len()], rec.way_log.clone()));
         }
     }
     let T = rec.T;
@@ -890,6 +938,12 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         header["squares"] = json!({
             "layout": crate::squares::LOG_LAYOUT, "side": crate::squares::SIDE, "metres": crate::squares::METRES,
             "kinds": crate::squares::KINDS, "floor": crate::squares::FLOOR_USES,
+        });
+    }
+    // courses: how the ways' log is laid out, written only where there is one
+    if !lite && rec.way_first.len() == n_years + 1 {
+        header["ways"] = json!({
+            "layout": crate::courses::LOG_LAYOUT, "unit": crate::courses::UNIT, "slots": crate::traffic::SLOTS, "kinds": crate::courses::KINDS,
         });
     }
     clean(&mut header);

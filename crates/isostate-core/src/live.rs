@@ -347,6 +347,20 @@ pub struct LiveYear {
     /// the year (None while the rule is off).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub squares: Option<LiveSquares>,
+    /// courses (docs/rules/courses.md): the year's bytes of the ways' log, the
+    /// same the record keeps for the year (None while the rule is off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ways: Option<LiveWays>,
+}
+
+/// courses: one year's log of the ways, as `LiveYear::ways` hands it over.
+#[derive(Clone, Debug, Serialize)]
+pub struct LiveWays {
+    /// The bytes are the whole book and not the year's alone (the cursor missed
+    /// a year's end): a reader forgets what it held and starts from them.
+    pub whole: bool,
+    /// `courses::encode_year`'s bytes (`courses::decode_year` reads them).
+    pub log: Vec<u8>,
 }
 
 /// squares: one year's changes, as `LiveYear::squares` hands them over.
@@ -358,6 +372,9 @@ pub struct LiveSquares {
     pub whole: bool,
     /// By `squares::Change::at`.
     pub changes: Vec<crate::squares::Change>,
+    /// The holdings' log of the same (`squares::encode_holds`'s bytes): what
+    /// each works and working took, in order; with `whole`, every holding's squares.
+    pub holds: Vec<u8>,
 }
 
 /// traffic: what each link carried in the year, as the record keeps it.
@@ -469,12 +486,14 @@ pub struct LiveCursor {
     kept: Vec<Option<bool>>,
     /// squares: the year's ends of the squares' log told so far (`SquareBook::told`).
     squares: u64,
+    /// courses: the year's ends of the ways' log told so far (`CourseBook::told`).
+    ways: u64,
 }
 
 impl LiveCursor {
     /// A cursor that has sent nothing; its first `live_year` reports the first year.
     pub fn new(C: &Content) -> LiveCursor {
-        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new(), squares: 0 }
+        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new(), squares: 0, ways: 0 }
     }
 
     /// How many works, towns and items of news have been sent, for a viewer
@@ -603,7 +622,18 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         traffic: crate::traffic::layers(st, P).map(|(goods, mode)| LiveTraffic { goods, mode }),
         pairs: crate::traffic::year_pairs(st, C, year),
         squares: live_squares(cursor, st),
+        ways: live_ways(cursor, st),
     }
+}
+
+/// courses: the year's log, or the whole book where the cursor has missed a year's end.
+fn live_ways(cursor: &mut LiveCursor, st: &State) -> Option<LiveWays> {
+    if !st.wc.kept() {
+        return None;
+    }
+    let whole = cursor.ways + 1 != st.wc.told;
+    cursor.ways = st.wc.told;
+    Some(LiveWays { whole, log: if whole { crate::courses::whole(st) } else { st.wc.log.clone() } })
 }
 
 /// squares: the changes since the cursor last told them: the year's end's, or
@@ -614,5 +644,9 @@ fn live_squares(cursor: &mut LiveCursor, st: &State) -> Option<LiveSquares> {
     }
     let whole = cursor.squares + 1 != st.sq.told;
     cursor.squares = st.sq.told;
-    Some(LiveSquares { whole, changes: if whole { st.sq.whole() } else { st.sq.changes.clone() } })
+    Some(LiveSquares {
+        whole,
+        changes: if whole { st.sq.whole() } else { st.sq.changes.clone() },
+        holds: if whole { crate::squares::whole_holds(&st.sq) } else { st.sq.holds.clone() },
+    })
 }

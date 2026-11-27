@@ -300,6 +300,26 @@ pub struct SquareBook {
     pub changes: Vec<Change>,
     /// Year's ends logged so far: the first's `changes` are from no squares at all.
     pub told: u64,
+    /// What each works and working took this year, in the order taken (the log's holdings).
+    pub took: Vec<Took>,
+    /// The holdings' log of the last year's end (`encode_holds`).
+    pub holds: Vec<u8>,
+}
+
+/// What one works or working took in a year's end, as the record's
+/// holdings' log (`sq_hold`) and a live game carry it: its squares in the
+/// order taken, and where it took its first, the heading of the way there.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Took {
+    pub cell: u32,
+    /// A working's pit (its resource row as `id`), else a works (its number).
+    pub pit: bool,
+    pub id: u32,
+    /// It held none before: the first of `squares` is where it first stands,
+    /// and `along` (`Holding::along`) is the heading of the way there.
+    pub fresh: bool,
+    pub along: u8,
+    pub squares: Vec<u8>,
 }
 
 impl SquareBook {
@@ -439,6 +459,8 @@ struct Frame {
     mid: (f32, f32),
     c: usize,
     w: usize,
+    /// The ways are the kept courses (courses.rs): house blocks and shops take the frontage first.
+    courses: bool,
 }
 
 fn meeting(st: &State, c: usize) -> (f32, f32) {
@@ -454,11 +476,24 @@ fn frame(st: &State, c: usize) -> Frame {
     let (cx, cy) = ((c % w) as f32, (c / w) as f32);
     let local = |p: (f32, f32)| ((p.0 - cx) * SIDE as f32, (p.1 - cy) * SIDE as f32);
     let m = meeting(st, c);
-    let meet = local(m);
+    let mut meet = local(m);
     let mut ways = Vec::new();
-    // the ways as the viewer joins them: from the meeting place halfway to each
-    // neighbour's, where both cells have a road
-    if st.road.get(c).is_some_and(|&r| r > 0) {
+    // courses (docs/rules/courses.md): the year's drawn courses about the cell,
+    // and its place where it has one; no way yet, the place or the meeting place
+    // is where one would come
+    let courses = st.wc.kept();
+    if courses {
+        if let Some(p) = st.wc.place_of(c) {
+            meet = local(p);
+        }
+        for s in &st.wc.near[c] {
+            let (a, b) = (local((s[0], s[1])), local((s[2], s[3])));
+            ways.push([a.0, a.1, b.0, b.1]);
+        }
+    }
+    // the ways as the viewer joined them before: from the meeting place halfway to
+    // each neighbour's, where both cells have a road
+    if !courses && st.road.get(c).is_some_and(|&r| r > 0) {
         for dy in -1isize..=1 {
             for dx in -1isize..=1 {
                 let (nx, ny) = ((c % w) as isize + dx, (c / w) as isize + dy);
@@ -480,7 +515,7 @@ fn frame(st: &State, c: usize) -> Frame {
     }
     let t = st.catch.get(c).copied().unwrap_or(-1);
     let mid = if t >= 0 { local(meeting(st, st.town_node[t as usize])) } else { meet };
-    Frame { ways, meet, mid, c, w }
+    Frame { ways, meet, mid, c, w, courses }
 }
 
 impl Frame {
@@ -543,6 +578,10 @@ enum Want {
     Park,
 }
 
+/// What a square on a kept course's frontage is worth to a house block or a
+/// shop, over its other terms (courses.rs).
+const FRONTAGE: f32 = 1.0;
+
 fn score(t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
     if t.water[k] && want != Want::Park {
         // under water: only when there is nothing else
@@ -553,7 +592,10 @@ fn score(t: &Table, fr: &Frame, k: usize, want: Want) -> f32 {
     let bad = t.bad[k];
     let wat = t.to_water[k].min(16.0);
     let h = fr.hash(k, want as i32);
-    match want {
+    // courses: a house block or a shop on the way's frontage, within a square of it,
+    // before any square behind (FRONTAGE is about eight squares nearer the town's middle)
+    let front = if fr.courses && way <= 1.0 && matches!(want, Want::Houses | Want::Shop) { FRONTAGE } else { 0.0 };
+    front + match want {
         Want::Shop => -0.3 * way - 0.15 * mid - bad + 0.2 * h,
         Want::Works => -0.2 * way + 0.06 * mid - bad + 0.2 * h,
         Want::Mill => -0.2 * way + 0.06 * mid - 0.35 * wat - bad + 0.2 * h,
@@ -641,7 +683,79 @@ fn tell(b: &mut SquareBook) {
         }
     }
     b.changes.sort_unstable_by_key(|c| c.at);
+    // (the first year's log is made out of nothing, its squares' and its holdings' alike:
+    // every holding's squares in the order taken, the opening's among them)
+    b.holds = if b.told == 0 { whole_holds(b) } else { encode_holds(&b.took) };
+    b.took.clear();
     b.told += 1;
+}
+
+/// Every works' and working's squares in the order taken, as one year's
+/// holdings' log from nothing: for a live game that has missed a year's end.
+pub fn whole_holds(b: &SquareBook) -> Vec<u8> {
+    let mut all: Vec<Took> = Vec::new();
+    for (f, h) in b.works.iter().enumerate() {
+        if !h.squares.is_empty() {
+            all.push(Took { cell: h.cell as u32, pit: false, id: f as u32, fresh: true, along: h.along, squares: h.squares.clone() });
+        }
+    }
+    for (&(r, c), h) in &b.pits {
+        if !h.squares.is_empty() {
+            all.push(Took { cell: c as u32, pit: true, id: r as u32, fresh: true, along: h.along, squares: h.squares.clone() });
+        }
+    }
+    encode_holds(&all)
+}
+
+/// The holdings' log of a year in bytes (`sq_hold`; layout 3): the takings
+/// in order of cell, then pits after works, then number. For each: the cell
+/// less the one before it (the first less 0); a head, `(id << 1 | pit) << 1
+/// | fresh`; where `fresh`, a byte, the way's heading there (`Holding::along`,
+/// in 256ths of a half turn); the number of squares taken; and each square's
+/// place in the cell (`k`), in the order taken. A holding's squares are a
+/// stack: the first it ever took is where it first stood, and what it gives
+/// back is always what it took last (the squares' log shows which went).
+/// Every number but the heading and the squares is a varint, seven bits a
+/// byte, low first.
+pub fn encode_holds(took: &[Took]) -> Vec<u8> {
+    let mut sorted: Vec<&Took> = took.iter().collect();
+    sorted.sort_by_key(|t| (t.cell, t.pit, t.id));
+    let mut out = Vec::new();
+    let mut prev = 0u32;
+    for t in sorted {
+        put_varint(&mut out, (t.cell - prev) as u64);
+        prev = t.cell;
+        put_varint(&mut out, ((t.id as u64) << 1 | t.pit as u64) << 1 | t.fresh as u64);
+        if t.fresh {
+            out.push(t.along);
+        }
+        put_varint(&mut out, t.squares.len() as u64);
+        out.extend_from_slice(&t.squares);
+    }
+    out
+}
+
+/// A year of the holdings' log read back (`encode_holds`), or what is wrong with the bytes.
+pub fn decode_holds(bytes: &[u8]) -> Result<Vec<Took>, String> {
+    let mut out = Vec::new();
+    let (mut i, mut cell) = (0usize, 0u64);
+    while i < bytes.len() {
+        cell += get_varint(bytes, &mut i)?;
+        let head = get_varint(bytes, &mut i)?;
+        let (fresh, pit, id) = (head & 1 == 1, head >> 1 & 1 == 1, head >> 2);
+        let along = if fresh {
+            let Some(&b) = bytes.get(i) else { return Err("the holdings' log ends in the middle of a heading".into()) };
+            i += 1;
+            b
+        } else {
+            0
+        };
+        let n = get_varint(bytes, &mut i)? as usize;
+        let Some(sq) = bytes.get(i..i + n) else { return Err("the holdings' log ends in the middle of a holding".into()) };
+        i += n;
+        out.push(Took { cell: cell as u32, pit, id: id as u32, fresh, along, squares: sq.to_vec() });
+    }
+    Ok(out)
 }
 
 fn start_book(st: &mut State) {
@@ -930,7 +1044,8 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
     let ti = table_of(st, c);
     let fr = frame(st, c);
     let code = tenant.code();
-    let SquareBook { tables, split, short, .. } = &mut st.sq;
+    let held = h.squares.len();
+    let SquareBook { tables, split, short, took, .. } = &mut st.sq;
     let t = &mut tables[ti];
     // each square's score, worked out when first asked for (it reads the ground and the ways, not the tenants)
     let mut memo = [f32::NAN; PER_CELL];
@@ -1081,6 +1196,15 @@ fn grow(st: &mut State, h: &mut Holding, tenant: Tenant, want: Want, need: usize
                 cs[j] = beside_score(&mut memo, t, &fr, &mine, j, want);
             }
         }
+    }
+    // the holdings' log: what it took, in order
+    if h.squares.len() > held {
+        let (pit, id) = match tenant {
+            Tenant::Pit(r) => (true, r),
+            Tenant::Works(f) => (false, f),
+            _ => (false, 0),
+        };
+        took.push(Took { cell: c as u32, pit, id, fresh: held == 0, along: h.along, squares: h.squares[held..].to_vec() });
     }
 }
 
@@ -1333,7 +1457,11 @@ fn allot(st: &mut State, C: &Content, P: &Params, year: i64, opening: bool) {
 /// What the record's header says of its squares (`record::pack`), so that a
 /// reader knows how to read `sq_log`; a later layout gets a higher number.
 /// Layout 2 (works.in_blocks) carries each square's floor let to works.
-pub const LOG_LAYOUT: u32 = 2;
+/// Layout 3 (courses.rs) has the same `sq_log` and beside it the holdings'
+/// log, `sq_hold` (`encode_holds`), so a reader of layout 2 reads its `sq_log`.
+pub const LOG_LAYOUT: u32 = 3;
+/// The layouts whose `sq_log` a reader of this one reads as its own.
+pub const LOG_READS: [u32; 2] = [2, 3];
 
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     while v >= 0x80 {
