@@ -69,9 +69,29 @@ Every other number is a varint, seven bits a byte, low first. A year lists the p
 
 The wear's numbers are the viewer's (`courses::WORN_*`, which must stay equal to `network::WORN_*`; the viewer's test `the_roads_drawn_are_those_the_carts_wore_and_close_few_squares` holds the two to the link). The prices are in the code, at `courses::price` and the constants beside it.
 
+**A works wants its way within reach.** With the eight half-links every square of a cell was near a way; with the courses a cell has one or two, and works pulled to them as before (0.2 of a point a square) crowded along them and hemmed each other in: works in more than one piece in 1790, islands 1 to 8, rose from 103 to 155. So with the courses a works' yard counts its way as reached within three squares (`squares::YARD_REACH`, 375 m); house blocks and shops still take the frontage. In pieces then: 131.
+
 ## What it measured
 
-(Numbers below.)
+Island 7 under the game's rules with six families, played to 2050 twice side by side, with the courses on and off (`cargo run --profile work -p isostate-core --example courses -- --seeds 7 --to 2050 --time`, and `--start landfall`). The economy, the books and the news were the same in every year on both starts; every place stayed where it was chosen and every course kept its points; played as a live game, every year's ways' log, squares' log and holdings' log handed over were the record's bytes, and a reader of the ways' log held the simulation's places, courses and drawn links.
+
+| island 7, settled | 1750 | 1800 | 1850 | 1900 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|---|---|---|
+| links drawn | 878 | 1,034 | 1,812 | 2,061 | 3,259 | 2,819 | 2,292 |
+| courses kept | 1,348 | 1,738 | 2,646 | 4,757 | 6,513 | 7,002 | 7,136 |
+| cells placed | 1,026 | 1,327 | 2,013 | 3,268 | 3,789 | 3,885 | 3,969 |
+| drawn courses' length within 5 degrees of the eight directions | 0.357 | 0.365 | 0.376 | 0.358 | 0.356 | 0.349 | 0.349 |
+| the same, straight between meeting places | 0.496 | 0.470 | 0.483 | 0.458 | 0.486 | 0.478 | 0.476 |
+| house blocks taken since 1750 within a square of a kept course, courses on | 0.184 | 0.245 | 0.226 | 0.256 | 0.286 | 0.283 | 0.294 |
+| the same, courses off | 0.178 | 0.194 | 0.199 | 0.213 | 0.279 | 0.284 | 0.297 |
+| works' first squares within a square of a kept course, on | 0.604 | 0.535 | 0.548 | 0.557 | 0.615 | 0.622 | 0.560 |
+| the same, off | 0.185 | 0.240 | 0.263 | 0.255 | 0.309 | 0.287 | 0.275 |
+
+On the landfall start (`courses-7-landfall`, before the works' reach): 75 links drawn in 1750, 2,071 in 1900 and 3,615 in 2050; within 5 degrees of the eight directions 0.341 to 0.426 (straight 0.47 to 0.61); house blocks near a course 0.206 against 0.192 in 1800 and 0.215 against 0.188 in 1900, and the same with or without by 2000.
+
+What it says. The courses leave the lattice: a third of their length lies within 5 degrees of the map's eight directions, where the straight links between meeting places have nearly half, and the game's own courses over the ground 0.397 (island 7, 2050, roads-ground). Up to 1900 a fifth more of the new house blocks stand on a course's frontage, and the stars are gone from part-built cells (the pictures); after 1950 the kept courses are so many (7,000 on island 7, faded ones among them) that nearly every square is near one, and the share is the same either way. Twice as many works stand by their way. The squares of the opening are on ground built before 1750 and stand as the books dated them.
+
+**What it costs.** At the year's end on island 7 to 2050, timed alone beside a run (one thread, the clock, a shared machine): the courses 1.29 s in all, a year's median 3.4 ms, the most 22 ms (1750, the opening's roads); the squares 2.54 s, median 7.8 ms, against main's squares 1.79 s, median 5.5 ms taken beside it (they now look at more ways). The year's end of the two together is about 11 ms on the median against 5.5. A whole run of island 7 to 2050, in processor seconds, main and the branch in turn: 115.8 and 129.6, then 113.0 and 114.4. The record of island 7 to 2050 is 256.8 MB against 256.0 (+0.29 per cent): the ways' log 191 kB and the holdings' log 547 kB. With the courses off the squares' log is main's to the byte.
 
 ## What worries me
 
