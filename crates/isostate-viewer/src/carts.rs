@@ -22,7 +22,7 @@ use crate::network;
 use crate::replay::Replay;
 use crate::trains::{self, TrainPath};
 use crate::world::{self, Ground};
-use crate::{Data, Timeline};
+use crate::Data;
 
 /// How far above the surface it rides a cart is drawn (its wheels' feet).
 pub const LIFT: f32 = 0.002;
@@ -45,11 +45,33 @@ struct CartAssets {
     mat: Handle<StandardMaterial>,
 }
 
+/// The carters' rounds the carts are on, and the year they are of. A year's
+/// rounds are found with its scenery, off the main thread
+/// (`trains::year_rounds`), and handed over with it (`year::rebuild_year`):
+/// the carts go out on a year's roads as those roads go on screen, and no
+/// road's way is looked for on the main thread for them.
 #[derive(Resource, Default)]
-struct Roads(Vec<TrainPath>);
+pub struct Roads {
+    paths: Vec<TrainPath>,
+    year: Option<usize>,
+    /// a year's rounds handed over and not yet taken (`place`)
+    handed: Option<(usize, Vec<TrainPath>)>,
+}
+
+impl Roads {
+    /// Hand over year `k`'s rounds.
+    pub fn hand(&mut self, k: usize, rounds: Vec<TrainPath>) {
+        self.handed = Some((k, rounds));
+    }
+
+    /// The year whose roads are on screen, the carts on them: none before the first year's scenery is.
+    pub fn year(&self) -> Option<usize> {
+        self.year
+    }
+}
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Roads>().add_systems(Startup, setup).add_systems(Update, (place, drive).chain());
+    app.init_resource::<Roads>().add_systems(Startup, setup).add_systems(Update, (place, drive).chain().after(crate::year::rebuild_year));
 }
 
 fn setup(mut commands: Commands, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -91,31 +113,33 @@ fn nearest_on(paths: &[TrainPath], at: Vec2) -> Option<(usize, f32)> {
     best.map(|b| (b.1, b.2))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>, mut last: Local<Option<usize>>, mut memo: Local<Option<trains::RoadMemo>>) {
+/// Put the carts out on a year's rounds when they are handed over, and on a
+/// year the carts are already on, leave them going. (Until 27 November 2026
+/// the rounds were found here, on the main thread, the frame the clock's year
+/// changed: a third of a second when a record of 2050 opened, and 28 to 40 ms
+/// at the turn to a year not seen before, for the roads' ways that the
+/// year's scenery was finding at the same time.)
+fn place(mut commands: Commands, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Traffic);
     let Some(assets) = assets else { return };
-    let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
-    if *last == Some(k) {
+    let Some((k, rounds)) = roads.handed.take() else { return };
+    if roads.year == Some(k) {
+        // (the year built again whole, in a live game when a year arrives: its rounds are the same)
         return;
     }
-    *last = Some(k);
+    let r = &data.r;
+    roads.year = Some(k);
+    roads.paths = rounds;
     for e in &old {
         commands.entity(e).despawn();
     }
-    // what is the same in every year is kept from one to the next (`trains::RoadMemo`)
-    roads.0 = world::timed("year carts", || {
-        let memo = memo.get_or_insert_with(|| trains::RoadMemo::new(r, &data.g));
-        trains::road_routes(r, &data.g, &data.cen, k, memo)
-    });
     // a cart asked for at a spot, for a picture: the first of the round nearest it, held still there
     let spots = pinned_spots();
-    let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.0, at)).collect();
+    let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.paths, at)).collect();
     // traffic (the core's docs/rules/traffic.md): where the run keeps what each way carried,
     // a round's carts follow the carting along it (`traffic::carts_by_weight`)
-    let by_traffic = r.traffic.kept().then(|| crate::traffic::carts_by_weight(&roads.0.iter().map(|p| crate::traffic::cart_weight_along(r, k, p)).collect::<Vec<f32>>()));
-    for (pi, p) in roads.0.iter().enumerate() {
+    let by_traffic = r.traffic.kept().then(|| crate::traffic::carts_by_weight(&roads.paths.iter().map(|p| crate::traffic::cart_weight_along(r, k, p)).collect::<Vec<f32>>()));
+    for (pi, p) in roads.paths.iter().enumerate() {
         // one or two carts on each carter's round, or one to three by its carting
         let count = by_traffic.as_ref().map_or(1 + (world::hash2(pi as i32, 7, 43) < 0.35) as usize, |c| c[pi]);
         for i in 0..count {
@@ -143,7 +167,7 @@ fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Opt
 fn drive(time: Res<Time>, roads: Res<Roads>, mut q: Query<(&mut Cart, &mut Transform)>) {
     let dt = time.delta_secs().min(0.1);
     for (mut c, mut tf) in &mut q {
-        let Some(p) = roads.0.get(c.path) else { continue };
+        let Some(p) = roads.paths.get(c.path) else { continue };
         c.s += c.dir * c.speed * dt;
         if c.s > p.len {
             c.s = p.len;
@@ -603,6 +627,112 @@ mod tests {
             keep_to_their_roads(&r, &g, &cen, if all { 10 } else { 6 });
             network::ALL_IN_TEST.with(|a| a.set(false));
         }
+    }
+
+    /// What the carts and the Traffic view cost the main thread, frame by
+    /// frame, as the game runs them (`place`, `drive` and `traffic::lay`, in
+    /// one schedule): with the view shut, at a turn of the clock's year to a
+    /// year not seen before, when a year's rounds are handed over, and with
+    /// the view open. They find no road's way at any of these (the ways kept
+    /// by the ground's courses are only those its scenery found, off the
+    /// main thread), and a frame of them with nothing handed over takes well
+    /// under a millisecond (the bar is 2 ms, for a machine shared with
+    /// builds). Until 27 November 2026 `place` found the year's rounds itself
+    /// at the turn of the year, and with them every new road's way: 28 to
+    /// 40 ms at a turn, a third of a second as a record of 2050 opened.
+    ///
+    /// Island 7 under the game's rules, forty years, read back from its
+    /// record, as `road_course`'s test plays it. It leans on the traffic
+    /// being kept (`traffic.enabled`) and on the new land (`land`), where the
+    /// roads seek their ways over the ground: both are asserted.
+    #[test]
+    fn the_carts_and_the_traffic_view_find_no_way_on_the_main_thread() {
+        use crate::overlay::{MapOverlay, Overlay, Scale};
+        use std::sync::Arc;
+        let mut game = isostate_core::save::Game::new(7, 6, 0);
+        assert!(game.sim.params.traffic.enabled, "the case is played with the traffic kept");
+        for _ in 0..40 {
+            game.year().unwrap();
+            game.turn();
+        }
+        let s = &game.sim;
+        let bytes = isostate_core::record::pack(&s.st, &s.content, &s.params, &s.events, &s.rec, "test", false);
+        let r = crate::replay::parse("test.bin", &bytes).expect("the game's record reads");
+        let last = (game.last_year() - s.content.start_year) as usize;
+        let g = world::build_ground(&r);
+        assert!(g.laid.is_some(), "the game is played on the new land");
+        let (slots, cen) = (crate::scatter::make_slots(&r, &g), network::centres(&r));
+        let (r, g, cen) = (Arc::new(r), Arc::new(g), Arc::new(cen));
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let mut w = World::new();
+        w.insert_resource(crate::Data { r: r.clone(), g: g.clone(), slots: Arc::new(slots), cen: cen.clone(), live: false, arriving: None });
+        w.insert_resource(crate::Timeline { t: (last - 10) as f32, built: None, playing: false, speed: 1.0 });
+        w.insert_resource(crate::Orbit { target: Vec3::new(40.0, 0.0, 40.0), yaw: 0.0, pitch: 0.8, dist: 30.0 });
+        w.insert_resource(MapOverlay::new(None, 0));
+        w.insert_resource(Assets::<Mesh>::default());
+        w.insert_resource(Assets::<StandardMaterial>::default());
+        w.insert_resource(Time::<()>::default());
+        w.insert_resource(CartAssets { mesh: Handle::default(), mat: Handle::default() });
+        w.init_resource::<Roads>();
+        {
+            use bevy::ecs::system::RunSystemOnce;
+            w.run_system_once(crate::traffic::setup).unwrap();
+        }
+        let mut frame = Schedule::default();
+        frame.add_systems((place, drive, crate::traffic::lay).chain());
+        let mut run = |w: &mut World| -> f64 {
+            let t0 = std::time::Instant::now();
+            frame.run(w);
+            t0.elapsed().as_secs_f64() * 1000.0
+        };
+        let carts = |w: &mut World| w.query::<&Cart>().iter(w).count();
+        let mut longest = 0.0f64;
+        // (the schedule's first run sets its systems up, which the game does once at its start)
+        run(&mut w);
+        // the view shut, the clock in one year and then turned to another: nothing is found
+        for t in [last - 10, last - 10, last - 3, last - 3] {
+            w.resource_mut::<crate::Timeline>().t = t as f32;
+            longest = longest.max(run(&mut w));
+        }
+        assert_eq!(g.courses.kept(), 0, "a road's way was found on the main thread");
+        assert_eq!(carts(&mut w), 0, "no year's rounds have been handed over");
+        // the year's scenery, off the main thread in the game, finds its roads' ways and the
+        // rounds, and hands the rounds over: the carts go out on them, and nothing more is found
+        let k = last - 3;
+        g.courses.find_year(&r, &g, &cen, k);
+        let rounds = trains::year_rounds(&r, &g, &cen, k);
+        let found = g.courses.kept();
+        assert!(found > 100 && !rounds.is_empty(), "{found} ways, {} rounds in year {k} of {} ({} links drawn)", rounds.len(), r.filled, network::drawn_links(&r, &g.worn, k).len());
+        w.resource_mut::<Roads>().hand(k, rounds);
+        let handed = run(&mut w);
+        assert!(carts(&mut w) > 0);
+        assert_eq!(w.resource::<Roads>().year(), Some(k));
+        // the view opened: its ribbons are of the year whose roads are on screen, along the ways found
+        w.resource_mut::<MapOverlay>().kind = Some(Overlay::Traffic);
+        w.resource_mut::<MapOverlay>().scale = Some(Scale { lo: 1.0, hi: 1000.0, log: true });
+        // (laid off the main thread, and shown when laid: a frame each, a little apart, until they are)
+        let shown = |w: &mut World| w.query_filtered::<&Visibility, With<crate::traffic::Ribbons>>().iter(w).all(|v| *v == Visibility::Inherited);
+        let mut opened = 0.0f64;
+        for _ in 0..200 {
+            opened = opened.max(run(&mut w));
+            if shown(&mut w) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(shown(&mut w), "the ribbons were never laid");
+        // and the clock turned on to a year not built: the carts and the ribbons stay on the roads drawn
+        w.resource_mut::<crate::Timeline>().t = last as f32;
+        let mut calm = 0.0f64;
+        for _ in 0..3 {
+            calm = calm.max(run(&mut w));
+        }
+        assert_eq!(g.courses.kept(), found, "a road's way was found on the main thread");
+        assert_eq!(w.resource::<Roads>().year(), Some(k));
+        eprintln!("the carts' and the Traffic view's systems on the main thread: {longest:.3} ms at most a frame with the view shut and at the turns, {handed:.1} ms the frame a year's {} carts go out, {opened:.3} ms at most a frame while the ribbons were laid off it, {calm:.3} ms a frame after; {found} ways found off it", carts(&mut w));
+        assert!(longest < 2.0, "a frame of the carts and the shut Traffic view took {longest} ms");
+        assert!(opened < 2.0, "a frame of the carts and the Traffic view, opened, took {opened} ms");
+        assert!(calm < 2.0, "a frame of the carts and the open Traffic view, laid, took {calm} ms");
     }
 
     fn keep_to_their_roads(r: &Replay, g: &Ground, cen: &[(f32, f32)], least_rounds: usize) {

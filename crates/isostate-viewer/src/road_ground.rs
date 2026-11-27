@@ -151,16 +151,17 @@ pub struct Asked<'a> {
 /// The cheapest way for the road from `a` (leaving along `da`) to `b`
 /// (arriving along `db`), drawn as a smooth line: its points after `a` up to
 /// and including `b`. None where the ground gives it nothing to seek (the
-/// two ends too near, or no way that keeps off the rivers).
-pub fn seek(lie: &mut Lie, g: &Ground, asked: &Asked, a: Vec2, da: Vec2, b: Vec2, db: Vec2) -> Option<Vec<Vec2>> {
+/// two ends too near, or no way that keeps off the rivers). The ground of
+/// the road's two cells and of those round them is to be known first
+/// (`Lie::know`, which `road_course` asks for before it seeks), so that
+/// several roads may seek their ways at once, each reading the ground as
+/// the others do.
+pub fn seek(lie: &Lie, g: &Ground, asked: &Asked, a: Vec2, da: Vec2, b: Vec2, db: Vec2) -> Option<Vec<Vec2>> {
     let chord = a.distance(b);
     if chord < 4.0 * LEAD {
         return None;
     }
     let (a1, b1) = (a + da * LEAD, b - db * LEAD);
-    for c in asked.cells {
-        lie.know(g, c);
-    }
     let f = FINE as f32;
     let (fw, fh) = ((g.w * FINE) as isize, (g.h * FINE) as isize);
     let lo = a.min(b) - Vec2::splat(PAD);
