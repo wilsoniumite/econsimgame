@@ -215,7 +215,10 @@ longer swell as its coin wage falls, and its pits work at the size of their
 market (below), so its merchants no longer owe several times the money for
 ore nobody asked for. With both, the guard had nothing left to guard, and
 it cost hunger, so since 27 November both starts keep the game's 2. A game
-saved at landfall before then keeps its 1.06.
+saved at landfall before then is played again under the start's rules of
+today, as after any change to them, and its history is not the one saved.
+The number stays, read only below 2, as a knob for a study and so that a
+run's `params.json` written with 1.06 still reads.
 
 Measured with `examples/years_turn.rs`, `--start landfall`, islands 1 to 8,
 the game's rules with six families, to 2050, at 2 and at 1.06, with

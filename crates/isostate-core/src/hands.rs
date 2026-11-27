@@ -40,9 +40,10 @@ pub struct HandsParams {
     /// month's (docs/rules/landfall.md, "The trap"). 2, the month's own bound,
     /// leaves the rule as it was: a town short several months running then
     /// doubles its wage each month. Both starts keep 2; the landfall start
-    /// set 1.06 until carriage and pits were mended, and a game saved then
-    /// keeps it. Below 2 a short town's wage rises at most this much a month,
-    /// and the rationing alone shares out the hands. Read only below 2, and not
+    /// set 1.06 until carriage and pits were mended, and a run's params.json
+    /// written then still names it. Below 2 a short town's wage rises at most this
+    /// much a month, and the rationing alone shares out the hands: a knob for
+    /// a study (`--set hands.short_rise=1.5`). Read only below 2, and not
     /// written out at 2, so that the game's parameters read as they did.
     #[serde(skip_serializing_if = "at_bound")]
     pub short_rise: f64,
