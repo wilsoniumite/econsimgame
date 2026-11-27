@@ -77,12 +77,20 @@ pub struct PriceParams {
     /// off, so that the game's parameters read as they did.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub exports_ask: bool,
+    /// A good that spoils (more than [`SPOILS`] of a stock lost each month:
+    /// services, town gas) is not stocked: its price moves on the month's
+    /// asking against its making, and what is not sold in the month is lost at
+    /// its end, as electricity's is ([`unkept`]; docs/rules/carriage.md,
+    /// "Services are not kept"). Off: merchants aim at two months of sales of
+    /// it, which rot. Off under the game's rules too; not written out while off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub spoils_unkept: bool,
 }
 
 impl Default for PriceParams {
     /// Off: what the port runs with.
     fn default() -> PriceParams {
-        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false, crumb: 0.0, exports_ask: false }
+        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false, crumb: 0.0, exports_ask: false, spoils_unkept: false }
     }
 }
 
@@ -123,12 +131,13 @@ pub struct PriceSettings {
     no_spoil_markup: bool,
     crumb: f64,
     exports_ask: bool,
+    spoils_unkept: bool,
 }
 
 impl Default for PriceSettings {
     fn default() -> PriceSettings {
-        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask } = PriceParams::default();
-        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask }
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask, spoils_unkept } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask, spoils_unkept }
     }
 }
 
@@ -139,7 +148,7 @@ impl TryFrom<PriceSettings> for PriceParams {
     /// sentence that names it. Whether the switch is on does not matter: a
     /// file that says a nonsense number has a mistake in it either way.
     fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
-        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask } = s;
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask, spoils_unkept } = s;
         for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("crumb", crumb)] {
             if !x.is_finite() {
                 return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
@@ -157,7 +166,7 @@ impl TryFrom<PriceSettings> for PriceParams {
         if !(0.0..1.0).contains(&crumb) {
             return Err(format!("prices.crumb is {crumb}, and it has to be a share of a month of a works' make, from 0 (no stock is a crumb) up to but not reaching 1"));
         }
-        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask })
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb, exports_ask, spoils_unkept })
     }
 }
 
@@ -219,6 +228,13 @@ pub const SPOILS: f64 = 0.1;
 /// a century, and the island's merchants came to owe half its money by 1900
 /// (docs/probes/tr-loose-a.md, section 1). With no markup the price is the
 /// anchor, which still learns from shortages and gluts that last.
+/// Under `spoils_unkept`, a good that spoils ([`SPOILS`]) is held as a good
+/// that does not keep (`tree::month_loss`, `tree::price_gap`): a service cannot
+/// be stored, and shelves of what halves each month are shelves of rot.
+pub fn unkept(pp: &PriceParams, decay: f64) -> bool {
+    pp.spoils_unkept && decay > SPOILS
+}
+
 pub fn markup_for(pp: &PriceParams, decay: f64) -> f64 {
     if pp.no_spoil_markup && decay > SPOILS { 0.0 } else { pp.markup }
 }
@@ -250,7 +266,7 @@ pub fn found_town(st: &mut State, C: &Content, P: &Params, n: usize, donor: usiz
     let far = if st.dcatch[site].is_finite() { st.dcatch[site] } else { 0.0 };
     for g in 0..st.price.cols {
         st.price_anchor[(n, g)] = st.price_anchor[(donor, g)];
-        let carriage = crate::longrun::freight(st, P) * C.weight[g] * far;
+        let carriage = crate::carriage::freight_at(st, P, donor) * C.weight[g] * far;
         st.pexp[(n, g)] = (st.pexp[(donor, g)] - carriage).max(crate::longrun::floor(st, P, C, g));
     }
 }

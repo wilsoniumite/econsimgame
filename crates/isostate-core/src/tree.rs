@@ -557,6 +557,11 @@ pub fn decay(C: &Content, P: &Params) -> Vec<f64> {
     (0..C.G).map(|g| C.decay.get(g).copied().flatten().unwrap_or_else(|| P.decay.get(g).copied().unwrap_or(0.0))).collect()
 }
 
+/// Good `g`'s monthly loss of stock, as [`decay`] gives it.
+fn decay_of(C: &Content, P: &Params, g: usize) -> f64 {
+    C.decay.get(g).copied().flatten().unwrap_or_else(|| P.decay.get(g).copied().unwrap_or(0.0))
+}
+
 /// What is lost of each good's stock left at a month's end, once the month's
 /// sales are taken out of it: its decay, and all of it for a good that does
 /// not keep (`stock_months = 0`, electricity), whose month's make is what the
@@ -566,7 +571,8 @@ pub fn decay(C: &Content, P: &Params) -> Vec<f64> {
 pub fn month_loss(C: &Content, P: &Params) -> Vec<f64> {
     let mut d = decay(C, P);
     for (g, v) in d.iter_mut().enumerate() {
-        if !keeps(C, g) {
+        // under `prices.spoils_unkept` a good that spoils is not kept either
+        if !keeps(C, g) || crate::prices::unkept(&P.prices, *v) {
             *v = 1.0;
         }
     }
@@ -587,7 +593,10 @@ pub fn keeps(C: &Content, g: usize) -> bool {
 /// larger. For a good that does not keep, the month's asking against its
 /// making, `(asked - made) / max(asked, made)`, and nothing where neither.
 pub fn price_gap(C: &Content, P: &Params, g: usize, stock: f64, outflow: f64, asked: f64, made: f64) -> f64 {
-    match C.stock_months.get(g).copied().flatten() {
+    // under `prices.spoils_unkept` a good that spoils is read as one that does not keep
+    let months = C.stock_months.get(g).copied().flatten();
+    let months = if P.prices.spoils_unkept && crate::prices::unkept(&P.prices, decay_of(C, P, g)) { Some(0.0) } else { months };
+    match months {
         Some(m) if m == 0.0 => {
             let big = asked.max(made);
             if big > 1e-12 { (asked - made) / big } else { 0.0 }

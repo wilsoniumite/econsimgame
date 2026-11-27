@@ -443,8 +443,9 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
     // there is now, before any of it is between purses
     let money_base = crate::money::month_base(st, P);
     // longrun (docs/rules/longrun.md): the freight, and below the bounds on the
-    // wage and on prices, ride on the year's anchor (the constants while it is off)
-    let freight = crate::longrun::freight(st, P);
+    // wage and on prices, ride on the year's anchor (the constants while it is
+    // off); the freight is read where it is used, as `carriage::freight_at`,
+    // which is the town's own under carriage in hands (docs/rules/carriage.md)
 
     // ---------------- households: what they want to buy
     // tree: a width for each need where the content gives one, else the port's one
@@ -636,7 +637,7 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
         hunit[i] = heat_mix(&fuel_price, &heat_f, P.heat_theta, hshare.row_mut(i));
     }
     let pout: Vec<f64> =
-        (0..NFI).map(|i| p[(ft[i], out[i])] - freight * C.weight[out[i]] * st.dcatch[fc[i]]).collect();
+        (0..NFI).map(|i| p[(ft[i], out[i])] - crate::carriage::freight_at(st, P, ft[i]) * C.weight[out[i]] * st.dcatch[fc[i]]).collect();
     let nonlabor: Vec<f64> =
         (0..NFI).map(|i| C.sum_goods(|g| a[(i, g)] * pin[(i, g)]) + h[i] * hunit[i]).collect();
     let phi_prev: Vec<f64> = fi.iter().map(|&i| st.f_fill[i]).collect();
@@ -1389,7 +1390,7 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
                 let c = if c0.is_finite() { c0 } else { 1e9 };
                 for &g in &tg {
                     let k = (i * na + j) * G + g;
-                    tau[k] = freight * C.weight[g] * c + P.handling * p[(ti, g)];
+                    tau[k] = crate::carriage::freight_at(st, P, ti) * C.weight[g] * c + P.handling * p[(ti, g)];
                     let gap = p[(tj, g)] - p[(ti, g)] - tau[k];
                     let frac = if i == j { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
                     want[k] = frac * st.inv[(ti, g)];

@@ -429,7 +429,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
                     v
                 }
             };
-            let npr = p - crate::longrun::freight(st, P) * C.weight[g] * st.dcatch[h] - in_unit;
+            let npr = p - crate::carriage::freight_at(st, P, t) * C.weight[g] * st.dcatch[h] - in_unit;
             if npr > 0.0 && w > 0.0 {
                 y.k[h] = a * ((1.0 - a) / cl).powf((1.0 - a) / a) * (A * npr).powf(1.0 / a);
                 y.npr[h] = npr;

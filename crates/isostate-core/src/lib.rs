@@ -31,6 +31,7 @@ pub mod atlas;
 pub mod atlas_ideas;
 pub mod canals;
 pub mod care;
+pub mod carriage;
 pub mod carting;
 pub mod chronicle;
 pub mod city;

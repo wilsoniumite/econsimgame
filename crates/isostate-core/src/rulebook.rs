@@ -216,6 +216,7 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "squares" => to_json(&P.squares),
         "courses" => to_json(&P.courses),
         "abroad" => to_json(&P.abroad),
+        "carriage" => to_json(&P.carriage),
         _ => None,
     }
 }

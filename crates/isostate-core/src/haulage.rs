@@ -85,7 +85,9 @@ pub fn year(st: &mut State, year: i64) {
 
 /// Whether the cost graph being made has the station.
 pub fn on(st: &State, P: &Params) -> bool {
-    P.haulage.handling && st.hl.year >= FROM
+    // carriage in hands (docs/rules/carriage.md): the charge is laid only on a
+    // train's edges, so it needs no year of its own
+    P.haulage.handling && (P.carriage.in_hands || st.hl.year >= FROM)
 }
 
 /// The year's cost graph (`land::update_transport`): the port's, or from 1901
