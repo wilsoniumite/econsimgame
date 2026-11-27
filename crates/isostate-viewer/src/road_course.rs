@@ -937,6 +937,41 @@ mod tests {
         }
     }
 
+    /// Where the simulation's courses bend most, to aim pictures at: for the
+    /// first run named in `ISOSTATE_CURVE_RUNS`, in the year
+    /// `ISOSTATE_CURVE_YEAR` (2050 if not named), the twelve links drawn whose
+    /// course lies furthest from the straight line between its two places,
+    /// with where the link's middle is, how far, and the slope along each.
+    /// Run by hand.
+    #[test]
+    #[ignore]
+    fn where_the_courses_bend_most() {
+        let Ok(paths) = std::env::var("ISOSTATE_CURVE_RUNS") else { return };
+        let path = paths.split(';').next().unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let r = crate::replay::parse(path, &bytes).unwrap();
+        let cen = network::centres(&r);
+        let year: i32 = std::env::var("ISOSTATE_CURVE_YEAR").ok().and_then(|v| v.parse().ok()).unwrap_or(2050);
+        let k = ((year - r.y0) as usize).min(r.filled.min(r.ny) - 1);
+        let g = crate::world::build_ground(&r);
+        let mut rows: Vec<(f32, String)> = Vec::new();
+        for (c, m, lv) in network::drawn_links(&r, &g.worn, k) {
+            let way = g.courses.way(&r, &g, &cen, c, m, k);
+            let n = way.pts.len();
+            let chord = [way.pts[0], way.pts[n - 1]];
+            let off = way.pts.iter().map(|&p| off_line(&chord, p)).fold(0.0, f32::max);
+            let (s0, _, l0) = slope_along(&g, &chord);
+            let (s1, _, l1) = slope_along(&g, &way.pts);
+            let mid = (chord[0] + chord[1]) * 0.5;
+            rows.push((off, format!("link {c}-{m} level {lv}: middle {:.2},{:.2}, lies {off:.3} off its straight line; slope {:.4} straight, {:.4} on its course; length {l0:.3} and {l1:.3}", mid.x, mid.y, s0 / l0.max(1e-9), s1 / l1.max(1e-9))));
+        }
+        rows.sort_by(|x, y| y.0.total_cmp(&x.0));
+        println!("{} links drawn in {year}", rows.len());
+        for (_, row) in rows.iter().take(12) {
+            println!("{row}");
+        }
+    }
+
     /// The roads' shape measured on recorded runs (`shape`), straight as
     /// before, on the viewer's curves and on the simulation's courses, for each run named in `ISOSTATE_CURVE_RUNS`
     /// (paths to `run.bin`, apart by `;`), in 1850, 1900 and 2050, with how
