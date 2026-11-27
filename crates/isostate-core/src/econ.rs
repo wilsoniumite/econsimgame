@@ -1370,6 +1370,8 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
     // trade as they paid for it (sent at its price, brought at the sender's, carriage)
     let merch_pre = if st.watch_merchants { merch.clone() } else { Vec::new() };
     let mut trade_m: Vec<[f64; 3]> = if st.watch_merchants { vec![[0.0; 3]; T] } else { Vec::new() };
+    // and good by good, over the island: what was brought at the senders' prices, and its carriage
+    let mut trade_g: Vec<[f64; 2]> = if st.watch_merchants { vec![[0.0; 2]; G] } else { Vec::new() };
     let A_idx: Vec<usize> = (0..T).filter(|&t| st.town_active[t]).collect();
     let na = A_idx.len();
     if na > 1 {
@@ -1440,6 +1442,10 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
                 tcost[(i, j)] = C.sum_goods(|g| qt[base + g] * tau[base + g]);
                 let wflow = C.sum_goods(|g| qt[base + g] * C.weight[g]);
                 st.trade_F[(ti, tj)] += wflow;
+                for (g, r) in trade_g.iter_mut().enumerate() {
+                    r[0] += qt[base + g] * p[(ti, g)];
+                    r[1] += qt[base + g] * tau[base + g];
+                }
             }
         }
         for (i, &ti) in A_idx.iter().enumerate() {
@@ -1475,7 +1481,13 @@ pub fn month_ledger(st: &mut State, C: &Content, P: &Params) -> Ledger {
         // (the carting out to market included), the land its produce less the spread
         let mut bought = bincount(&ft, &(0..NFI).map(|i| rev[i] + cart_out[i]).collect::<Vec<f64>>(), T);
         add_to(&mut bought, &bincount(&et, &value.iter().map(|v| v * (1.0 - spread)).collect::<Vec<f64>>(), T));
-        let m = MerchantsMonth { net: &merch, before_trade: &merch_pre, bought: &bought, trade: &trade_m, inv0: &inv0, sold: &ledger.sold, made: &prod_TG, imports: &imports, loss: &loss };
+        // and by the good bought
+        let mut bought_g = bincount(&out, &(0..NFI).map(|i| rev[i] + cart_out[i]).collect::<Vec<f64>>(), G);
+        add_to(&mut bought_g, &bincount(&g_s, &value.iter().map(|v| v * (1.0 - spread)).collect::<Vec<f64>>(), G));
+        let m = MerchantsMonth {
+            net: &merch, before_trade: &merch_pre, bought: &bought, trade: &trade_m, bought_g: &bought_g, trade_g: &trade_g,
+            inv0: &inv0, sold: &ledger.sold, made: &prod_TG, imports: &imports, loss: &loss,
+        };
         merchants_month(st, C, &m);
     }
 
@@ -1751,6 +1763,8 @@ struct MerchantsMonth<'a> {
     before_trade: &'a [f64],
     bought: &'a [f64],
     trade: &'a [[f64; 3]],
+    bought_g: &'a [f64],
+    trade_g: &'a [[f64; 2]],
     inv0: &'a Mat,
     sold: &'a Mat,
     made: &'a Mat,
@@ -1786,6 +1800,34 @@ fn merchants_month(st: &mut State, C: &Content, m: &MerchantsMonth) {
         }
     }
     st.month_merchants = out;
+    // good by good over the island, where a good has no takings of its own: its
+    // `net` and `sales` are what it sold at the towns' prices, less what was bought
+    // and paid on its trade
+    let mut by_good = Mat::zeros(G, MERCHANT_TERMS.len());
+    for g in 0..G {
+        let mut v = [0.0; 12];
+        v[3] = m.bought_g[g];
+        if let Some(&[brought_cost, carriage]) = m.trade_g.get(g) {
+            (v[6], v[8]) = (brought_cost, carriage);
+        }
+        for t in 0..T {
+            let p = st.price[(t, g)];
+            v[2] += p * m.sold[(t, g)];
+            v[4] += p * m.made[(t, g)];
+                v[7] += p * m.imports[(t, g)];
+            v[9] += p * m.loss[g] * (m.inv0[(t, g)] - m.sold[(t, g)]);
+            v[10] += p * m.inv0[(t, g)];
+            v[11] += p * st.inv[(t, g)];
+        }
+        // what was sent is what was brought, at the senders' prices
+        v[5] = v[6];
+        v[1] = v[2];
+        v[0] = v[1] - v[3] + v[5] - v[6] - v[8];
+        for (k, x) in v.into_iter().enumerate() {
+            by_good[(g, k)] = x;
+        }
+    }
+    st.month_merchants_goods = by_good;
 }
 
 fn add_to(a: &mut [f64], b: &[f64]) {

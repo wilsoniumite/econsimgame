@@ -374,6 +374,8 @@ pub struct State {
     /// `month_merchants`, (T, `econ::MERCHANT_TERMS`): their income split into its terms.
     pub watch_merchants: bool,
     pub month_merchants: Mat,
+    /// (G, `econ::MERCHANT_TERMS`): the same over the island, good by good.
+    pub month_merchants_goods: Mat,
     /// A test sets this to find each town's wage by the Python's plain bisection,
     /// every midpoint evaluated, with no Newton steps to say where the root is.
     pub plain_bisection: bool,

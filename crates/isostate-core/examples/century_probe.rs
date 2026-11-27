@@ -93,13 +93,15 @@ fn main() {
         let year = sim.year;
         // the merchants' year, island sums of each column, and the stock's months
         let mut m = vec![0.0; K];
+        // and good by good (`State::month_merchants_goods`)
+        let mut mg = vec![vec![0.0; K]; C.G];
         let (mut open0, mut turn) = (f64::NAN, f64::NAN);
         // the wage's year
         let (mut wage, mut pgrain) = (0.0, 0.0);
         let (mut made, mut farm_hands, mut land_hands, mut at_work, mut carters) = (0.0, 0.0, 0.0, 0.0, 0.0);
         let (mut v_grain, mut v_land) = (0.0, 0.0);
         // hand-weighted sums of the logs of each factor of the farms' output a hand
-        let mut logs = [0.0f64; 6];
+        let mut logs = [0.0f64; 7];
         for month in 0..12 {
             // the prices the month trades at
             let price = sim.st.price.clone();
@@ -118,6 +120,11 @@ fn main() {
                 }
                 open += mm[(t, col("stock_open"))];
                 close += mm[(t, col("stock_close"))];
+            }
+            for g in 0..C.G {
+                for k in 0..K {
+                    mg[g][k] += st.month_merchants_goods[(g, k)];
+                }
             }
             if month == 0 {
                 open0 = open;
@@ -151,7 +158,7 @@ fn main() {
                 let field = st.ex_field[u];
                 let land = (st.ex_lam[u] / l).powf(alpha);
                 let rest = (y / l) / (C.sector_A[s] * ideas * weather * field * land);
-                for (k, x) in [ideas, rest, weather, field, land, y / l].into_iter().enumerate() {
+                for (k, x) in [ideas, rest, weather, field, land, y / l, st.tools_mult[t]].into_iter().enumerate() {
                     logs[k] += l * x.ln();
                 }
             }
@@ -176,15 +183,30 @@ fn main() {
         ];
         let sum: f64 = terms.iter().map(|t| t.1).sum();
         terms.push(("rest", net - sum));
-        // the wage's terms
         let n = 12.0;
+        // good by good: the spread, the gap on what is brought, its carriage, what
+        // spoils, and what the stock's months cost (open less close, the year's growth
+        // and the moves of prices under it together); what is sold below the town's
+        // price is not known by good
+        let mut goods = serde_json::Map::new();
+        for g in 0..C.G {
+            let v = &mg[g];
+            if v.iter().all(|&x| x == 0.0) {
+                continue;
+            }
+            goods.insert(C.good_name[g].clone(), serde_json::json!([
+                spread * v[col("made")], v[col("brought_value")] - v[col("brought_cost")], -v[col("carriage")],
+                -v[col("spoiled")], v[col("stock_open")] - v[col("stock_close")], v[col("at_price")], v[col("stock_open")] / n
+            ]));
+        }
+        // the wage's terms
         let (w, pg) = (wage / n, pgrain / n);
         let (lf, ll, la, lc) = (farm_hands / n, land_hands / n, at_work / n, carters / n);
         let geo: Vec<f64> = logs.iter().map(|x| (x / farm_hands.max(1e-12)).exp()).collect();
         let a_hand = made / farm_hands.max(1e-12);
         let wage_terms = serde_json::json!({
             "grain_a_hand": a_hand,
-            "ideas": geo[0], "machines_rest": geo[1] * C.sector_A[farms[0]], "weather": geo[2], "field": geo[3], "land_a_hand": geo[4],
+            "ideas": geo[0], "tools": geo[6], "husbandry": geo[0] / geo[6], "machines_rest": geo[1] * C.sector_A[farms[0]], "weather": geo[2], "field": geo[3], "land_a_hand": geo[4],
             "spread_of_units": a_hand / geo[5],
             "farms_of_land": lf / ll.max(1e-12),
             "land_of_making": ll / (la - lc).max(1e-12),
@@ -205,6 +227,7 @@ fn main() {
             "wage": w, "price_grain": pg, "wage_in_grain": w / pg,
             "made_grain": made, "farm_hands": lf, "land_hands": ll, "at_work": la, "carters": lc,
             "wage_terms": wage_terms,
+            "goods": goods,
         });
         writeln!(fy, "{row}").unwrap();
     }
