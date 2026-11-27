@@ -161,6 +161,20 @@ fn the_cards_facts_are_what_they_say() {
         }
     }
     assert!((get("carters_per_1000_weight_path_1790_vs_1750") - get("carters_per_1000_weight_path_1790") / get("carters_per_1000_weight_path_1750")).abs() < 1e-12);
+    // the written check's hands a ton-cell (standing::WRITTEN): the same carters over the weight
+    // times the cells as the crow flies, at the marks and in 1760
+    for y in [1750, 1760, 1790] {
+        let k = (y - y0) as usize;
+        let cells = g.months.weight_cells[k];
+        assert!(cells > 0.0, "{y}: weight times cells {cells}");
+        let per = 1000.0 * st.cart_years[warm + k].1 / 12.0 / cells;
+        assert!((get(&format!("carters_per_1000_weight_cells_{y}")) - per).abs() < 1e-12, "{y}");
+    }
+    // and its prices between towns, from the yearly snapshot: six towns stand some way apart, and
+    // no town's basket is dearer than its city's by much or free
+    let gap = get("grain_price_gap_1760_1790");
+    assert!(gap > 0.0 && gap < 1.0, "grain's price between towns {gap}");
+    assert!(get("town_price_index_vs_city_least_1750_1790") > 0.1 && get("town_price_index_vs_city_greatest_1750_1790") < 10.0);
 
     // closures by age: every works that closed from 1750 on closed at some age, and the works-years
     // at risk are every year a works stood from 1750 on

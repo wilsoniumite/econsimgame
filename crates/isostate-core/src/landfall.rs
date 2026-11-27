@@ -174,6 +174,10 @@ pub const WAGE_IN_GRAIN_YEARS: [i64; 7] = [1760, 1800, 1850, 1900, 1950, 2000, 2
 /// - `price_level_3y_max_A_Z` and `_min_`: the most and least the cost of
 ///   living (the chained one where the run keeps it) came to over three years,
 ///   the years from A to Z.
+///
+/// The last two are given to 1900 and, for a run that goes on, from 1901 to
+/// its end (no later than 2050), which the written check reads
+/// (`standing::WRITTEN`).
 pub fn facts(r: &crate::sim::RunResult, ann: &[Vec<f64>]) -> Vec<(String, crate::facts::Kind, f64)> {
     use crate::facts::Kind;
     let (st, rec) = (&r.state, &r.rec);
@@ -217,27 +221,41 @@ pub fn facts(r: &crate::sim::RunResult, ann: &[Vec<f64>]) -> Vec<(String, crate:
     for y in WAGE_IN_GRAIN_YEARS.into_iter().filter(|&y| inside(y, y)) {
         out.push((format!("wage_in_grain_{y}"), Kind::Real, at("wage", y) / at("price_grain", y)));
     }
-    // the largest rise of a town's wage in a year, to 1900
+    // the largest rise of a town's wage in a year, to 1900, and (the written check,
+    // standing::WRITTEN) from 1901 on: the years k from `from` to `to`, as years of the run
     let T = rec.T;
     let z = y1.min(1900);
-    let mut most = f64::NAN;
-    for k in 2..=((z - y0).max(0) as usize).min(rec.n_years.saturating_sub(1)) {
-        for t in 0..T {
-            let lived = (k - 2..=k).all(|j| rec.town_active[j * T + t] == 1 && rec.town_pop[j * T + t] > 0.0);
-            let (w0, w1) = (rec.town_wage[(k - 1) * T + t] as f64, rec.town_wage[k * T + t] as f64);
-            if lived && w0 > 0.0 && w1.is_finite() {
-                most = if most.is_nan() { w1 / w0 } else { most.max(w1 / w0) };
+    let wage_rise = |from: usize, to: usize| -> f64 {
+        let mut most = f64::NAN;
+        for k in from.max(2)..=to.min(rec.n_years.saturating_sub(1)) {
+            for t in 0..T {
+                let lived = (k - 2..=k).all(|j| rec.town_active[j * T + t] == 1 && rec.town_pop[j * T + t] > 0.0);
+                let (w0, w1) = (rec.town_wage[(k - 1) * T + t] as f64, rec.town_wage[k * T + t] as f64);
+                if lived && w0 > 0.0 && w1.is_finite() {
+                    most = if most.is_nan() { w1 / w0 } else { most.max(w1 / w0) };
+                }
             }
         }
-    }
-    out.push((format!("town_wage_rise_max_{}_{z}", y0 + 2), Kind::Ratio, most));
-    // the cost of living over three years, to 1900
+        most
+    };
+    out.push((format!("town_wage_rise_max_{}_{z}", y0 + 2), Kind::Ratio, wage_rise(2, (z - y0).max(0) as usize)));
+    // the cost of living over three years, to 1900, and (the written check) from 1901 on:
+    // each three years that end in the span
     let col = if series("cpi_chained").is_empty() { series("cpi") } else { series("cpi_chained") };
     let n = ((z - y0 + 1).max(0) as usize).min(col.len());
     let swings: Vec<f64> = (0..n.saturating_sub(3)).map(|k| col[k + 3] / col[k]).filter(|v| v.is_finite()).collect();
     if !swings.is_empty() {
         out.push((format!("price_level_3y_max_{y0}_{z}"), Kind::Ratio, swings.iter().copied().fold(f64::NEG_INFINITY, f64::max)));
         out.push((format!("price_level_3y_min_{y0}_{z}"), Kind::Ratio, swings.iter().copied().fold(f64::INFINITY, f64::min)));
+    }
+    if y0 <= 1900 && y1 > 1900 {
+        let (a, b) = ((1901 - y0) as usize, (y1.min(2050) - y0) as usize);
+        out.push((format!("town_wage_rise_max_1901_{}", y1.min(2050)), Kind::Ratio, wage_rise(a, b)));
+        let swings: Vec<f64> = (a.max(3)..=b.min(col.len().saturating_sub(1))).map(|k| col[k] / col[k - 3]).filter(|v| v.is_finite()).collect();
+        if !swings.is_empty() {
+            out.push((format!("price_level_3y_max_1901_{}", y1.min(2050)), Kind::Ratio, swings.iter().copied().fold(f64::NEG_INFINITY, f64::max)));
+            out.push((format!("price_level_3y_min_1901_{}", y1.min(2050)), Kind::Ratio, swings.iter().copied().fold(f64::INFINITY, f64::min)));
+        }
     }
     out
 }

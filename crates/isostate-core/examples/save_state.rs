@@ -590,7 +590,7 @@ state_parts! {
     money_start: "baselines", money_now: "baselines",
     series: "observer", obs: "observer",
     f_owner: "families", f_paid: "families", cell_owner: "families", cell_rent_paid: "families", cell_rent_year: "families", requests: "families",
-    price_anchor: "prices", watch_markets: "prices", month_requests: "prices", month_sold: "prices", plain_bisection: "prices",
+    price_anchor: "prices", watch_markets: "prices", month_requests: "prices", month_sold: "prices", watch_merchants: "prices", month_merchants: "prices", month_merchants_goods: "prices", plain_bisection: "prices",
     engel: "engel", machine_stock: "machines", machine_cap_lift: "machines",
     harvest_mult: "harvest", harvest_now: "harvest", harvest_town_now: "harvest", harvest_year: "harvest", harvest_town: "harvest",
     harvest_past: "harvest", harvest_dearth_year: "harvest", harvest_rent_gap: "harvest", harvest_rent_gap_year: "harvest",
