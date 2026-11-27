@@ -169,6 +169,32 @@ pub fn generate_land(seed: u64, W: usize, H: usize, n_towns: usize, P: &LandPara
     make_world(&d, P, &relief, &water, &mut rng, n_towns)
 }
 
+/// The land alone (the island's settings, docs/rules/land.md): the island for a
+/// seed as `generate_land` makes it, its ground, water and riches to the bit,
+/// with no first towns chosen and the woods of 1750 not thinned round any, and
+/// nothing of the economy's first state (`sim::start`). It reads nothing but
+/// its arguments and can be called on any thread. Its time is the land's: two
+/// to three seconds an island on a quiet machine.
+pub fn land_alone(seed: u64, W: usize, H: usize, P: &LandParams) -> World {
+    generate_land(seed, W, H, 0, P)
+}
+
+/// A sketch of the land, for a small map while the whole is made: the same
+/// plan and the same first erosion on the grid of half the fineness (1 km
+/// nodes at `fine = 4`), and nothing after it on the fine grid, with the
+/// rivers left where the erosion put them (no meander migration). The coast,
+/// the hills and the trunk rivers are the island's own, near enough to choose
+/// by; the small valleys, the bends and some lakes are not, and the cells'
+/// terrain reads a little less relief. No first towns, as `land_alone`.
+pub fn sketch_land(seed: u64, W: usize, H: usize, P: &LandParams) -> World {
+    let quick = LandParams { meander_steps: 0, ..P.clone() };
+    let mut rng = land_stream(seed);
+    let d = draw_design(&mut rng, W, H, &quick);
+    let relief = crate::landform::build_relief_to(&d, &quick, true);
+    let water = make_water(&d, &quick, &relief, &mut rng);
+    make_world(&d, &quick, &relief, &water, &mut rng, 0)
+}
+
 /// How steeply a cell's stream falls, metres a metre: from node `m`, its
 /// largest, over the fine steps that take it out of the cell (or to the tide
 /// inside it), `fine` of them at most, each as long as it really is (a diagonal
@@ -596,6 +622,7 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
     world.clay = vec![0.0; N];
     world.ore = vec![0.0; N];
     world.coal = vec![0.0; N];
+    let rich = P.riches;
     for c in 0..N {
         if !land[c] {
             continue;
@@ -619,18 +646,21 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         world.pasture[c] = (p * grain(c, 2)).clamp(0.0, 1.0);
         // woodland: rain and height, thinning from 380 m to none at the tree
         // line, 760 m; little in the fens
+        // (each of the five riches with the island's setting laid on it, `LandParams::riches`:
+        // a factor of 1 as the land comes, applied last, so that at 1 the field is the same to the bit)
         let t = (0.56 + 0.22 * smoothstep(550.0, 1200.0, rain) + 0.14 * smoothstep(40.0, 250.0, zc)) * (1.0 - smoothstep(380.0, 760.0, zc)) - 0.3 * ma;
-        world.forest_pot[c] = (t * grain(c, 3)).clamp(0.0, 1.0);
-        world.rock[c] = (2.2 * stone[c] / nd * grain(c, 4)).clamp(0.0, 1.0);
-        world.clay[c] = (0.95 * clay[c] / nd * grain(c, 5)).clamp(0.0, 1.0);
-        let co = 2.8 * coal[c] / nd;
+        world.forest_pot[c] = (t * grain(c, 3) * rich.woods).clamp(0.0, 1.0);
+        world.rock[c] = (2.2 * stone[c] / nd * grain(c, 4) * rich.stone).clamp(0.0, 1.0);
+        world.clay[c] = (0.95 * clay[c] / nd * grain(c, 5) * rich.clay).clamp(0.0, 1.0);
+        let co = 2.8 * coal[c] / nd * rich.coal;
         world.coal[c] = if co > 0.18 { co.min(1.0) } else { 0.0 };
         // ore bodies in the old rocks of the belt; ironstone in the coal measures
         let mut o = 0.0f64;
         for b in &d.ore {
             o = o.max(b.k * b.at(x, y));
         }
-        let o = if o > 0.15 { o * (0.6 + 0.4 * smoothstep(40.0, 200.0, zc)) } else { 0.0 };
+        let o = o * rich.ore;
+        let o = if o > 0.15 { (o * (0.6 + 0.4 * smoothstep(40.0, 200.0, zc))).min(1.0) } else { 0.0 };
         world.ore[c] = o.max(0.4 * world.coal[c]);
     }
 
@@ -716,6 +746,9 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
     world
 }
 
+/// How far apart the first towns stand, in cells, where there are six or fewer.
+pub const SITES_APART: f64 = 17.0;
+
 /// The first towns: the port's rule (a fertile country round about, navigable
 /// water, the coast, well apart) with the places towns really grew counted in:
 /// the head of an estuary, a confluence, a lake's outlet, a gap through the hills.
@@ -734,6 +767,9 @@ fn pick_sites(world: &World, lf: &Landform, rng: &mut Rng, n: usize) -> Vec<usiz
             score[c] = f64::NEG_INFINITY;
         }
     }
+    // 17 cells apart, as the port's; more than six first towns (the island's
+    // setting `towns`) stand closer, so that each island still has room for them
+    let apart = SITES_APART * if n > 6 { (6.0 / n as f64).sqrt() } else { 1.0 };
     let mut sites = Vec::new();
     for _ in 0..n {
         let mut c = 0;
@@ -747,7 +783,7 @@ fn pick_sites(world: &World, lf: &Landform, rng: &mut Rng, n: usize) -> Vec<usiz
         }
         sites.push(c);
         for i in 0..N {
-            if ((i / W) as f64 - (c / W) as f64).hypot((i % W) as f64 - (c % W) as f64) < 17.0 {
+            if ((i / W) as f64 - (c / W) as f64).hypot((i % W) as f64 - (c % W) as f64) < apart {
                 score[i] = f64::NEG_INFINITY;
             }
         }

@@ -490,7 +490,8 @@ pub fn now() -> u64 {
 /// settled island whatever the game on the table began from. The start's two
 /// switches go with the start, so `--settlers` and `--ideas-by-sea` are left
 /// out too: the new game begins as its start has them (docs/rules/landfall.md,
-/// "The start's switches"), and the start page is where they are chosen.
+/// "The start's switches"), and the start page is where they are chosen. So
+/// are the island's settings (`--island`): a new game is the island as it comes.
 pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool, landfall: bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -498,8 +499,9 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool,
         match args[i].as_str() {
             // (a script is of the game that was on the table, not of the new one)
             "--load" | "--seed" | "--families" | "--advance" | "--script" => i += 1,
-            // (the start's switches go with the start, which is the button's)
-            "--settlers" | "--ideas-by-sea" => i += 1,
+            // (the start's switches go with the start, which is the button's; and the island's
+            // settings with the island, which the start page chooses)
+            "--settlers" | "--ideas-by-sea" | "--island" => i += 1,
             // (and --sandbox beside --family would be refused)
             "--new" | "--family" | "--sandbox" => {}
             // (the start is the button's: landfall, docs/rules/landfall.md, or the settled island)
@@ -717,6 +719,7 @@ mod tests {
             landfall: false,
             settlers: None,
             ideas_by_sea: None,
+            island: Default::default(),
             to: None,
             orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
             waiting: Vec::new(),

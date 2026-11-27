@@ -411,13 +411,33 @@ impl Game {
     /// viewer begins every new game with it.
     #[allow(clippy::too_many_arguments)]
     pub fn begin(rules: Rules, seed: u64, families: usize, started: u64, to: i64, land: bool, landfall: bool, switches: Switches) -> Result<Game, String> {
+        Game::begin_with(rules, seed, families, started, to, land, landfall, switches, &crate::island::Island::default())
+    }
+
+    /// `begin`, on an island made with the island's settings `island`
+    /// (island.rs), laid on the rules after the start and its switches; with
+    /// none set it is `begin` to the bit. A save keeps the settings
+    /// (`Save::island`) and is played again on the same island. Refused, in
+    /// the settings' own words, where a setting is out of its range or does
+    /// not apply (the land's on the old island, the towns at landfall).
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin_with(rules: Rules, seed: u64, families: usize, started: u64, to: i64, land: bool, landfall: bool, switches: Switches, island: &crate::island::Island) -> Result<Game, String> {
         let mut P = params_to(rules, seed, families, to)?;
         P.land = if land { crate::landform::LandParams::game() } else { crate::landform::LandParams::default() };
         if landfall {
             crate::landfall::landfall(&mut P);
         }
         let begun = switches.set(&mut P);
+        island.set(&mut P)?;
         Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new(), begun })
+    }
+
+    /// The island's settings the game was made with (island.rs): None where a
+    /// setting is as the island comes. They are fixed at the start (no edit
+    /// by hand may set the land, the people of 1750 or the first towns:
+    /// `edits::FIXED_AT_START`), so the game's parameters say them still.
+    pub fn island(&self) -> crate::island::Island {
+        crate::island::Island::read(&self.sim.params)
     }
 
     /// Whether the game began at landfall (docs/rules/landfall.md).
@@ -614,6 +634,7 @@ impl Game {
             landfall: self.sim.params.start.landfall,
             settlers: self.begun.settlers,
             ideas_by_sea: self.begun.ideas_by_sea,
+            island: self.island(),
             to: (self.to() != content_last_year(self.rules)).then_some(self.to()),
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
@@ -676,6 +697,13 @@ pub struct Save {
     /// Ideas by sea (`abroad.ideas`) as the game began, as `settlers` is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ideas_by_sea: Option<bool>,
+    /// The island's settings the game was made with (island.rs), those that
+    /// are not as the island comes: `"island": {"rain": 600.0, "coal": 2.0}`.
+    /// Left out of the file when there are none, so every save made before
+    /// them, and every save of an island as it comes, is written and played as
+    /// it always was.
+    #[serde(default, skip_serializing_if = "crate::island::Island::plain")]
+    pub island: crate::island::Island,
     /// The last year the game is played to, when it is not the content's
     /// (`Game::under_to`; docs/rules/longrun.md, "A game past 1900"). Left
     /// out of the file otherwise, so a game to 1900 is written as it always
@@ -816,7 +844,8 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     let to = save.last_year_of_game();
     // and from the start it says, with the start's switches as it began
     let switches = Switches { settlers: save.settlers, ideas_by_sea: save.ideas_by_sea };
-    let mut game = Game::begin(save.played_under(), save.seed, save.families, save.started, to, save.land, save.landfall, switches)?;
+    // and on the island its settings made (island.rs)
+    let mut game = Game::begin_with(save.played_under(), save.seed, save.families, save.started, to, save.land, save.landfall, switches, &save.island)?;
     let mut refused = Vec::new();
     let mut next = 0;
     // where the save had got to: a year's turn, or some months into the year after it

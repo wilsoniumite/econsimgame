@@ -142,6 +142,9 @@ struct Args {
     /// (`--settlers on|off`, `--ideas-by-sea on|off`; docs/rules/landfall.md,
     /// "The start's switches"); None is the start's own
     switches: isostate_core::save::Switches,
+    /// the new game's island's settings, where asked for (`--island hills=1400,rain=600`;
+    /// isostate_core::island, docs/rules/land.md, "The island's settings")
+    island: isostate_core::island::Island,
     /// a saved game to go on with
     load: Option<String>,
     /// where to save, instead of the island's autosave
@@ -234,6 +237,13 @@ it was left, behind a short card (Go on, or Begin again). --family plays the fam
   --ideas-by-sea on|off
                        a new game whose ports learn from abroad, or not (on at landfall, off
                        on the settled island). In a game both are switches of the Rules tab
+  --island NAME=VALUE[,NAME=VALUE...]
+                       a new game on an island made otherwise: hills (metres, 1000), rain (mm a
+                       year, 900), wander and lakes (times as many, 1), coal, ore, stone, clay
+                       and woods (times as rich, 1), people (in 1750: 135000, or 5000 at
+                       landfall) and towns (the first towns of the settled island, 6). Each has
+                       a range (docs/rules/land.md, \"The island's settings\"). A saved game says
+                       its island's settings itself
   --new-land           does nothing: every new game is on the new land. Kept so that commands
                        written before the switch still run
   --load FILE          go on with this saved game
@@ -419,6 +429,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         old_land: false,
         landfall: false,
         switches: isostate_core::save::Switches::default(),
+        island: isostate_core::island::Island::default(),
         load: None,
         save: None,
         keep: false,
@@ -477,6 +488,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--landfall" => { a.landfall = true; a.new = true; a.fresh = true; }
             "--settlers" => { a.switches.settlers = Some(on_off(opt, &next(i)?)?); a.new = true; a.fresh = true; i += 1; }
             "--ideas-by-sea" => { a.switches.ideas_by_sea = Some(on_off(opt, &next(i)?)?); a.new = true; a.fresh = true; i += 1; }
+            "--island" => { a.island = a.island.and(&isostate_core::island::Island::parse(&next(i)?)?); a.new = true; a.fresh = true; i += 1; }
             // (the new land is every new game's since the switch: the option is kept so that old commands run)
             "--new-land" => {}
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
@@ -603,6 +615,20 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if let (false, Some(file)) = (a.switches.plain(), &a.load) {
         return Err(format!("--settlers and --ideas-by-sea begin a new game, and --load goes on with one: a saved game is played again as it began without being told, and in a game the two are switches of the Rules tab, so leave them out to go on with {file}"));
     }
+    if let (false, Some(file)) = (a.island.plain(), &a.load) {
+        return Err(format!("--island makes a new island, and --load goes on with one: a saved game is played again on the island it was made with without being told, so leave --island out to go on with {file}"));
+    }
+    // the island's settings are tried on the start asked for now, before an island is made for a range no game can have
+    if !a.island.plain() {
+        let mut p = isostate_core::save::params(isostate_core::params::Rules::Game, a.seed, a.families);
+        if a.old_land {
+            p.land = isostate_core::landform::LandParams::default();
+        }
+        if a.landfall {
+            isostate_core::landfall::landfall(&mut p);
+        }
+        a.island.check(&p).map_err(|why| format!("--island: {why}"))?;
+    }
     // options that only mean something beside another say so, rather than being passed over in silence
     if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
         eprintln!("--out, --tilt, --turn and --loupe go with --lab and do nothing without it");
@@ -678,6 +704,7 @@ fn opening(a: &Args) -> live::Opening {
         old_land: a.old_land,
         landfall: a.landfall,
         switches: a.switches,
+        island: a.island,
         sandbox: a.sandbox,
         // every new game runs to 2050 unless --to says otherwise (and --shots plays to 1900)
         to: Some(a.to.unwrap_or(isostate_core::save::LATEST_YEAR)),
@@ -1127,8 +1154,11 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            let switches: String = saves::switch_words(args.switches).iter().map(|w| format!(", {w}")).collect();
-            format!("Island {} with {}{}{}{switches}, {} by {} pixels", args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, if args.landfall { ", from landfall" } else { "" }, args.size.0, args.size.1)
+            let mut switches: String = saves::switch_words(args.switches).iter().map(|w| format!(", {w}")).collect();
+            if !args.island.plain() {
+                switches += &format!(", {}", args.island.words());
+            }
+            format!("Island {} with {}{}{}{switches}, {} by {} pixels",args.seed, families_words(args.families), if args.old_land { ", on the old island" } else { "" }, if args.landfall { ", from landfall" } else { "" }, args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -2983,6 +3013,16 @@ mod tests {
         assert_eq!(args("--settlers no").err().unwrap(), "--settlers takes on or off, not no");
         assert_eq!(args("--settlers").err().unwrap(), "--settlers needs a value after it");
         assert!(args("--settlers off --load mine.json").err().unwrap().starts_with("--settlers and --ideas-by-sea begin a new game, and --load goes on with one"));
+        // the island's settings (isostate_core::island) make a new game, are tried on the start
+        // asked for before an island is made, and are refused beside --load
+        let a = args("--island rain=600,coal=2 --island hills=1400").unwrap();
+        assert!(a.new && a.fresh);
+        assert_eq!(a.island.words(), "hills=1400,rain=600,coal=2");
+        assert!(args("--island rain=600 --load mine.json").err().unwrap().starts_with("--island makes a new island, and --load goes on with one"));
+        assert!(args("--island rain=60").err().unwrap().contains("outside its range"));
+        assert!(args("--island towns=3 --landfall").err().unwrap().contains("landfall begins with one town"));
+        assert!(args("--island coal=2 --old-land").err().unwrap().contains("new land only"));
+        assert!(args("--island people=8000 --landfall").is_ok());
         // --new-land does nothing since every new game is on the new land: a command written before still runs
         let a = args("--new-land").unwrap();
         assert!(!a.fresh && !a.old_land && a.load.is_none());

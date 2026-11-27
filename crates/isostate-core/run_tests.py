@@ -178,6 +178,10 @@ QUICK_SKIPS = [
     'telling_changes_nothing',
     'the_island_tells_what_the_hand_has_done',
 
+    # island: the island's settings (island 7 to 1780 twice, with a save between; added with them on 27 November 2026)
+    'a_game_made_with_three_settings_and_gone_on_with_is_the_one_played_straight_through',
+    'each_setting_does_to_the_land_what_it_says',
+
     # lab
     'an_arm_is_the_run_with_its_edits',
     'the_arms_part_at_the_edit',

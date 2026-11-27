@@ -93,7 +93,10 @@ pub fn run_scenario(P: &Params, content: Content, out: &Path, progress: bool, li
 }
 
 const USAGE: &str = "usage: isostate-core run --out DIR [--seed N] [--rules port|game] [--regime landlords|commons] [--end-year Y]
-                         [--start settled|landfall] [--lite] [--families N] [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]
+                         [--start settled|landfall] [--island NAME=VALUE[,NAME=VALUE...]] [--lite] [--families N]
+                         [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]
+                         (the island's settings: hills, rain, wander, lakes, coal, ore, stone, clay, woods, people,
+                         towns; docs/rules/land.md, \"The island's settings\")
                          [--edits FILE.json]   (a list of edits by hand, [{\"before\": [1800, 1], \"edit\": {\"what\": \"rule\", ...}}])";
 
 /// A run with a list of edits by hand (`edits::run_with`), written as any run
@@ -157,6 +160,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut content_file: Option<PathBuf> = None;
     let mut edits_file: Option<PathBuf> = None;
     let mut start: Option<String> = None;
+    let mut island = crate::island::Island::default();
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().cloned().ok_or_else(|| format!("{name} needs a value"));
         match a.as_str() {
@@ -175,6 +179,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
             "--content" => content_file = Some(PathBuf::from(value("--content")?)),
             "--edits" => edits_file = Some(PathBuf::from(value("--edits")?)),
             "--start" => start = Some(value("--start")?),
+            "--island" => island = island.and(&crate::island::Island::parse(&value("--island")?)?),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return Ok(());
@@ -193,6 +198,8 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         Some(p) => base.load_over(p)?,
         None => base,
     };
+    // the island's settings (island.rs), laid over the rules, the start and the file
+    island.set(&mut P)?;
     P.seed = seed.unwrap_or(if params_file.is_some() { P.seed } else { 7 });
     if let Some(r) = regime {
         P.rent_regime = r;

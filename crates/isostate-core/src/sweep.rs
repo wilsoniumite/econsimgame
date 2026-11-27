@@ -62,7 +62,8 @@ use crate::sim;
 use crate::util::{fmt_g6, fmt_thousands_f0};
 
 pub const USAGE: &str = "usage: isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
-                           [--start settled|landfall|settled,landfall] [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json]
+                           [--start settled|landfall|settled,landfall] [--island NAME=VALUE[,NAME=VALUE...]]
+                           [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json]
                            [--content content.toml] [--jobs N] [--compare OTHER_DIR]
                            [--standing [--growth] [--colony] [--beside SETTLED_DIR]] [--quiet]";
 
@@ -84,8 +85,12 @@ pub struct Options {
     pub beside: Option<PathBuf>,
     /// With the standing check: a colony fact missed fails the sweep.
     pub colony: bool,
-    /// Each `--set`: the key and its values as typed.
+    /// Each `--set`: the key and its values as typed. A key `island.NAME`
+    /// sweeps one of the island's settings (island.rs).
     pub sets: Vec<(String, Vec<String>)>,
+    /// `--island`: the island's settings for every run, laid on each start
+    /// after the parameters file and before every `--set`.
+    pub island: crate::island::Island,
     pub params_file: Option<PathBuf>,
     pub content_file: Option<PathBuf>,
     pub jobs: Option<usize>,
@@ -224,6 +229,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         beside: None,
         colony: false,
         sets: Vec::new(),
+        island: crate::island::Island::default(),
         params_file: None,
         content_file: None,
         jobs: None,
@@ -253,6 +259,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
                     o.starts.push(w.to_string());
                 }
             }
+            "--island" => o.island = o.island.and(&crate::island::Island::parse(&value("--island")?)?),
             "--beside" => o.beside = Some(PathBuf::from(value("--beside")?)),
             "--colony" => o.colony = true,
             "--set" => {
@@ -264,6 +271,12 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
                 }
                 if key == "seed" {
                     return Err("--set seed: the seeds are chosen with --seeds".to_string());
+                }
+                // one of the island's settings, by its name (island.rs): each value must read as one
+                if let Some(name) = key.strip_prefix("island.") {
+                    for x in &values {
+                        crate::island::Island::parse(&format!("{name}={x}")).map_err(|e| format!("--set {key}: {e}"))?;
+                    }
                 }
                 if o.sets.iter().any(|(k, _)| *k == key) {
                     return Err(format!("--set {key}: given twice; list its values in one --set, separated by commas"));
@@ -417,6 +430,8 @@ fn settings_of(o: &Options, word: &str) -> Result<Vec<Setting>, String> {
     if o.end_year.is_some() {
         base.end_year = o.end_year;
     }
+    // the island's settings for every run (island.rs), on this start
+    o.island.set(&mut base).map_err(|e| format!("--island, {word}: {e}"))?;
     let mut combos: Vec<Vec<String>> = vec![Vec::new()];
     for (_, values) in &o.sets {
         combos = combos.iter().flat_map(|c| values.iter().map(move |v| [c.clone(), vec![v.clone()]].concat())).collect();
@@ -425,7 +440,12 @@ fn settings_of(o: &Options, word: &str) -> Result<Vec<Setting>, String> {
     for values in combos {
         let mut P = base.clone();
         for ((key, _), v) in o.sets.iter().zip(&values) {
-            P = set_field(&P, key, &parse_value(v))?;
+            match key.strip_prefix("island.") {
+                Some(name) => {
+                    crate::island::Island::parse(&format!("{name}={v}"))?.set(&mut P).map_err(|e| format!("--set {key}={v}, {word}: {e}"))?;
+                }
+                None => P = set_field(&P, key, &parse_value(v))?,
+            }
         }
         // what a --params file is refused for is refused when swept, before the first run
         P.check()?;

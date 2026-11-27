@@ -440,7 +440,8 @@ fn mobile(q: f64, sl: f64) -> f64 {
 /// and cut themselves off. Steep reaches and small streams are left alone, and a
 /// bend cannot climb the valley side: the ground must lie near the water's level.
 fn meander(c: &mut Course, g: Grid, z: &[f64], P: &LandParams, ds: f64, oxbows: &mut Vec<Oxbow>) {
-    let steps = P.meander_steps;
+    // (with the island's setting `wander` laid on them)
+    let steps = P.meander_count();
     let (mut r0, mut w, mut mob, mut fade) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     // the stretch of the course that can move, found again whenever the points are re-laid
     let (mut lo, mut hi, mut fresh) = (0usize, 0usize, true);
