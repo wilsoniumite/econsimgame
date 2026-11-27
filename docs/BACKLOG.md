@@ -494,6 +494,26 @@ A study of 27 November (seven measurers, three designs and a judge, read against
 - With `prices.exports_ask` on, the wage in grain of the 1850s is half `main`'s on the three settled islands probed, and above it again by the 1890s; not traced.
 - **The written check as the gate's ratchet** (piece 7): the report already lists what it missed; a standing file a machine can read (fact, arm, mean, band, word) would spare the gate reading text. The canal's and the railway's bands of hands a ton-cell are still to be written (history has them), and the band's foot of 0.7 checked against a country whose canals are counted.
 
+## One cost of ground (her notes of 27 November)
+
+Her notes are at the foot. Nothing is built for them and nothing is started. What is said to be so was read on `main` the same day.
+
+- **What she asked:** that roads, rails, rivers, and the boundaries of cities and buildings share one system underneath. The land has a construction cost from its grade and its substrate, each thing to be built has its own method of grade against cost, and terraforming and landscaping come in ("a thing I think we need"). Then: knocking down what stands in the way as a cost of its own; owners who cannot always be made to sell; an upgraded road keeping the cuts already made in the land.
+- **What is so:** the same ground is priced five ways. Railways and canals share a card on the 2 km cells (`ways::BuildCost`: lowland, hills, mountains, a river, a slope, a cell already laid). Roads' courses are sought over the 125 m squares with prices of their own (`courses.rs`: a metre climbed is worth so many metres of level road, a ruling gradient by the kind of road, wet ground). Crossings price a ford by the metre of water and build a bridge once (`crossings.rs`). Building ground has a score for steep and wet squares that orders which are taken, and nobody pays it (`squares::ground_cost`). Carting prices the use of a way and not its building. The land holds heights in metres, wet ground, rivers and seven rocks. Nothing moves earth, and no ground is ever changed by work.
+- **Proposed by Claude, and liked ("Yeah, I like it a lot"):** one price of earth (the hands and goods it takes to move a cubic metre of soil, rock or marsh); a card for each thing built (its footprint, the grade it bears, the structures it may use: bridge, tunnel, lock, retaining wall, piles); one finder for strips (roads, rails, canals) and one for plots (houses, works, fields). Levelling a plot on a slope costs with the cube of its side, so a works that needs a wide level floor seeks the valley and cottages climb the hill in terraces. Three additions:
+  - A course is chosen by what it costs to build and what it costs to haul over it, for the traffic expected. A lane then follows the ground and a trunk road cuts through it, by one rule.
+  - Digging is a task with machines (shovel and barrow, the steam shovel, the bulldozer), so that the same hill is a wall in 1760 and a cutting in 1960. Canals that wind along the contours, then graded railways, then motorways should come out of the years.
+  - Earth moved stays moved. An upgrade pays only for the extra earth, old lines are kept, cuttings and embankments show in the picture, and the sandbox's tool for shaping land is the same system with the bill off.
+- **From her additions:** what stands on the ground is part of the cost, to knock down and to buy. Going round a town may then beat going through it, and a station stop at the town's edge, which could take the place of the rule that begins bypasses in 1920 (the clean-out's note 3). Owners who refuse, or ask more than the worth, come late, with compulsory purchase as an act of the political mode.
+- **Kept apart, for later (her second note):**
+  - A town or a works hemming in its river to gain ground: an embankment paid by the rent of the ground made dry.
+  - Meanders that answer to the bank's material. Today a reach wanders by its flow, its fall and the width of its valley floor (`landwater.rs`), and the rock has no part. A change makes every island's land anew, so it waits for a planned move.
+  - Foundations by the ground and the building's weight. The generator reckons the depth of soft ground and the land does not keep it.
+  - Fertility that work improves (drainage, terraces). Today it is read from the rock, the slope, the rain and the river's silt, and marsh takes six tenths of it away.
+  - Irrigation. It matters little on islands with 900 mm of rain a year, where silt already draws farms to the rivers, and it would decide everything on a dry one. Proposed beside it: climate as a setting of the island.
+  - Her map note 7 (watersheds, floods, dams, reservoirs, irrigation) is the same thread.
+- **The order:** a design study first, as for leaving the grid. Then in stages, each built switched off and turned on in a planned move, since what gets built and when changes on every island: the ground's price as a map view; roads on it; earth kept; railways and canals; plots; digging as a task; shaping land, and water that answers. Roads are the first user. The mend of the road faults of 27 November (hard corners where roads meet, roads side by side on hills, short zigzags, villages beside their roads) keeps its fixes of the look (a road runs on through a place, a village is laid out from its crossroads, the works' clearance reads the courses) and gives up its invented numbers for the finder on the ground's price.
+
 ## Towards a release (26 November)
 
 A release on Steam is the far goal (her note of 26 November, at the foot). Nothing here is taken up for its own sake yet; the list is kept so that work in hand does not close a door. What the store page says and what the game costs are hers, and are not kept in this file.
@@ -973,3 +993,17 @@ A release kit was started the same day (a version shown by the game, a zip that 
 > Also, maybe you already thought of this but it needs a start page, to go alongside what you usually use command like arguments for. Your work should skip that menu and continue using command line args, but largely I'd like if most the different command line things were available from the menu (I leave the details up to you) .
 
 A brief was written the same day (a page of choices where every choice is an argument: go on with a saved game, a new island with its start, its number, its families and its last year, and the rest folded away; any argument that names a run skips it). It is built once the pieces then at work in the game's start-up have landed, and goes into the first marked version.
+
+**27 November 2026, on one system under roads, rails, rivers and boundaries.**
+
+> I'm wondering, roads, rails, rivers, city and building boundaries, can't all these share some generalised systems underneath? Meaning, if land has a "construction cost" based on grade and perhaps substrate, and then what you want to build has a method for a grade versus cost (oh and, terraforming/landscaping is a thing I think we need) then can't we unify a lot of our systems? Basically, construction cost from first principles?
+
+A few minutes later:
+
+> We'd also wan't bulldozing as an increased cost, and then like, homeowners can't always be forced to sell also adds interesting complexity etc etc. Upgrading a road can keep existing cuts in the land, that sort of thing.
+
+And after the answer:
+
+> Yeah, I like it a lot. Two small things separately for rivers, for later: I feel like cities would hem in meandering rivers to make more space for themselves, or works might do the same. Also doesn't substrate decide how a river meanders? How much geology generation do we do when we generate islands? Foundation cost for buildings is fun too, as is fertility. Also, irrigation for farms, that'd make farms follow rivers to start right?
+
+Filed above as "One cost of ground". A design study is the first step, and nothing is built before it.
