@@ -487,7 +487,10 @@ pub fn now() -> u64 {
 /// again: the arguments end `--new --sandbox` (a scripted run is otherwise the
 /// family game). The start is the button's (`landfall`, docs/rules/landfall.md):
 /// New game from landfall ends `--landfall`, and New game begins on the
-/// settled island whatever the game on the table began from.
+/// settled island whatever the game on the table began from. The start's two
+/// switches go with the start, so `--settlers` and `--ideas-by-sea` are left
+/// out too: the new game begins as its start has them (docs/rules/landfall.md,
+/// "The start's switches"), and the start page is where they are chosen.
 pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool, landfall: bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -495,6 +498,8 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool,
         match args[i].as_str() {
             // (a script is of the game that was on the table, not of the new one)
             "--load" | "--seed" | "--families" | "--advance" | "--script" => i += 1,
+            // (the start's switches go with the start, which is the button's)
+            "--settlers" | "--ideas-by-sea" => i += 1,
             // (and --sandbox beside --family would be refused)
             "--new" | "--family" | "--sandbox" => {}
             // (the start is the button's: landfall, docs/rules/landfall.md, or the settled island)
@@ -509,6 +514,27 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool,
         out.push("--landfall".to_string());
     }
     out
+}
+
+/// What a game's start's two switches say of it, where they are not the
+/// start's own (docs/rules/landfall.md, "The start's switches"): "no settlers"
+/// and "no technology from abroad" for a colony alone; on the settled island,
+/// "settlers by ship" and "technology from abroad". Nothing for a start as it
+/// comes. The start page's list of saved games, the card of a game gone on
+/// with and the run's own lines say these.
+pub fn switch_words(s: isostate_core::save::Switches) -> Vec<&'static str> {
+    let mut v = Vec::new();
+    match s.settlers {
+        Some(true) => v.push("settlers by ship"),
+        Some(false) => v.push("no settlers"),
+        None => {}
+    }
+    match s.ideas_by_sea {
+        Some(true) => v.push("technology from abroad"),
+        Some(false) => v.push("no technology from abroad"),
+        None => {}
+    }
+    v
 }
 
 // ------------------------------------------------------------------ the saved games, listed
@@ -543,6 +569,8 @@ pub struct Listed {
     pub old_land: bool,
     /// begun at landfall, one town in a corner (docs/rules/landfall.md)
     pub landfall: bool,
+    /// the start's two switches, where it was begun with either otherwise than its start has them
+    pub switches: isostate_core::save::Switches,
     /// when the file was last written, in seconds since 1970
     pub when: u64,
 }
@@ -604,6 +632,7 @@ pub fn listed_in(folder: &Path) -> Vec<Listed> {
                     family: if place == Place::Sandbox { String::new() } else { s.family.clone() },
                     old_land: !s.land,
                     landfall: s.landfall,
+                    switches: isostate_core::save::Switches { settlers: s.settlers, ideas_by_sea: s.ideas_by_sea },
                     when,
                     path,
                 }),
@@ -686,6 +715,8 @@ mod tests {
             check: String::new(),
             land: false,
             landfall: false,
+            settlers: None,
+            ideas_by_sea: None,
             to: None,
             orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
             waiting: Vec::new(),
@@ -1410,6 +1441,11 @@ mod tests {
         // the start is the button's: from landfall, or the settled island whatever the game on the table began from
         let args: Vec<String> = ["--landfall", "--to", "1950"].iter().map(|s| s.to_string()).collect();
         assert_eq!(new_game_args(&args, 7, 6, false, true), ["--to", "1950", "--seed", "7", "--families", "6", "--new", "--family", "--landfall"]);
+        // and the start's switches go with the start: a colony alone begun again is a colony as it comes
+        let alone: Vec<String> = ["--landfall", "--settlers", "off", "--ideas-by-sea", "off", "--size", "1280x720"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&alone, 7, 6, true, true), ["--size", "1280x720", "--seed", "7", "--families", "6", "--new", "--sandbox", "--landfall"]);
+        assert_eq!(switch_words(isostate_core::save::Switches { settlers: Some(false), ideas_by_sea: Some(false) }), ["no settlers", "no technology from abroad"]);
+        assert!(switch_words(isostate_core::save::Switches::default()).is_empty());
         assert_eq!(new_game_args(&args, 7, 6, false, false), ["--to", "1950", "--seed", "7", "--families", "6", "--new", "--family"]);
         // Begin again on a sandbox's card: a sandbox again, whether it was asked for by name or opened
         // by a plain start, and a scripted one too; --keep goes on being asked for
