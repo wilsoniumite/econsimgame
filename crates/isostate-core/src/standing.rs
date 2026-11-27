@@ -117,6 +117,12 @@ pub fn arms(sw: &Sweep) -> Vec<Then> {
 /// inside", then the table. `kinds` says how each fact prints; `whence` names
 /// the reference ("the first setting", or the earlier sweep's directory).
 pub fn check(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>, whence: &str) -> String {
+    check_titled("standing check", reference, later, kinds, whence)
+}
+
+/// `check` with its first lines begun by `title` in place of "standing check"
+/// (the gate reads lines begun so; the twelve against version 0.1.0 are only printed).
+fn check_titled(title: &str, reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>, whence: &str) -> String {
     let st = |arm: &Then, name: &str| arm.values.get(name).and_then(|v| stat(v));
     let mut out = String::new();
     for arm in later {
@@ -124,7 +130,7 @@ pub fn check(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>, w
         let count = |w: Verdict| v.iter().filter(|&&x| x == w).count();
         let _ = writeln!(
             out,
-            "standing check: {} of {} inside ({} moved, {} OUTSIDE, {} without a value): {} against {}",
+            "{title}: {} of {} inside ({} moved, {} OUTSIDE, {} without a value): {} against {}",
             count(Verdict::Inside),
             FACTS.len(),
             count(Verdict::Moved),
@@ -139,9 +145,10 @@ pub fn check(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>, w
         "reference: {} ({} runs) from {whence}\n\
          inside: the mean lies within the reference's [least .. greatest] across seeds; moved: every seed of one\n\
          arm lies on one side of every seed of the other ({STAR_RUNS} runs or more a side); OUTSIDE: the mean has left\n\
-         the spread and the seeds have not stood apart. Only inside passes.\n",
+         the spread and the seeds have not stood apart. {}\n",
         reference.label,
-        reference.seeds.len()
+        reference.seeds.len(),
+        if title == "standing check" { "Only inside passes." } else { "Printed, not counted." }
     );
     let mut head = vec![String::new(), reference.label.clone(), String::new()];
     let mut sides = vec![Side::Left, Side::Right, Side::Left];
@@ -355,6 +362,10 @@ pub enum Read {
     OverSettled(&'static str),
     /// The fact less the settled island's on the same island number.
     LessSettled(&'static str),
+    /// The first fact over the second, on the same island.
+    Over(&'static str, &'static str),
+    /// A thousand times the first fact over the second (railway a 1,000 people).
+    PerThousand(&'static str, &'static str),
 }
 
 /// One fact of the colony's check: what is asked, how it is read, its band
@@ -432,6 +443,12 @@ pub const STRUCK: [(&str, &str); 6] = [
 /// A fact's values island by island, from the colony's arm and, where it reads
 /// one, the settled island's arm of the same island numbers.
 pub fn colony_values(f: &ColonyFact, arm: &Then, settled: Option<&Then>) -> Vec<(u64, f64)> {
+    read_values(f.read, arm, settled)
+}
+
+/// What `read` reads from an arm, island by island, and where it reads one,
+/// the settled island's arm of the same island numbers.
+pub fn read_values(read: Read, arm: &Then, settled: Option<&Then>) -> Vec<(u64, f64)> {
     let get = |a: &Then, name: &str| -> Vec<(u64, f64)> { a.values.get(name).cloned().unwrap_or_default() };
     let pair = |a: &[(u64, f64)], b: &[(u64, f64)], f: &dyn Fn(f64, f64) -> f64| -> Vec<(u64, f64)> {
         let mut out: Vec<(u64, f64)> =
@@ -439,8 +456,10 @@ pub fn colony_values(f: &ColonyFact, arm: &Then, settled: Option<&Then>) -> Vec<
         out.sort_by_key(|&(seed, _)| seed);
         out
     };
-    let mut v = match f.read {
+    let mut v = match read {
         Read::Fact(name) => get(arm, name),
+        Read::Over(a, b) => pair(&get(arm, a), &get(arm, b), &|x, y| x / y),
+        Read::PerThousand(a, b) => pair(&get(arm, a), &get(arm, b), &|x, y| 1000.0 * x / y),
         Read::Growth(a, b, years) => pair(&get(arm, a), &get(arm, b), &|x, y| 100.0 * ((y / x).powf(1.0 / years) - 1.0)),
         Read::Rate(name, years) => get(arm, name).into_iter().map(|(s, x)| (s, 100.0 * (x.powf(1.0 / years) - 1.0))).collect(),
         Read::Change(a, b) => pair(&get(arm, a), &get(arm, b), &|x, y| y - x),
@@ -454,7 +473,12 @@ pub fn colony_values(f: &ColonyFact, arm: &Then, settled: Option<&Then>) -> Vec<
 
 /// Whether a number lies in a fact's band.
 pub fn in_band(f: &ColonyFact, x: f64) -> bool {
-    f.lo.is_none_or(|lo| x >= lo - 1e-12) && f.hi.is_none_or(|hi| x <= hi + 1e-12)
+    within(f.lo, f.hi, x)
+}
+
+/// Whether a number lies between two ends, either of which may be open.
+fn within(lo: Option<f64>, hi: Option<f64>, x: f64) -> bool {
+    lo.is_none_or(|lo| x >= lo - 1e-12) && hi.is_none_or(|hi| x <= hi + 1e-12)
 }
 
 /// Whether the mean across the islands lies in the band; None with no value.
@@ -464,8 +488,13 @@ pub fn colony_met(f: &ColonyFact, values: &[(u64, f64)]) -> Option<bool> {
 
 /// The band in words.
 fn band_words(f: &ColonyFact) -> String {
-    let show = |x: f64| fmt_fact(f.kind, x);
-    match (f.lo, f.hi) {
+    band_text(f.kind, f.lo, f.hi)
+}
+
+/// A band in words, its ends shown as a fact of `kind` is.
+fn band_text(kind: Kind, lo: Option<f64>, hi: Option<f64>) -> String {
+    let show = |x: f64| fmt_fact(kind, x);
+    match (lo, hi) {
         (Some(a), Some(b)) if a == b => show(a),
         (Some(a), Some(b)) => format!("{} to {}", show(a), show(b)),
         (Some(a), None) => format!("{} or more", show(a)),
@@ -556,6 +585,287 @@ pub fn colony(colonies: &[&Then], settled: Option<&Then>, whence: &str) -> (Stri
     (text, missed)
 }
 
+// ---------------------------------------------------------------- the written check
+
+/// Which start a fact of the written check holds for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    Both,
+    Settled,
+    Landfall,
+}
+
+impl Start {
+    pub fn holds_for(self, arm: &Then) -> bool {
+        match self {
+            Start::Both => true,
+            Start::Settled => !is_colony(arm),
+            Start::Landfall => is_colony(arm),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Start::Both => "both",
+            Start::Settled => "settled",
+            Start::Landfall => "landfall",
+        }
+    }
+}
+
+/// The three kinds of line the written check prints apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Class {
+    /// A band: met or missed, and counted.
+    Band,
+    /// Known to be wrong today: printed with its band, not counted against a landing.
+    Wrong,
+    /// Printed with no band yet.
+    Open,
+}
+
+/// One fact of the written check: what is asked, how it is read, its band
+/// (either end may be open; none for `Class::Open`), how sure the band is, its
+/// source, the start it holds for and the kind of line it is.
+#[derive(Clone, Copy, Debug)]
+pub struct Written {
+    pub asked: &'static str,
+    pub read: Read,
+    pub kind: Kind,
+    pub lo: Option<f64>,
+    pub hi: Option<f64>,
+    /// `read` (read in its source), `memory, high` / `medium` / `low` (FROM
+    /// MEMORY: what the reader of the bands knew, not checked against the
+    /// source), `web` (a search's summary, the source not read), `reasoned` (no
+    /// source; worked out from the island), `design` (what the design asks) or
+    /// `a fault` (any amount is a fault). Two words joined, as `read; memory`,
+    /// say which part of the band each is.
+    pub sure: &'static str,
+    pub source: &'static str,
+    pub start: Start,
+    pub class: Class,
+}
+
+#[allow(clippy::too_many_arguments)]
+const fn wr(asked: &'static str, read: Read, kind: Kind, lo: Option<f64>, hi: Option<f64>, sure: &'static str, source: &'static str, start: Start, class: Class) -> Written {
+    Written { asked, read, kind, lo, hi, sure, source, start, class }
+}
+
+/// The share of an arm's runs that failed, one value a run: put among an arm's
+/// facts by `for_sweep`, since a failed run has no facts of its own.
+pub const RUNS_FAILED: &str = "runs_failed";
+
+/// The written check (the study relay's verdict of 27 November 2026, section 5;
+/// docs/rules/standing.md has the table with its sources): bands written from
+/// history, each with its source and how sure it is, that do not move with the
+/// island. Read on the mean of the islands, as the colony's check is. A band
+/// "from memory" says so in `sure`. Not fitted to the runs: a fact main misses
+/// stays a miss. Printed, not counted by the gate yet.
+pub const WRITTEN: [Written; 43] = {
+    use Class::{Band, Open, Wrong};
+    use Start::{Both, Landfall, Settled};
+    [
+        // ---- with a band, counted
+        wr("runs that failed, of the runs", Read::Fact(RUNS_FAILED), Kind::Share, Some(0.0), Some(0.0), "a fault", "a run that fails is a fault", Both, Band),
+        wr("years with hunger, 1770-1900", Read::Fact("famine_years_1770_1900"), Kind::Count, Some(0.0), Some(0.0), "memory, high", "no dearth in England after the 1740s; colonies after their first twenty years", Both, Band),
+        wr("years with hunger, 1901-2050", Read::Fact("famine_years_1901_2050"), Kind::Count, Some(0.0), Some(0.0), "memory, high", "the same", Both, Band),
+        wr("a town's wage over the year before, at most, to 1900", Read::Fact("town_wage_rise_max_1752_1900"), Kind::Ratio, None, Some(1.33), "memory, medium", "yearly wages outside a gold rush or war paper (colony's row 20)", Both, Band),
+        wr("a town's wage over the year before, at most, 1901-2050", Read::Fact("town_wage_rise_max_1901_2050"), Kind::Ratio, None, Some(2.0), "reasoned", "what carriage in hands with exports asked reached (1.99); no history", Both, Band),
+        wr("the cost of living over three years, at most, to 1900", Read::Fact("price_level_3y_max_1750_1900"), Kind::Ratio, None, Some(1.5), "memory, medium", "Phelps Brown and Hopkins: 1.35 to 1.45 at most (1798-1801)", Both, Band),
+        wr("the cost of living over three years, at least, to 1900", Read::Fact("price_level_3y_min_1750_1900"), Kind::Ratio, Some(0.7), None, "memory, medium", "the same: about 0.7 at least (1813-16, 1818-22)", Both, Band),
+        wr("grain's price between towns, mean |ln| of pairs, 1760-1900", Read::Fact("grain_price_gap_1760_1900"), Kind::Real, None, Some(0.15), "read", "NBER w16236, Table 1: 40 English counties 1771-1815, wheat 0.09, oats 0.14", Both, Band),
+        wr("grain's price between towns, mean |ln| of pairs, 1901-2050", Read::Fact("grain_price_gap_1901_2050"), Kind::Real, None, Some(0.15), "read", "the same; markets drew closer after, not apart", Both, Band),
+        wr("a town's prices over its city's, least, 1750-1900", Read::Fact("town_price_index_vs_city_least_1750_1900"), Kind::Ratio, Some(0.67), None, "read; reasoned", "NBER w16236, Table 2: the furthest county pair in a year, 0.378 in logs; a basket reasoned", Both, Band),
+        wr("a town's prices over its city's, greatest, 1750-1900", Read::Fact("town_price_index_vs_city_greatest_1750_1900"), Kind::Ratio, None, Some(1.5), "read; reasoned", "the same", Both, Band),
+        wr("a town's prices over its city's, least, 1901-2050", Read::Fact("town_price_index_vs_city_least_1901_2050"), Kind::Ratio, Some(0.67), None, "read; reasoned", "the same", Both, Band),
+        wr("a town's prices over its city's, greatest, 1901-2050", Read::Fact("town_price_index_vs_city_greatest_1901_2050"), Kind::Ratio, None, Some(1.5), "read; reasoned", "the same", Both, Band),
+        wr("people over 1750, 1800", Read::Fact("pop_1800_vs_1750"), Kind::Ratio, Some(1.35), Some(1.60), "memory, high", "censuses: England and Wales 1.43 (1801 over 1751), Great Britain 1.42", Settled, Band),
+        wr("people over 1750, 1850", Read::Fact("pop_1850_vs_1750"), Kind::Ratio, Some(2.5), Some(3.1), "memory, high", "censuses: England and Wales 2.89, Great Britain 2.81", Settled, Band),
+        wr("people over 1750, 1900", Read::Fact("pop_1900_vs_1750"), Kind::Ratio, Some(4.5), Some(5.5), "memory, high", "censuses: England and Wales 5.25, Great Britain 5.0", Settled, Band),
+        wr("people in 1900", Read::Fact("pop_1900"), Kind::Count, Some(100_000.0), Some(500_000.0), "memory", "colonies of settlement at year 150 (colony's row 3)", Landfall, Band),
+        wr("people in 2050 over 1900", Read::Over("pop_2050", "pop_1900"), Kind::Ratio, Some(1.5), Some(2.3), "memory, medium", "Britain and its like over the twentieth century", Settled, Band),
+        wr("towns in 1900", Read::Fact("towns_1900"), Kind::Count, Some(10.0), Some(25.0), "reasoned, low", "markets with their districts, counted three ways for 680,000 people", Both, Band),
+        wr("the second town's townsfolk over the first's, 1900", Read::Fact("townsfolk_second_over_first_1900"), Kind::Ratio, Some(0.25), Some(0.65), "memory, medium", "small countries in 1900: Norway 0.32, Scotland 0.42, Sweden 0.43, the Netherlands 0.62", Both, Band),
+        wr("townsfolk's share, 1900", Read::Fact("urban_share_1900"), Kind::Share, Some(0.40), Some(0.60), "memory, medium", "closed countries about 1900: the United States 0.40, France 0.41, Germany 0.54", Both, Band),
+        wr("first railway", Read::Fact("rail_first_year"), Kind::Year, Some(1820.0), Some(1835.0), "memory, high", "Stockton and Darlington 1825, Liverpool and Manchester 1830", Settled, Band),
+        wr("railway in 1900, km a 1,000 people", Read::PerThousand("rail_km_1900", "pop_1900"), Kind::Real, Some(0.8), Some(4.0), "memory, medium", "Great Britain 0.81, Denmark 1.2, Sweden 2.2, the United States 4.1", Both, Band),
+        wr("share of hands on the land, 1850", Read::Fact("farm_share_1850"), Kind::Share, Some(0.22), Some(0.35), "memory, high", "Deane and Cole: Great Britain 0.22 in 1851", Both, Band),
+        wr("share of hands on the land, 1900", Read::Fact("farm_share_1900"), Kind::Share, Some(0.15), Some(0.30), "reasoned", "an island that buys no food: between Britain's 0.09 and France's 0.41", Both, Band),
+        wr("hands to carry a ton a cell as the crow flies, 1800 over 1750", Read::Fact("carters_per_1000_weight_cells_1800_vs_1750"), Kind::Ratio, Some(0.7), Some(0.9), "read; memory", "Bogart 2013, Table 2: road rates a ton-mile, in labourers' days (wages from memory)", Settled, Band),
+        wr("hands to carry a ton a cell as the crow flies, 1800 over 1760", Read::Fact("carters_per_1000_weight_cells_1800_vs_1760"), Kind::Ratio, Some(0.7), Some(0.9), "read; memory", "the same; 1760, as landfall's first year is one town", Landfall, Band),
+        wr("carters' share of hands, 1900", Read::Fact("carters_share_of_hands_1900"), Kind::Share, Some(0.05), Some(0.12), "memory, medium", "about one worker in 11 to 13 in transport in 1901", Both, Band),
+        wr("the linked wage grows, per cent a year, 1900-1970", Read::Growth("real_wage_linked_1900_vs_1750", "real_wage_linked_1970_vs_1750", 70.0), Kind::Ratio, Some(1.0), None, "design", "the growth after 1900 the design asks (--growth)", Both, Band),
+        wr("the linked wage, 2050 over 1970", Read::Over("real_wage_linked_2050_vs_1750", "real_wage_linked_1970_vs_1750"), Kind::Ratio, Some(1.0), None, "design", "the same", Both, Band),
+        wr("share of hands on the land, 2050 less 1900", Read::Change("farm_share_1900", "farm_share_2050"), Kind::Share, None, Some(0.0), "design", "the same: fewer hands on the land in 2050", Both, Band),
+        // ---- known wrong today: printed with the band, not counted
+        wr("the linked wage over 1750, 1850", Read::Fact("real_wage_linked_1850_vs_1750"), Kind::Ratio, Some(1.15), Some(1.7), "read", "Allen 2009, Table 1 (1.39); Feinstein, Clark", Both, Wrong),
+        wr("the linked wage over 1750, 1900", Read::Fact("real_wage_linked_1900_vs_1750"), Kind::Ratio, Some(2.3), Some(3.2), "read", "Allen 2009, Table 1 (2.87 from 1760)", Both, Wrong),
+        wr("wage in grain over 1760's, decade round 1800", Read::Fact("wage_in_grain_decade_1800_vs_1760"), Kind::Ratio, Some(0.6), Some(1.2), "memory, medium", "a labourer's week in wheat: about 0.21 quarters in the 1750s, 0.14 about 1800", Both, Wrong),
+        wr("wage in grain over 1760's, decade round 1900", Read::Fact("wage_in_grain_decade_1900_vs_1760"), Kind::Ratio, Some(2.0), Some(3.5), "memory, medium", "the same: about 0.60 quarters about 1900", Both, Wrong),
+        wr("output a head, 1900 over 1750", Read::Fact("output_per_head_1900_vs_1750"), Kind::Ratio, Some(2.3), Some(3.2), "read", "Allen 2009, Table 1: output a worker 2.82 times", Settled, Wrong),
+        wr("land's share of income, 1850", Read::Fact("income_share_land_1850"), Kind::Share, Some(0.08), Some(0.14), "read, from a chart", "Allen 2009, Fig. 2: about 0.11", Both, Wrong),
+        // ---- printed, no band yet
+        wr("work's share of income, 1850", Read::Fact("income_share_work_1850"), Kind::Share, None, None, "-", "what the measure counts is not checked; the probe decides", Both, Open),
+        wr("work's share of income, 1900", Read::Fact("income_share_work_1900"), Kind::Share, None, None, "-", "the same", Both, Open),
+        wr("people in 2050 over 1900", Read::Over("pop_2050", "pop_1900"), Kind::Ratio, None, None, "-", "settler colonies grew so (about 2.9); no band for a colony yet", Landfall, Open),
+        wr("the cost of living over three years, at most, 1901-2050", Read::Fact("price_level_3y_max_1901_2050"), Kind::Ratio, None, None, "-", "history's wars and their paper lie outside the island", Both, Open),
+        wr("the cost of living over three years, at least, 1901-2050", Read::Fact("price_level_3y_min_1901_2050"), Kind::Ratio, None, None, "-", "the same", Both, Open),
+        wr("hands to carry a ton a cell as the crow flies, 1900 (a 1,000 ton-cells)", Read::Fact("carters_per_1000_weight_cells_1900"), Kind::Real, None, None, "-", "for the canal and the railway, which Bogart's rates also give", Both, Open),
+    ]
+};
+
+/// Each written fact's values for an arm, island by island; empty where the
+/// fact does not hold for its start.
+pub fn written_values(f: &Written, arm: &Then) -> Vec<(u64, f64)> {
+    if !f.start.holds_for(arm) {
+        return Vec::new();
+    }
+    read_values(f.read, arm, None)
+}
+
+/// Met when the mean of the islands lies in the band; None with no value, or
+/// with no band.
+pub fn written_met(f: &Written, values: &[(u64, f64)]) -> Option<bool> {
+    if f.class == Class::Open {
+        return None;
+    }
+    stat(values).map(|s| within(f.lo, f.hi, s.mean))
+}
+
+/// The written check for one arm, with the reference of its start beside it
+/// where there is one (its label and where it came from), and for a landfall
+/// arm the colony's count of 24: the text, and a line for each fact with a band
+/// missed or without a value.
+pub fn written(arm: &Then, reference: Option<(&Then, &str)>, colony_met: Option<usize>) -> (String, Vec<String>) {
+    let mut text = String::new();
+    let mut missed = Vec::new();
+    let facts: Vec<&Written> = WRITTEN.iter().filter(|f| f.start.holds_for(arm)).collect();
+    let rows: Vec<(&Written, Vec<(u64, f64)>, Option<bool>)> = facts.iter().map(|f| {
+        let v = written_values(f, arm);
+        let m = written_met(f, &v);
+        (*f, v, m)
+    }).collect();
+    let band: Vec<_> = rows.iter().filter(|r| r.0.class == Class::Band).collect();
+    let met = band.iter().filter(|r| r.2 == Some(true)).count();
+    let none = band.iter().filter(|r| r.2.is_none()).count();
+    let _ = writeln!(
+        text,
+        "the written check: {met} of {} met, {} missed, {none} without a value: {} ({}, {} islands)",
+        band.len(),
+        band.len() - met - none,
+        arm.label,
+        if is_colony(arm) { "landfall" } else { "settled" },
+        arm.seeds.len()
+    );
+    let _ = writeln!(
+        text,
+        "bands written from history, each with its source and how sure it is (docs/rules/standing.md); \"memory\" is a\n\
+         band from memory, not checked against its source. met: the mean of the islands lies in the band. Printed, not\n\
+         counted by the gate yet.{}\n",
+        reference.map_or(String::new(), |(r, whence)| format!(" Beside it: {} from {whence}.", r.label))
+    );
+    let mut head: Vec<String> = ["", "mean", "[least .. greatest]", "band", "islands in", "", "sure"].iter().map(|s| s.to_string()).collect();
+    let mut sides = vec![Side::Left, Side::Right, Side::Left, Side::Left, Side::Right, Side::Left, Side::Left];
+    if reference.is_some() {
+        head.extend(["reference".to_string(), String::new()]);
+        sides.extend([Side::Right, Side::Left]);
+    }
+    head.push("source".to_string());
+    sides.push(Side::Left);
+    let word = |m: Option<bool>, class: Class| -> &'static str {
+        match (m, class) {
+            (_, Class::Open) => "",
+            (Some(true), _) => "met",
+            (Some(false), Class::Band) => "MISSED",
+            (Some(false), _) => "missed",
+            (None, _) => "-",
+        }
+    };
+    let mut table: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
+    for (class, heading) in [
+        (Class::Band, "facts with a band, counted"),
+        (Class::Wrong, "known wrong today: printed with their band, not counted against a landing"),
+        (Class::Open, "printed, no band yet"),
+    ] {
+        table.push((Some(heading), Vec::new()));
+        for (f, v, m) in rows.iter().filter(|r| r.0.class == class) {
+            let show = |x: f64| fmt_fact(f.kind, x);
+            let s = stat(v);
+            let mut cells = vec![
+                f.asked.to_string(),
+                s.map_or("-".to_string(), |s| show(s.mean)),
+                s.map_or(String::new(), |s| format!("[{} .. {}]", show(s.min), show(s.max))),
+                if class == Class::Open { String::new() } else { band_text(f.kind, f.lo, f.hi) },
+                if v.is_empty() || class == Class::Open { String::new() } else { format!("{} of {}", v.iter().filter(|&&(_, x)| within(f.lo, f.hi, x)).count(), v.len()) },
+                word(*m, class).to_string(),
+                f.sure.to_string(),
+            ];
+            if let Some((r, _)) = reference {
+                let rv = written_values(f, r);
+                cells.push(stat(&rv).map_or("-".to_string(), |s| show(s.mean)));
+                cells.push(word(written_met(f, &rv), class).to_string());
+            }
+            cells.push(f.source.to_string());
+            table.push((None, cells));
+            if class == Class::Band && *m != Some(true) {
+                let why = match m {
+                    Some(false) => format!("mean {} outside {}", show(s.map_or(f64::NAN, |s| s.mean)), band_text(f.kind, f.lo, f.hi)),
+                    _ => "no value".to_string(),
+                };
+                missed.push(format!("{}, {}: {why}", f.asked, arm.label));
+            }
+        }
+    }
+    text.push_str(&layout(&head, &sides, &table));
+    if let Some(n) = colony_met {
+        let _ = writeln!(text, "and the colony's 24 (below): {n} met; the verdict asks at least main's 14, or each loss named");
+    }
+    text.push('\n');
+    (text, missed)
+}
+
+/// The old twelve and `last_town_founded` as version 0.1.0 left them (main at
+/// 190e5ad, 27 November 2026: the gate's two reference sweeps to 1900, islands 1
+/// to 8), from `data/standing-0.1.0.csv`: one arm for each start.
+pub const V010_CSV: &str = include_str!("../../../data/standing-0.1.0.csv");
+
+/// Where `V010_CSV` came from, as the check prints it.
+pub const V010_WHENCE: &str = "version 0.1.0 (main at 190e5ad, data/standing-0.1.0.csv)";
+
+/// `V010_CSV` as two arms, the settled island's and landfall's.
+pub fn v010() -> Vec<Then> {
+    let mut out: Vec<Then> = ["settled", "landfall"]
+        .iter()
+        .map(|s| Then { label: format!("version 0.1.0, {s}"), start: s.to_string(), ..Then::default() })
+        .collect();
+    for line in V010_CSV.lines().filter(|l| !l.starts_with('#') && !l.starts_with("start,") && !l.is_empty()) {
+        let cells: Vec<&str> = line.split(',').collect();
+        let (Some(arm), Some(seed), Some(name), Some(v)) = (
+            out.iter_mut().find(|a| Some(a.start.as_str()) == cells.first().copied()),
+            cells.get(1).and_then(|s| s.parse::<u64>().ok()),
+            cells.get(2),
+            cells.get(3).and_then(|s| s.parse::<f64>().ok()),
+        ) else {
+            continue;
+        };
+        if !arm.seeds.contains(&seed) {
+            arm.seeds.push(seed);
+        }
+        arm.values.entry(name.to_string()).or_default().push((seed, v));
+    }
+    out
+}
+
+/// Each arm's share of runs failed, as a fact of each of its runs: 1 for a run
+/// that failed, 0 for one that did not.
+fn mark_failures(sw: &Sweep, arms: &mut [Then]) {
+    for run in &sw.runs {
+        if let Some(arm) = arms.get_mut(run.setting) {
+            arm.values.entry(RUNS_FAILED.to_string()).or_default().push((run.seed, if run.outcome.is_err() { 1.0 } else { 0.0 }));
+        }
+    }
+}
+
 /// What the check makes of a finished sweep: the text it prints and writes, the
 /// lines that fail the sweep (any of the twelve not inside), the growth facts
 /// missed (which fail it only with `--growth`) and the colony's facts missed
@@ -566,6 +876,9 @@ pub struct Report {
     pub outside: Vec<String>,
     pub growth_missed: Vec<String>,
     pub colony_missed: Vec<String>,
+    /// The written check's facts with a band missed or without a value, which
+    /// fail nothing yet.
+    pub written_missed: Vec<String>,
 }
 
 /// Whether an arm is of the landfall start.
@@ -585,25 +898,62 @@ fn twelve_of<'a>(arms: &[&'a Then], then: Option<(&'a [Then], &std::path::Path)>
     pool.iter().find(|t| t.label == arm.label).or(pool.first()).map(|r| (*r, vec![*arm], format!("the earlier sweep in {}", dir.display())))
 }
 
-/// The check for a finished sweep. The settings of each start take the twelve
-/// among themselves (`twelve_of`): a start is never set against the other,
-/// since one town in a corner stands nowhere near six towns in 1900. The
-/// landfall start's settings also take the colony's check, set beside the
-/// settled island's first setting in this sweep or, failing that, the first in
-/// `beside`. Every setting takes the growth after 1900. None when there is
-/// nothing to set the twelve against and no colony.
+/// The check for a finished sweep, in this order:
+///
+/// 1. **The written check** (`WRITTEN`) for every setting, with the reference
+///    of its start beside it where the twelve have one from an earlier sweep.
+/// 2. **What moved**: the old twelve. The settings of each start take them
+///    among themselves (`twelve_of`): a start is never set against the other,
+///    since one town in a corner stands nowhere near six towns in 1900. Still
+///    the gate: a fact not inside fails the sweep.
+/// 3. The old twelve against version 0.1.0 (`v010`), printed, not counted.
+/// 4. The landfall start's settings take the colony's check, set beside the
+///    settled island's first setting in this sweep or, failing that, the first
+///    in `beside`.
+/// 5. Every setting takes the growth after 1900, printed last, as the gate
+///    reads it.
 pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>, beside: Option<(&[Then], &std::path::Path)>) -> Option<Report> {
     let kinds: HashMap<String, Kind> = sw.fact_index.iter().map(|(n, _, k)| (n.clone(), *k)).collect();
-    let now = arms(sw);
+    let mut now = arms(sw);
+    mark_failures(sw, &mut now);
     let settled: Vec<&Then> = now.iter().filter(|a| !is_colony(a)).collect();
     let colonies: Vec<&Then> = now.iter().filter(|a| is_colony(a)).collect();
     let twelves: Vec<(&Then, Vec<&Then>, String)> = [twelve_of(&settled, then, false), twelve_of(&colonies, then, true)].into_iter().flatten().collect();
-    if twelves.is_empty() && colonies.is_empty() {
-        return None;
+    // the colony's check first, so that the written check can give its count
+    let mut colony_texts = Vec::new();
+    let mut colony_missed = Vec::new();
+    let mut colony_met: HashMap<String, usize> = HashMap::new();
+    for arm in &colonies {
+        // the settled island beside it: this sweep's setting of the same swept values (its label
+        // without the start's word), or its first; else the first of the sweep --beside names
+        let plain = arm.label.replacen("landfall, ", "", 1).replacen(", landfall", "", 1);
+        let (beside_arm, whence) = match (settled.iter().find(|s| s.label == plain).or(settled.first()), beside) {
+            (Some(s), _) => (Some(*s), "this sweep".to_string()),
+            (None, Some((b, dir))) => (b.iter().find(|t| !is_colony(t)), format!("the sweep in {}", dir.display())),
+            (None, None) => (None, String::new()),
+        };
+        let (colony_text, missed) = colony(&[*arm], beside_arm, &whence);
+        colony_texts.push(colony_text);
+        colony_met.insert(arm.label.clone(), COLONY.len() - missed.len());
+        colony_missed.extend(missed);
     }
     let mut text = String::new();
+    // 1. the written check
+    let mut written_missed = Vec::new();
+    for arm in &now {
+        // the reference beside it: the twelve's reference of its start, where that came from an earlier sweep
+        let reference = twelves
+            .iter()
+            .find(|(r, _, _)| is_colony(r) == is_colony(arm) && !now.iter().any(|a| std::ptr::eq(a, *r)))
+            .map(|(r, _, whence)| (*r, whence.as_str()));
+        let (t, missed) = written(arm, reference, colony_met.get(&arm.label).copied());
+        text.push_str(&t);
+        written_missed.extend(missed);
+    }
+    // 2. what moved: the old twelve against the reference, the gate
     let mut outside_lines = Vec::new();
     for (reference, later, whence) in &twelves {
+        let _ = writeln!(text, "what moved: the old twelve against the reference (the gate)");
         text.push_str(&check(reference, later, &kinds, whence));
         let lines = outside(reference, later, &kinds);
         if !lines.is_empty() {
@@ -615,23 +965,23 @@ pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>, beside: 
         outside_lines.extend(lines);
         text.push('\n');
     }
-    let mut colony_missed = Vec::new();
-    for arm in &colonies {
-        // the settled island beside it: this sweep's setting of the same swept values (its label
-        // without the start's word), or its first; else the first of the sweep --beside names
-        let plain = arm.label.replacen("landfall, ", "", 1).replacen(", landfall", "", 1);
-        let (beside_arm, whence) = match (settled.iter().find(|s| s.label == plain).or(settled.first()), beside) {
-            (Some(s), _) => (Some(*s), "this sweep".to_string()),
-            (None, Some((b, dir))) => (b.iter().find(|t| !is_colony(t)), format!("the sweep in {}", dir.display())),
-            (None, None) => (None, String::new()),
-        };
-        let (colony_text, missed) = colony(&[*arm], beside_arm, &whence);
-        text.push_str(&colony_text);
-        colony_missed.extend(missed);
+    // 3. the old twelve against version 0.1.0
+    let frozen = v010();
+    for group in [&settled, &colonies] {
+        let Some(first) = group.first() else { continue };
+        let Some(old) = frozen.iter().find(|t| is_colony(t) == is_colony(first)) else { continue };
+        let _ = writeln!(text, "how far from version 0.1.0: the old twelve against its own sweeps, printed, not counted");
+        text.push_str(&check_titled("against version 0.1.0", old, group, &kinds, V010_WHENCE));
+        text.push('\n');
     }
+    // 4. the colony's check
+    for t in colony_texts {
+        text.push_str(&t);
+    }
+    // 5. the growth after 1900, last
     let (growth_text, growth_missed) = growth(&now.iter().collect::<Vec<_>>());
     text.push_str(&growth_text);
-    Some(Report { text, outside: outside_lines, growth_missed, colony_missed })
+    Some(Report { text, outside: outside_lines, growth_missed, colony_missed, written_missed })
 }
 
 #[cfg(test)]
