@@ -75,11 +75,15 @@ pub fn find() -> Option<PathBuf> {
 }
 
 /// Where a tracked page of docs/ is, if it can be found beside the game: in
-/// the folder the game was started from or one above it, or beside the
-/// program. The backlog's card and the What's new card (docs/DEVLOG.md) both
-/// look for their pages so.
+/// the folder the game was started from or one above it, inside the program's
+/// app on a Mac (`Isolated State.app/Contents/Resources/docs`, since an app
+/// keeps its program in Contents/MacOS and what it reads in Contents/Resources),
+/// or beside the program or above it. The backlog's card and the What's new
+/// card (docs/DEVLOG.md) both look for their pages so.
 pub fn find_doc(name: &str) -> Option<PathBuf> {
-    let starts = [std::env::current_dir().ok(), std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf))];
+    let beside = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+    let resources = beside.as_deref().filter(|d| d.ends_with("Contents/MacOS")).and_then(Path::parent).map(|c| c.join("Resources"));
+    let starts = [std::env::current_dir().ok(), resources, beside];
     for start in starts.into_iter().flatten() {
         for dir in start.ancestors().take(8) {
             let p = dir.join("docs").join(name);
