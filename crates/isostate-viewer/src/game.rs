@@ -2171,7 +2171,7 @@ fn new_game_clicks(
         return;
     };
     // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = crate::command_line();
     let scripted = args.iter().any(|a| a == "--script");
     let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len(), sandbox.is_some(), landfall);
     let button = if sandbox.is_some() { "Begin again" } else { "New game" };

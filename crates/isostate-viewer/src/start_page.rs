@@ -162,7 +162,7 @@ pub fn wanted(argv: &[String], set: &[String]) -> Result<Option<Asked>, String> 
 
 /// `wanted` for this process.
 pub fn asked() -> Result<Option<Asked>, String> {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let argv = crate::command_line();
     let set: Vec<String> = std::env::vars_os().filter(|(_, v)| !v.is_empty()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();
     wanted(&argv, &set)
 }
@@ -1940,7 +1940,7 @@ fn back_to_page(q: Query<&Interaction, (Changed<Interaction>, With<OpenStartPage
     if !q.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
-    if std::env::args().any(|a| a == "--script") {
+    if crate::command_line().iter().any(|a| a == "--script") {
         // a scripted run is one program from start to end: say what would be started, and stop
         println!("script: Start page would start the program again with: --start-page");
         exit.write(AppExit::Success);

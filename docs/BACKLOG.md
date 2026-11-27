@@ -524,6 +524,7 @@ A release on Steam is the far goal (her note of 26 November, at the foot). Nothi
 - **Who made it, said plainly** (her note of 26 November). The README says it since that day, under "Who made it", in words she approved. A credits card in the game is still to come, in the same words.
 - **The licences of what a build carries** (Bevy and the other crates), gathered into the build beside the repository's own, which are at the root since 26 November.
 - **Saves that outlive an update,** settings (the size of the interface, the keys), text a Steam Deck can read, and the game's words kept out of the code so that they can be translated.
+- **The Mac and Linux builds** (her question of 27 November) are made for every marked version on GitHub's machines (`docs/RELEASING.md`), and started there with a picture, but not yet played at a real Mac or Linux desktop. The Mac's app is signed by nobody, so macOS asks once before it opens; signing and notarising it take Apple's developer account, $99 a year.
 
 ## For the managing session
 

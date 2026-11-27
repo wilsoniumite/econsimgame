@@ -463,7 +463,9 @@ pub fn keys(
     if line.stage == Stage::Shut {
         // what was typed while the line was shut is the game's, N's own letter among it
         typed.clear();
-        if cards.0 || !keys.just_pressed(KEY) || keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) || keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight) {
+        // (Command too on a Mac, where it does what Control does elsewhere)
+        let command = cfg!(target_os = "macos") && keys.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight]);
+        if cards.0 || !keys.just_pressed(KEY) || command || keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) || keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight) {
             return;
         }
         line.place = Some(at.place(&tl));
@@ -506,6 +508,8 @@ pub fn keys(
         let down = ev.state == ButtonState::Pressed;
         match ev.key_code {
             KeyCode::ControlLeft | KeyCode::ControlRight => line.ctrl = down,
+            // on a Mac, Command does what Control does elsewhere: Command-V pastes
+            KeyCode::SuperLeft | KeyCode::SuperRight if cfg!(target_os = "macos") => line.ctrl = down,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => line.shift = down,
             _ => {}
         }
