@@ -328,10 +328,10 @@ pub struct Maker {
 
 /// How long the settings must rest before the whole island is made. While
 /// somebody clicks + and - the sketches alone are made: a whole island made
-/// beside the page lengthens its frames by a sixth on this machine, as any
-/// one busy thread does (crates/isostate-viewer/README.md, "Island settings").
-/// Putting the thread in the background (Windows' `THREAD_MODE_BACKGROUND_BEGIN`)
-/// was tried and made no difference.
+/// beside the page lengthens its frames by a tenth or more, as one simulation
+/// run beside it does (crates/isostate-viewer/README.md, "Island settings").
+/// Putting the thread in the background (Windows' `THREAD_MODE_BACKGROUND_BEGIN`),
+/// or on processors of their own, was tried and made no difference.
 const REST: Duration = Duration::from_millis(1000);
 
 impl Maker {
@@ -479,6 +479,20 @@ mod tests {
                     img.try_into_dynamic().unwrap().save(dir.join(format!("{name}-{which}.png"))).unwrap();
                 }
             }
+        }
+    }
+
+    /// How far the sketch's first towns stand from the whole island's, islands 1 to 8:
+    ///
+    ///     cargo test -p isostate-viewer --bin isostate-viewer -- the_sketchs_towns --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn the_sketchs_towns_against_the_whole_islands() {
+        for seed in 1..=8 {
+            let p = params_for(&MapAsk { seed, old_land: false, landfall: false, island: Island::default() }).unwrap();
+            let ((ws, s), (ww, w)) = (land_of(&p, false), land_of(&p, true));
+            let off: Vec<f64> = w.iter().map(|&a| s.iter().map(|&b| ((a % ww.W) as f64 - (b % ws.W) as f64).hypot((a / ww.W) as f64 - (b / ws.W) as f64)).fold(f64::INFINITY, f64::min)).collect();
+            println!("island {seed}: the whole island's {} towns stand {:?} cells from the sketch's nearest", w.len(), off.iter().map(|d| (d * 10.0).round() / 10.0).collect::<Vec<_>>());
         }
     }
 

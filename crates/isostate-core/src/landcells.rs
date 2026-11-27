@@ -191,8 +191,10 @@ pub fn sketch_land(seed: u64, W: usize, H: usize, P: &LandParams) -> World {
 }
 
 /// `sketch_land` with `n_towns` first towns chosen on the sketch by the rule
-/// `generate_land` chooses them by (the start page's small map). On the sketch
-/// they stand where the whole island would put them, or a cell or two off.
+/// `generate_land` chooses them by (the start page's small map, until the
+/// whole island is made). On islands 1 to 8, 35 of the 48 stand within two
+/// cells of the whole island's; once one stands elsewhere, the rest may too
+/// (12 to 28 cells off), as each is chosen away from those before it.
 pub fn sketch_land_towns(seed: u64, W: usize, H: usize, n_towns: usize, P: &LandParams) -> World {
     let quick = LandParams { meander_steps: 0, ..P.clone() };
     let mut rng = land_stream(seed);
