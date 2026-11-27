@@ -39,10 +39,12 @@ pub struct HandsParams {
     /// The most a short town's wage may rise in a month, as a multiple of last
     /// month's (docs/rules/landfall.md, "The trap"). 2, the month's own bound,
     /// leaves the rule as it was: a town short several months running then
-    /// doubles its wage each month. The landfall start sets 1.06, so that a
-    /// short town's wage at most doubles in a year, and the rationing alone
-    /// shares out the hands. Read only below 2, and not written out at 2, so
-    /// that the game's parameters read as they did.
+    /// doubles its wage each month. Both starts keep 2; the landfall start
+    /// set 1.06 until carriage and pits were mended, and a run's params.json
+    /// written then still names it. Below 2 a short town's wage rises at most this
+    /// much a month, and the rationing alone shares out the hands: a knob for
+    /// a study (`--set hands.short_rise=1.5`). Read only below 2, and not
+    /// written out at 2, so that the game's parameters read as they did.
     #[serde(skip_serializing_if = "at_bound")]
     pub short_rise: f64,
 }
@@ -80,7 +82,7 @@ pub fn short_towns(st: &State, P: &Params, hi: &[f64], supply: &[f64], demand: &
         if st.town_active[t] && demand(t, hi[t]) > supply[t] {
             short[t] = true;
             w[t] = hi[t].exp();
-            // landfall (docs/rules/landfall.md, "The trap"): a short town's wage rises
+            // the guard (docs/rules/landfall.md, "The trap"): a short town's wage rises
             // at most `short_rise` a month; at 2 nothing is read, and the month is as it was
             if P.hands.short_rise < 2.0 && st.wage[t] > 0.0 {
                 w[t] = w[t].min(st.wage[t] * P.hands.short_rise);

@@ -287,7 +287,7 @@ where they were, in `tests/golden_game.txt`. A rule that acts on both starts
 moves both files, and the one command above takes both again: it writes each
 file whose hashes moved, with the reason as its newest `# Taken:` line, and
 leaves a file whose seven did not move as it was. A rule that is part of the
-landfall start alone (`frontier`, `immigration`, `hands.short_rise`) moves only
+landfall start alone (`frontier`, `immigration`, `mines.glut`) moves only
 `golden_landfall.txt`, and the settled island's file must not move. One start
 alone:
 
@@ -1214,9 +1214,6 @@ where `--start landfall` asks for it ([landfall.md](landfall.md), `start.landfal
   abroad, mostly young adults, entering the reckoning of ages at their ages; they bring no money, and
   no ship brings them to a port that went hungry that year or the four before.
   [immigration.md](immigration.md), `immigration.enabled`, `immigration.shun_hungry`.
-- **the short town's wage** (a number of the hands' rule): a town short of hands at the month's highest
-  wage rises at most 1.06 a month, not twice. At 2 it is the rule as it was. [landfall.md](landfall.md),
-  "The trap", `hands.short_rise`.
 - **pits at the size of their market**: the merchants take a quarry's, clay pit's, iron mine's or
   colliery's make only as far as the town asks for the good and their shelves have room, the working
   hires for what they take, and no town sinks a working into a glut. Off on the settled island for now:
