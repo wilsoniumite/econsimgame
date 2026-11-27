@@ -2276,16 +2276,18 @@ fn take_shot(
 ) {
     let Some(mut plan) = plan else { return };
     if plan.index >= plan.views.len() {
+        // the pictures are written a few frames after they are asked for, more on a slow machine
+        // (an Intel program under a Mac's Rosetta closed before its one picture came): give the
+        // last ones time
+        let missing = plan.views.iter().filter(|v| !std::path::Path::new(&v.path).exists()).count();
+        if missing > 0 && *patience < 300 {
+            *patience += 1;
+            return;
+        }
+        if missing > 0 {
+            eprintln!("{missing} of the pictures asked for were not written");
+        }
         if let Some(sheet) = sheet {
-            // the pictures are written a few frames after they are asked for: give the last ones time
-            let missing = plan.views.iter().filter(|v| !std::path::Path::new(&v.path).exists()).count();
-            if missing > 0 && *patience < 300 {
-                *patience += 1;
-                return;
-            }
-            if missing > 0 {
-                eprintln!("{missing} of the standard shots were not written");
-            }
             shots::print_diffs(&shots::write_sheet(&sheet));
         }
         exit.write(AppExit::Success);
