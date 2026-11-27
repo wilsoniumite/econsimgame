@@ -210,6 +210,58 @@ which the port leaves as they stood in 1750.
 None of this moves money. It sets where prices and the wage start; where
 they go is the market's business.
 
+### The hands that come with a district
+
+`people.carry_hands`, off on both starts (since 27 November 2026). In the
+first month after the year's turn, a town that took in a district counts as
+hands for hire at least the hands its land and its works carry into the
+month (`peopling::carry_hands`, called by `econ::step_month` after the
+carters and the other takers). It was built to mend the town's wage that
+rises sixteen to twenty-seven times in a year after 1900, on the belief that
+the hands carried with a district counted in its new town as mouths and not
+as hands. They do not: the newcomers' hands already count, since they come
+with their people and January's supply is counted from people. The rule
+leaves those rises where they were. It is kept, off, because it is cheap and
+holds the question answered.
+
+Measured on islands 1 to 8 to 2050 (`examples/years_turn.rs`, the largest
+rise of a town's yearly mean wage over the year before, for towns with people
+the two years before):
+
+| | settled, off | settled, on | landfall, off | landfall, on |
+|---|---|---|---|---|
+| January's hands carried over hands for hire, median of the rises of 3 or more after 1900 | 0.995 | | 0.989 | |
+| largest rise after 1900 | 27.0 | 12.1 | 9.9 | 13.9 |
+| the islands' largest after 1900, mean | 10.6 | 8.5 | 7.3 | 8.1 |
+| years with hunger after 1900, an island | 0.38 | 0.12 | 0.38 | 0.12 |
+| the twelve standing facts inside | 12 | 12 | | |
+| the colony's check, of 24 | | | 13 | 13 |
+
+On, it moves both starts from the 1750s, so after 1900 the islands are
+another draw of themselves; to 1900 the twelve facts stay inside.
+
+**What makes the rises.** Of the 73 town-years after 1900 on the settled
+start whose wage rose four times or more, 63 took their district from a city
+of over 100,000 people (landfall, 51 of 53). The town was a small one beside
+the city, at a fifth of the island's wage, its prices far below the city's:
+Belfell on island 1 in 2004 sold timber at 0.39 a ton beside Ashside's 212.9,
+with 0.12 to cart a ton between them. Its merchants' goods are carried to the
+city every month, but its own price rule reads only its own buyers against
+what is made and brought in (`econ::step_month`, the flow term), so a town
+that makes far more than its people buy reads a glut every month however fast
+its stock is carried off. When cells at the city's edge go to it at the turn,
+its prices are set again to the city's trade (timber 75, wool 25), its wage
+to the newcomers' (9.4 to 43.5), and its own land, now worth many times more
+a hand, wants hands it does not have: the wage climbs to 372, six times the
+city's, and falls back as its prices fall through the year. The hungry years
+after 1900 are in such towns, in such years.
+
+A study arm that counts the goods carried out among what a market is asked
+(not landed; the port's rule, and not this page's) takes every rise after 1900
+under 1.5 and every hungry year after 1900 away, on both starts. It also
+halves the towns founded on the settled start (13 in 1900 against 21.6) and
+leaves 7 of the twelve standing facts inside, so it is a piece of its own.
+
 ## The numbers
 
 | name | value | what it is |
@@ -705,6 +757,13 @@ in two hundred, and every new town opening with each price between half and
 twice its merchants' anchor. `prices.rs` has a test of the anchor that
 follows a price, and `tests/chronicle.rs` now expects a town to be redrawn
 by a tenth of its people changing market as well as by a founding.
+
+`tests/years_turn.rs` holds `people.carry_hands`: off on both starts and not
+written out; a short supply raised to the hands carried and no further, read
+once; and, on seed 3 from 1761, each January played twice from the same
+island, with the rule and without, until one is found where a town that took
+a district would have been short of what it carries. With the rule it never
+is.
 
 ## What worries me
 

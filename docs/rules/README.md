@@ -954,6 +954,12 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   people do, so that a town that took a district does not open January with
   the shelves of the town it was. [shelves.md](shelves.md),
   `people.shelves_go`.
+- **the hands that come with a district**: in the first month after the
+  year's turn, a town that took a district counts at least the hands its
+  land and works carry in as hands for hire. Off on both starts: the
+  newcomers' hands already count, and the rises it was built for come from
+  small towns priced far below the city beside them. [people.md](people.md),
+  "The hands that come with a district", `people.carry_hands`.
 - **towns**: town ground that is kept. A town keeps the cells it builds on and
   grows outward from them along its roads, taking in the works beside it, so
   the island's town ground is some five times as wide in 1900 as in 1750 and
